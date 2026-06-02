@@ -1,0 +1,8 @@
+{
+  "name": "in-browser-llm-chat",
+  "version": "1.0.0",
+  "license": "MIT",
+  "type": "module",
+  "private": true,
+  "scripts": {}
+}
