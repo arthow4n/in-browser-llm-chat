@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "vitest"],
+  "options": {
+    "typeAware": true,
+    "typeCheck": true
+  },
+  "settings": {
+    "react": {
+      "version": "19.0.0"
+    }
+  },
+  "rules": {
+    "react/jsx-key": "error",
+    "react/jsx-no-target-blank": "error",
+    "react/no-direct-mutation-state": "error"
+  }
+}

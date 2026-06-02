@@ -27,6 +27,7 @@ Fill in anything missing.
 ## Features and use cases to support
 
 "Be yet another poweruser LLM chat app" so the LLM chat UI basics and some features need to be there, plus:
+
 - The user is always chatting with an workflow (an orchestration graph with 0-many LLM agents) directly instead of a single agent.
   - The normal chat feature for chatting to one single LLM agent like in an average LLM chat app still works, just that behind the scene it should go through the same code path as if chatting with an orchestration with many LLM agents.
   - The default selected workflow when creating a new chat is still the good old workflow where there's only 1 human user and 1 agent with a system prompt like "you are an helpful assistant".
