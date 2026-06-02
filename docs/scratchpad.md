@@ -8,15 +8,17 @@ This a scratchpad for writing down vague ideas for building this LLM chat app fo
 - LangGraph.js `@langchain/langgraph/web` for LLM agent orchestraion in-browser.
 - React frontend.
 - XState and `@xstate/react`, all the application and UI states should be fully driven by state machine(s).
-- Carbon Design System `@carbon/react`.
-- TypeScript.
+- Carbon Design System `@carbon/react` as much as possible instead of creating own UI components.
+- TypeScript: Install package `@typescript/native-preview` instead of package `typescript`.
+- Lint: `oxlint-tsgolint@latest` instead of ESLint
+  - Turn on type awared linting https://oxc.rs/docs/guide/usage/linter/type-aware.html
+  - Turn on React and Vitest plugin https://oxc.rs/docs/guide/usage/linter/plugins.html
+- Formatting: `oxfmt` instead of Prettier.
 - Zod v4 for parsing/validating data.
 - Vite for bundling.
 - Vitest for tests. "Write tests. Not too many. Mostly integration."
 - No E2E test.
-- Prettier.
 - Persistance with IndexedDB via `idb` (and `fake-indexeddb` in test) instead of localStorage/sessionStorage. This is to ensure the storage has higher quota.
-- ESLint + plugins for the other technologies in the stack with the recommended defaults.
 - Support using OpenRouter and Gemini API as LLM API provider, and potentially switching to another provider in the future.
 - `AGENTS.md` should be kept up-to-date to run the tool chains e.g. formatting, typecheck, lint with autofix, test, build.
 
