@@ -18,7 +18,7 @@ This a scratchpad for writing down vague ideas for building this LLM chat app fo
 - Persistance with IndexedDB via `idb` (and `fake-indexeddb` in test) instead of localStorage/sessionStorage. This is to ensure the storage has higher quota.
 - ESLint + plugins for the other technologies in the stack with the recommended defaults.
 - Support using OpenRouter and Gemini API as LLM API provider, and potentially switching to another provider in the future.
-- `AGENTS.md` should be kept up-to-date.
+- `AGENTS.md` should be kept up-to-date to run the tool chains e.g. formatting, typecheck, lint with autofix, test, build.
 
 Fill in anything missing.
 
