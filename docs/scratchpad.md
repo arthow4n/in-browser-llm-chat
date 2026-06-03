@@ -186,3 +186,140 @@ When updating this file with open questions, please only add to the current open
 so the human user knows which questions are still open, the human user will then replace the UNRESOLVED tag with their response. Then the human user will prompt the coding agent to incorparate the responses into this scratchpad file, and remove those already incorparated open questions, and the questions that are no longer relevant.
 
 ### Current open questions:
+
+#### Question: Global Layout and View Navigation
+
+How should the main user interface be structured to navigate between chat threads, custom workflows, LLM presets, and global settings?
+
+_Suggested Options:_
+
+- **Option A (Recommended):** A persistent left sidebar (Carbon `SideNav`) for navigation containing:
+  - Top header with app branding and a manual Light/Dark mode theme toggle.
+  - A scrollable list of chat threads (with "New Chat" and "Branch" indicators).
+  - Quick-link tabs or accordion sections for switching the main content area to:
+    - **Active Chat View**
+    - **Workflows CRUD** (Text-based JSON editor)
+    - **Presets CRUD** (Config inputs)
+    - **Settings** (API Keys stored in IndexedDB)
+- **Option B:** A top navigation bar (Header tabs) for switching major views (Chat, Workflows, Presets, Settings), with chat threads shown in a sidebar only when the Chat view is active.
+- **Option C:** Chat-centric UI where threads are in the left sidebar, and Workflows, Presets, and Settings are accessed via overlay modals or slide-over drawers.
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Custom Workflow JSON Editor UI & Validation
+
+Since custom workflows are edited via a text-based JSON editor, how should JSON formatting and validation errors be displayed to the user?
+
+_Suggested Options:_
+
+- **Option A (Recommended):** A `TextArea` displaying the JSON content, paired with real-time validation using Zod. When invalid, it displays an inline `InlineNotification` showing the specific line number/field and error message, and disables the "Save Workflow" button.
+- **Option B:** A basic `TextArea` that only validates schema when the user clicks "Save", displaying validation errors in a modal dialog.
+- **Option C:** Provide a split screen: the JSON editor on the left and a live-updating interactive/read-only list of parsed nodes and edges on the right to visually verify the structure.
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: General Loop Control Panel UI & Cost Estimation
+
+For workflows containing loops (such as the Debate workflow), where should the Loop Control Panel be positioned, and how should "estimated cost" be calculated?
+
+_Suggested Options:_
+
+- **Loop Control Card Placement:**
+  - **Option A (Recommended):** Rendered as a sticky control bar at the top of the chat area, ensuring it is always visible to pause/resume/force consensus.
+  - **Option B:** Rendered inline as a special card directly in the chat feed (moving up as new messages are added).
+  - **Option C:** Placed as a floating card in a corner of the chat viewport.
+- **Cost Estimation Details:**
+  - **Option A (Recommended):** Display a simple counter of steps/turns and a running count of estimated input/output tokens (without currency calculation).
+  - **Option B:** Use a hardcoded price-per-token map for Gemini/OpenRouter models to display estimated costs in USD.
+  - **Option C:** Only display step/turn counter and execution duration.
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Chat Feed message styling for reasoning and tool tokens
+
+How should reasoning tokens, tool calls, and tool results be styled in the chat feed?
+
+_Suggested Options:_
+
+- **Option A (Recommended):** Use Carbon `<Accordion>` components.
+  - _Reasoning:_ Collapsed by default under "Reasoning Process" inside the assistant's message.
+  - _Tool Calls/Results:_ Collapsed by default under "Tool: [Name]". Expanding shows a formatted JSON/arguments block.
+- **Option B:** Display reasoning inline but with a lighter font color/smaller size and a toggle button to hide it. Show tool calls/results in a smaller font size as code blocks, not collapsible.
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Interaction Flow for `ask_questions` Tool Interrupts
+
+When the `ask_questions` tool interrupts execution to ask for human input:
+
+1. Should it disable the main chat message input box?
+2. Must the user answer all questions in the card, or can they submit answers to a subset and leave others blank?
+
+_Suggested Options:_
+
+- **Input blocking:**
+  - **Option A (Recommended):** Yes, block/disable the main chat input field while the workflow is waiting for the tool answers, since typing a normal chat message would violate the graph execution state.
+  - **Option B:** No, allow the user to type a normal message, which automatically "refuses" the tool questions and sends the typed text as the refusal reason.
+- **Answering completeness:**
+  - **Option A (Recommended):** The user can fill out any subset, click checkboxes for multi-select, and submit. Any unanswered questions are treated as skipped. If the user clicks "Refuse to Answer", it clears answers and submits a refusal payload with their optional comment.
+  - **Option B:** The user must either answer all questions or explicitly click "Refuse to Answer".
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: History Edit & Message Insertion UI
+
+How should users trigger edits/deletions of existing messages, and how should they insert messages at the end of the history?
+
+_Suggested Options:_
+
+- **Editing / Deleting:**
+  - **Option A (Recommended):** Hovering over a message in the feed reveals an action toolbar with "Edit", "Delete", and "Branch" buttons. Clicking "Edit" transforms that message's bubble into a text area with "Save" and "Cancel" buttons.
+  - **Option B:** Double-clicking a message opens a modal dialog to edit/delete the message.
+- **Message Insertion (Prefill):**
+  - **Option A (Recommended):** Add a small role selector dropdown button next to the main chat text input (defaulting to "User"). Changing it allows selecting "Assistant" or "System", letting the user type a message and press Send to insert it directly as that role.
+  - **Option B:** Provide a dedicated "Prefill" button above the chat input that inserts an editable message block at the end of the thread.
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: System Message Injection Configuration & Payload Preview
+
+How should users configure system message injection, and where should they trigger the "Preview API Payload" overlay?
+
+_Suggested Options:_
+
+- **Injection Configuration:**
+  - **Option A (Recommended):** Add an "Injected System Messages" list configuration inside the Workflow JSON editor (so it is saved per workflow).
+  - **Option B:** Provide a global UI list in settings for system messages that apply to all workflows.
+- **API Payload Preview:**
+  - **Option A (Recommended):** Add a "Preview API Payload" button in the active chat header. Clicking it opens a Modal showing the exact JSON structure of messages (including the injected system messages) that would be sent to the LLM API next.
+  - **Option B:** Show it as a collapsible drawer/panel on the right side of the chat view.
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Theme Switching Behavior
+
+How should light/dark theme switching be handled?
+
+_Suggested Options:_
+
+- **Option A (Recommended):** Auto-detect and sync with system color scheme by default. Provide a selector in the header/settings to manually override it to "Light" (Carbon `g10` / `white`) or "Dark" (Carbon `g100` / `g90`).
+- **Option B:** Auto-detect and sync with system color scheme only, with no manual override.
+- **Option C:** Manual override only (defaults to Dark).
+
+##### Response
+
+[UNRESOLVED]
