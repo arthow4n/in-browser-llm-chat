@@ -197,7 +197,7 @@ _Suggested Options:_
   - Top header with app branding, a manual Light/Dark mode theme toggle, and a hamburger icon button.
   - A scrollable list of chat threads (with "New Chat" and "Branch" indicators).
   - Quick-link tabs or accordion sections for switching the main content area (Chat, Workflows CRUD, Presets CRUD, Settings).
-  - **Mobile Adaptation:** On mobile viewports (< 672px), the sidebar collapses completely. Tapping the header's hamburger icon slides the navigation menu over the content as an overlay panel. Tapping any option or clicking the overlay background auto-collapses it.
+  - **Mobile Adaptation:** On mobile viewports (< 672px), the sidebar collapses completely. Tapping the header's hamburger icon slides the navigation menu over the content as an overlay panel (with a maximum width of 280px to leave a tap-to-close backdrop area). Tapping any option or clicking the overlay background auto-collapses it.
 - **Option B:** A top navigation bar (Header tabs) for switching major views. On mobile, this bar wraps or collapses into a dropdown select menu. Chat threads are listed in a collapsible sidebar drawer.
 - **Option C:** A persistent minimal sidebar on desktop. On mobile, the interface uses a bottom navigation tab bar (similar to a native mobile app) for switching views, with chat threads accessible via a slide-right drawer.
 
@@ -211,7 +211,7 @@ Since custom workflows are edited via a text-based JSON editor, how should JSON 
 
 _Suggested Options:_
 
-- **Option A (Recommended):** A `TextArea` displaying the JSON content, paired with real-time validation using Zod. When invalid, it displays an inline `InlineNotification` showing the specific line number/field and error message, and disables the "Save Workflow" button.
+- **Option A (Recommended):** A `TextArea` displaying the JSON content, paired with real-time validation using Zod. Validation is debounced by 500ms after the user stops typing to prevent constant flashing. When invalid, it displays a compact error helper text under the text area and disables the "Save Workflow" button.
 - **Option B:** A basic `TextArea` that only validates schema when the user clicks "Save", displaying validation errors in a modal dialog.
 - **Option C:** Provide a split screen: the JSON editor on the left and a live-updating interactive/read-only list of parsed nodes and edges on the right to visually verify the structure.
 
@@ -226,7 +226,7 @@ For workflows containing loops (such as the Debate workflow), where should the L
 _Suggested Options:_
 
 - **Loop Control Card Placement:**
-  - **Option A (Recommended):** Rendered as a sticky control bar at the top of the chat area, ensuring it is always visible to pause/resume/force consensus.
+  - **Option A (Recommended):** Rendered as a sticky control bar at the top of the chat area on desktop. On mobile, it collapses into a compact floating action button (FAB) or thin top status bar to save vertical space; tapping it opens a modal overlay with the detailed turn counters and control actions.
   - **Option B:** Rendered inline as a special card directly in the chat feed (moving up as new messages are added).
   - **Option C:** Placed as a floating card in a corner of the chat viewport.
 - **Cost Estimation Details:**
@@ -245,8 +245,9 @@ How should reasoning tokens, tool calls, and tool results be styled in the chat 
 _Suggested Options:_
 
 - **Option A (Recommended):** Use Carbon `<Accordion>` components.
-  - _Reasoning:_ Collapsed by default under "Reasoning Process" inside the assistant's message.
+  - _Reasoning:_ Collapsed by default under "Reasoning Process" inside the assistant's message. To prevent page overflow, the content is capped at `max-height: 250px` with vertical scrollbars.
   - _Tool Calls/Results:_ Collapsed by default under "Tool: [Name]". Expanding shows a formatted JSON/arguments block.
+  - _Scroll Anchoring:_ Expanding accordions preserves chat scroll anchoring so the user does not lose their viewing position.
 - **Option B:** Display reasoning inline but with a lighter font color/smaller size and a toggle button to hide it. Show tool calls/results in a smaller font size as code blocks, not collapsible.
 
 ##### Response
@@ -263,7 +264,7 @@ When the `ask_questions` tool interrupts execution to ask for human input:
 _Suggested Options:_
 
 - **Input blocking:**
-  - **Option A (Recommended):** Yes, block/disable the main chat input field while the workflow is waiting for the tool answers, since typing a normal chat message would violate the graph execution state.
+  - **Option A (Recommended):** Yes, block/disable the main chat input field while the workflow is waiting for the tool answers, since typing a normal chat message would violate the graph execution state. All form controls are sized with a minimum of 44x44px touch targets.
   - **Option B:** No, allow the user to type a normal message, which automatically "refuses" the tool questions and sends the typed text as the refusal reason.
 - **Answering completeness:**
   - **Option A (Recommended):** The user can fill out any subset, click checkboxes for multi-select, and submit. Any unanswered questions are treated as skipped. If the user clicks "Refuse to Answer", it clears answers and submits a refusal payload with their optional comment.
@@ -280,7 +281,7 @@ How should users trigger edits/deletions of existing messages, and how should th
 _Suggested Options:_
 
 - **Editing / Deleting:**
-  - **Option A (Recommended):** Hovering over a message in the feed reveals an action toolbar with "Edit", "Delete", and "Branch" buttons. Clicking "Edit" transforms that message's bubble into a text area with "Save" and "Cancel" buttons.
+  - **Option A (Recommended):** Hovering over a message in the feed reveals an action toolbar with "Edit", "Delete", and "Branch" buttons. On mobile/touch viewports, tapping a message opens a bottom sheet drawer containing these options. Clicking "Edit" transforms that message's bubble into a text area with "Save" and "Cancel" buttons.
   - **Option B:** Double-clicking a message opens a modal dialog to edit/delete the message.
 - **Message Insertion (Prefill):**
   - **Option A (Recommended):** Add a small role selector dropdown button next to the main chat text input (defaulting to "User"). Changing it allows selecting "Assistant" or "System", letting the user type a message and press Send to insert it directly as that role.
@@ -300,7 +301,7 @@ _Suggested Options:_
   - **Option A (Recommended):** Add an "Injected System Messages" list configuration inside the Workflow JSON editor (so it is saved per workflow).
   - **Option B:** Provide a global UI list in settings for system messages that apply to all workflows.
 - **API Payload Preview:**
-  - **Option A (Recommended):** Add a "Preview API Payload" button in the active chat header. Clicking it opens a Modal showing the exact JSON structure of messages (including the injected system messages) that would be sent to the LLM API next.
+  - **Option A (Recommended):** Add a "Preview API Payload" button in the active chat header. Clicking it opens a Modal showing the exact JSON structure of messages (including the injected system messages) that would be sent to the LLM API next. Injected messages are highlighted with a distinct background/border and marked with an `[INJECTED]` badge to assist debugging.
   - **Option B:** Show it as a collapsible drawer/panel on the right side of the chat view.
 
 ##### Response
