@@ -344,3 +344,74 @@ _Suggested Options:_
 ##### Response
 
 [UNRESOLVED]
+
+#### Question: Token Streaming and Live Message Rendering
+
+During active workflow execution, how should the UI render streaming text and reasoning tokens in real-time?
+
+_Suggested Options:_
+
+- **Option A (Recommended):** Stream both reasoning tokens and text content in real-time. While reasoning tokens stream, the "Reasoning Process" accordion is expanded by default to display the thought process. Once final text content starts streaming, the reasoning accordion collapses (or remains open) and the text streams inline. Use a fallback renderer or debounced updates to handle malformed partial markdown or math blocks during generation.
+- **Option B:** Stream the text content token-by-token, but display a loading spinner for the reasoning process phase, revealing the reasoning block in full only after the generation completes.
+- **Option C:** Do not stream either field. Show a typing/loading indicator during execution and append the full message block only after the corresponding LangGraph node completes execution.
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Tool Call Approval Policy
+
+For built-in tools (specifically database-modifying workflow tools, or global configuration edits), should the workflow execute them automatically, or require explicit user approval?
+
+_Suggested Options:_
+
+- **Option A (Recommended):** Require user confirmation for database-modifying tools (e.g. creating/updating a workflow). The tool call is rendered as a "Proposed Action" card showing a diff or description, and execution pauses until the user clicks "Approve" or "Deny". Other standard, read-only tools execute automatically.
+- **Option B:** All tools run automatically without explicit confirmation, relying on the user's trust in the agent or manual backups/history.
+- **Option C:** Every tool call (including read-only search/query tools) requires explicit confirmation by the user before the graph is allowed to proceed.
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Onboarding and First-Time User Experience
+
+Since this is a client-side-only app hosted on GitHub Pages, it does not have a backend to supply default API keys. How should the application guide a first-time user who has no presets or API keys configured?
+
+_Suggested Options:_
+
+- **Option A (Recommended):** If no presets or keys are found in IndexedDB on load, block the main workspace with a full-screen onboarding overlay/modal. This wizard will guide the user to input their OpenRouter and/or Gemini API keys and automatically create default presets for common models (e.g., Gemini 2.5 Flash, Claude 3.5 Sonnet).
+- **Option B:** Load the workspace normally but show a persistent, clickable warning banner at the top of the page ("No API keys configured. Click here to configure settings.") and disable the chat input field until a preset is set up.
+- **Option C:** Pre-configure the app with a set of "mock/placeholder" presets, and display an inline setup card inside the first chat thread asking for their API key on their first prompt attempt.
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Oxlint Type-Aware Linting Configuration
+
+Oxlint type-aware linting (`oxlint-tsgolint`) requires pointing the linter to a `tsconfig.json` to resolve types. How should we configure the `lint` and `lint:fix` commands in `package.json`?
+
+_Suggested Options:_
+
+- **Option A (Recommended):** Update the npm scripts to:
+  - `"lint": "oxlint --tsconfig tsconfig.json --react-plugin --vitest-plugin"`
+  - `"lint:fix": "oxlint --tsconfig tsconfig.json --react-plugin --vitest-plugin --fix"`
+    This ensures that both CLI runs and developer commands benefit from type-aware rules (like checking for unawaited promises).
+- **Option B:** Keep the standard fast lint command as is, and add a separate `"lint:type-aware"` script for deep checks before committing/building.
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: LLM Client Library Integration
+
+When invoking Gemini and OpenRouter API providers within LangGraph.js, should we use LangChain's official integrations (`@langchain/openai`, `@langchain/google-genai`) or implement a custom, direct HTTP `fetch` client?
+
+_Suggested Options:_
+
+- **Option A (Recommended):** Implement direct REST API client wrappers using browser `fetch`. They can be integrated into custom LangGraph nodes, giving us absolute control over headers, payloads (especially for thinking/reasoning config), and token-by-token streaming, while avoiding bundler compatibility issues.
+- **Option B:** Use the standard `@langchain/openai` package for OpenRouter and `@langchain/google-genai` for Gemini, and configure Vite to polyfill any Node modules they require.
+
+##### Response
+
+[UNRESOLVED]
