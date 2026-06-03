@@ -181,3 +181,92 @@ When updating this file with open questions, please only add to the current open
 so the human user knows which questions are still open, the human user will then replace the UNRESOLVED tag with their response. Then the human user will prompt the coding agent to incorparate the responses into this scratchpad file, and remove those already incorparated open questions, and the questions that are no longer relevant.
 
 ### Current open questions:
+
+#### Question: Workflow CRUD and Editing Interface
+
+How should the user create, edit, and manage custom workflows? Since we are restricted to Carbon Design System `@carbon/react` as-is, a visual node-link drag-and-drop editor (like React Flow) might be difficult to build natively without breaking design guidelines or requiring heavy custom canvas code.
+Options:
+
+1. **Form-Based Table/List Editor (Recommended)**: A structured form/wizard where the user can add/edit nodes and edges using Carbon `<Table>`, `<Select>`, and text inputs.
+2. **Text-Based JSON Editor**: A simple textarea with JSON validation where the user directly edits the workflow definition.
+3. **Interactive Builder**: The user creates and updates workflows solely by chatting with the helper agent using the built-in workflow-creation tools.
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Workflow Graph Visualization
+
+How should we visualize the graph structure of the workflow and highlight which node is currently executing?
+Options:
+
+1. **Text/Log-based (Recommended)**: Display a clean, sequential log of node execution in the chat header or a side panel, showing which node/agent generated each message.
+2. **SVG-based Read-Only Graph View**: Generate a simple, read-only SVG diagram of the nodes and edges, highlighting the active node.
+3. **Accordion/List View**: Render the graph hierarchy as a nested Carbon `<Accordion>` representing the state machine structure.
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: `ask_questions` Tool Form Presentation
+
+When the `ask_questions` tool is triggered by an agent, how and where should the question form be presented?
+Options:
+
+1. **Inline Card in Chat Feed (Recommended)**: The form appears as a special message block in the chat timeline. Once answered, the form inputs become disabled/read-only to preserve the historical view of what the user answered.
+2. **Modal Dialog**: A blocking Carbon `<Modal>` overlay. This forces immediate focus but hides the rest of the chat context.
+3. **Bottom Input Replacement**: The main text input area at the bottom is temporarily replaced by the form until the questions are answered.
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Thread Branching UI and Navigation
+
+How should the user trigger branching from a message, and how should branched threads be organized in the UI?
+Options:
+
+1. **Hover Action & Side Navigation (Recommended)**: Add a "Branch" button when hovering over a message. The new thread is created, the URL updates, and the sidebar lists it.
+2. **Tree-based Navigation**: Display threads in a collapsible tree structure in the sidebar showing parent-child relationships.
+3. **Branch Selector Dropdown**: Inside the chat view, have a selector showing sibling branches at each branch point.
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Visibility of Automatically Injected System Messages
+
+Since automatically injected system messages (specified by depth) are sent to the LLM but not saved in the IndexedDB message history, how should the user know they are active?
+Options:
+
+1. **Badged / Preview (Recommended)**: Display them in the chat message stream with a distinct badge (e.g., "Injected System Message - Not Saved") so the user understands the prompt context.
+2. **Settings Preview Only**: Show them only in a "Preview API Payload" overlay or within the workflow settings panel.
+3. **Completely Invisible**: Do not show them at all in the chat feed, keeping history completely clean.
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Settings and API Key Configuration UI
+
+Where should the API keys (stored in plain text in IndexedDB) and global settings be managed?
+Options:
+
+1. **Dedicated Settings Panel/Page (Recommended)**: A persistent tab or sidebar option for Settings where users can view/update OpenRouter and Gemini API keys and default presets.
+2. **First-run Onboarding Modal**: If no API keys are found in IndexedDB on load, block the app with a modal asking for the keys.
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Debate Workflow Control
+
+For the infinite debate workflow (which loops until consensus or cost limit is reached), what controls should the user have?
+Options:
+
+1. **Control Panel / Pause Button (Recommended)**: Display a control card showing the current round, number of turns, and estimated cost, with buttons to Pause, Resume, or Force Consensus / Summarize early.
+2. **Fully Autonomous**: The debate runs to completion (consensus or max rounds) without any intermediate user control options.
+
+##### Response
+
+[UNRESOLVED]
