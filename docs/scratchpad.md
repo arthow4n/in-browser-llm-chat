@@ -63,7 +63,7 @@ Fill in anything missing.
   - Edit a message in the middle of history
   - Remove a message in the middle of history
   - Manually insert a message to the end of history as any roles (e.g. for assistant prefill)
-- Branching from a certain message in the chat thread: Hovering over a message shows a "Branch" button. Clicking it clones/duplicates the thread up until that message, creating a new thread, updating the URL, and listing it in the sidebar.
+- Branching from a certain message in the chat thread: Each message includes a low-profile options menu (revealed on hover on desktop, or permanently visible as a small menu icon next to the message on mobile). Clicking/tapping it allows branching (cloning/duplicating) the thread up until that message, creating a new thread, updating the URL, and listing it in the sidebar.
 
 ## Technical Architecture Proposals
 
@@ -283,8 +283,8 @@ How should users trigger edits/deletions of existing messages, and how should th
 _Suggested Options:_
 
 - **Editing / Deleting:**
-  - **Option A (Recommended):** Hovering over a message in the feed reveals an action toolbar with "Edit", "Delete", and "Branch" buttons. On mobile/touch viewports, tapping a message opens a bottom sheet drawer containing these options. Clicking "Edit" transforms that message's bubble into a text area with "Save" and "Cancel" buttons.
-  - **Option B:** Double-clicking a message opens a modal dialog to edit/delete the message.
+  - **Option A (Recommended):** Each message includes a small, low-profile options button (three-dots icon) with a minimum 44x44px touch target. On desktop, this button appears on hover; on mobile, it remains permanently visible (with a light opacity like 0.6). Clicking/tapping it opens a menu (or slide-up bottom sheet on mobile) containing "Edit", "Delete", and "Branch Thread" options. This avoids tap-interception issues on the message bubble itself, allowing normal text selection and link clicks. Clicking "Edit" transforms the message bubble inline into a text area.
+  - **Option B:** Tapping/clicking anywhere on the message bubble itself selects the message and opens the actions menu/modal. (Note: this makes selecting text or clicking links inside the message very difficult on touch devices).
 - **Message Insertion (Prefill):**
   - **Option A (Recommended):** Add a small role selector dropdown button next to the main chat text input (defaulting to "User"). Changing it allows selecting "Assistant" or "System", letting the user type a message and press Send to insert it directly as that role.
   - **Option B:** Provide a dedicated "Prefill" button above the chat input that inserts an editable message block at the end of the thread.
@@ -331,9 +331,9 @@ Since this application must be fully usable on mobile browsers, how should we ad
 _Suggested Options:_
 
 - **Hover Actions (Edit / Delete / Branch) on Mobile:**
-  - **Option A (Recommended):** On touch devices, instead of hover triggers, tapping a message reveals a slide-up bottom sheet or a modal menu listing the actions ("Branch Thread", "Edit Message", "Delete Message").
-  - **Option B:** Render a permanent, low-profile row of action icons (Edit, Delete, Branch) under/next to each message card on mobile (opacity 0.6) so they are directly tappable without hover or extra clicks.
-  - **Option C:** Use a long-press gesture to trigger a context menu over the selected message.
+  - **Option A (Recommended):** Use a dedicated, low-profile overflow button (three-dots icon) next to each message bubble. On touch devices, this button is permanently visible (opacity 0.6) with a 44x44px touch target. Tapping it opens a bottom sheet drawer containing the actions. This ensures that users can still copy message text, click markdown links, or select text on mobile without accidentally triggering a menu.
+  - **Option B:** Render a permanent, low-profile row of action icons (Edit, Delete, Branch) under/next to each message card on mobile (opacity 0.6) so they are directly tappable. This takes up more vertical/horizontal space but is faster.
+  - **Option C:** Use a long-press gesture to trigger a context menu over the selected message. (Note: long-press is less discoverable and often conflicts with native browser text-selection menus on iOS/Android).
 - **Text-based JSON Workflow Editor on Mobile:**
   - **Option A (Recommended):** Render the JSON editor as a full-screen-width text area with word-wrap enabled, and show a helper bar above the software keyboard containing quick-tap insertion buttons for structural characters (`{`, `}`, `[`, `]`, `"`, `:`).
   - **Option B:** Keep the simple `TextArea` but with horizontal and vertical scrolling, relying entirely on the native mobile keyboard.
