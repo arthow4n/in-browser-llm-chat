@@ -12,6 +12,8 @@
 
 ## Toolchains
 
+### Commands
+
 Use the following commands to run the project's quality checks and builds:
 
 - **Formatting (check)**: `npm run format:check`
@@ -21,3 +23,8 @@ Use the following commands to run the project's quality checks and builds:
 - **Lint (apply autofix)**: `npm run lint:fix`
 - **Tests**: `npm run test`
 - **Build**: `npm run build`
+
+### Rules for using commands
+
+- If you are only editing documents, just run formatting, don't run lint/test/build.
+- At the beginning of session, don't run tests/build/lint etc, you'll be guaranteed that the workspace is clean.
