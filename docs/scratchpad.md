@@ -40,11 +40,15 @@ Fill in anything missing.
   - Workflow = agent orchestration graph like for LangGraph
     - Built-in workflow can be anything LangGraph supported.
     - User-defined workflow needs to be able to be serialised to/deserialised from persistance.
+    - The editing interface for custom workflows is a text-based JSON editor; no graphical/visual editor is required.
     - Here is where the user can define which are the agents involved in an orchestration and their system prompts.
-  - Underlying LLM threads used by the workflow should be visible, including reasoning tokens.
+  - Node execution sequence and underlying LLM threads should be visible in the chat feed, rendered as flatly as possible so they look like working within one single thread, including reasoning tokens.
   - To begin with, there should be a built-in debate workflow, where the user should be able to seed the debate with a topic, then let 2 agents debate infinitely in a loop until they come to consensus, the agents come to consensus by making tool call to suggest leaving the debate loop, then finally another agent summarise the debate for the user to review.
 - LLM provider preset management CRUD
+  - Presets are managed in a dedicated, persistent Settings page/sidebar tab.
   - Preset = combination of LLM API provider, API key, LLM model, and configs like reasoning/thinking level, API retry policy, budget policy (e.g. force asking for human approval after X steps in the workflow without human user sending an message).
+  - When opening a new chat thread, the thread selects the default preset as the initial preset. The selected preset ID is saved per thread in the database.
+  - When switching back to an old thread: if the saved preset is still available, it is used; otherwise, it falls back to the default preset.
 - Thread management CRUD
   - Current thread ID is sync with URL so refreshing should lead to the same thread
 - System message management CRUD for automatically inserting system message to agents upon API request, but these automatically inserted messages shouldn't be persisted in the chat history.
@@ -57,7 +61,7 @@ Fill in anything missing.
   - Edit a message in the middle of history
   - Remove a message in the middle of history
   - Manually insert a message to the end of history as any roles (e.g. for assistant prefill)
-- Branching from a certain message in the chat thread: Clone/duplicate the thread up until that message, creating a new thread.
+- Branching from a certain message in the chat thread: Hovering over a message shows a "Branch" button. Clicking it clones/duplicates the thread up until that message, creating a new thread, updating the URL, and listing it in the sidebar.
 
 ## Technical Architecture Proposals
 
@@ -139,7 +143,7 @@ The `ask_questions` tool is defined as:
 - **Flow**:
   1. The LLM agent invokes `ask_questions` with specific questions.
   2. The LangGraph runner intercepts the tool call and pauses execution (using LangGraph interrupts).
-  3. The UI detects the pending interrupt and renders a premium form with checkboxes, freetext comment fields, and a "Refuse to answer" button with optional reasoning.
+  3. The UI detects the pending interrupt and renders a premium inline card form directly in the chat feed with checkboxes, freetext comment fields, and a "Refuse to answer" button with optional reasoning. Multiple tool calls per agent turn can be rendered as multiple inline cards. Once answered/refused, form inputs become disabled/read-only to preserve the history.
   4. Once submitted, the user's answers are formatted as a `tool` role message and execution resumes.
 
 ### 5. Debate Workflow Execution Details
@@ -148,10 +152,11 @@ The `ask_questions` tool is defined as:
   - `Initiator`: Sets the debate topic and seeds the conversation.
   - `Debater_A` & `Debater_B`: Two agent nodes with conflicting stances or system messages (e.g., Pro vs. Con).
   - `Consensus_Evaluator`: Checks if consensus is reached or if maximum loops are exceeded. If yes, routes to `Summarizer`; if no, loops back to the next debater.
-- **Safety / Cost Control**:
+- **Safety / Cost Control & Loop Controls**:
   - Max loop limit (default: 5 rounds of debate / 10 turns) to prevent infinite loops and runaway API costs.
   - The debaters themselves must call a `declare_consensus` tool when they agree, which terminates the loop.
   - The workflow configuration must support forcing a minimum of X rounds of loop before the `declare_consensus` tool is given to the debaters (X can be set to 0 to disable this forced loop).
+  - General Loop Control Panel: Any workflow with loops (including the debate workflow) should render a control card in the UI showing the current round, number of turns, and estimated cost, with buttons to Pause, Resume, or Force Consensus / Summarize early.
 
 ### 6. System Message Injection Details
 
@@ -160,7 +165,7 @@ The `ask_questions` tool is defined as:
   - Depth `0`: Prepend to the very beginning of the messages list.
   - Depth `N` (positive): Insert after the N-th message.
   - Depth `-N` (negative): Insert N messages from the end of the history.
-- When sending context to the LLM API, these messages are inserted on-the-fly but are **never** persisted to the IndexedDB `messages` store for that thread.
+- When sending context to the LLM API, these messages are inserted on-the-fly but are **never** persisted to the IndexedDB `messages` store for that thread. They are invisible in the main chat feed, and can only be viewed/previewed within a "Preview API Payload" overlay or in the workflow settings panel.
 
 ## Open questions
 
@@ -181,92 +186,3 @@ When updating this file with open questions, please only add to the current open
 so the human user knows which questions are still open, the human user will then replace the UNRESOLVED tag with their response. Then the human user will prompt the coding agent to incorparate the responses into this scratchpad file, and remove those already incorparated open questions, and the questions that are no longer relevant.
 
 ### Current open questions:
-
-#### Question: Workflow CRUD and Editing Interface
-
-How should the user create, edit, and manage custom workflows? Since we are restricted to Carbon Design System `@carbon/react` as-is, a visual node-link drag-and-drop editor (like React Flow) might be difficult to build natively without breaking design guidelines or requiring heavy custom canvas code.
-Options:
-
-1. **Form-Based Table/List Editor (Recommended)**: A structured form/wizard where the user can add/edit nodes and edges using Carbon `<Table>`, `<Select>`, and text inputs.
-2. **Text-Based JSON Editor**: A simple textarea with JSON validation where the user directly edits the workflow definition.
-3. **Interactive Builder**: The user creates and updates workflows solely by chatting with the helper agent using the built-in workflow-creation tools.
-
-##### Response
-
-[UNRESOLVED]
-
-#### Question: Workflow Graph Visualization
-
-How should we visualize the graph structure of the workflow and highlight which node is currently executing?
-Options:
-
-1. **Text/Log-based (Recommended)**: Display a clean, sequential log of node execution in the chat header or a side panel, showing which node/agent generated each message.
-2. **SVG-based Read-Only Graph View**: Generate a simple, read-only SVG diagram of the nodes and edges, highlighting the active node.
-3. **Accordion/List View**: Render the graph hierarchy as a nested Carbon `<Accordion>` representing the state machine structure.
-
-##### Response
-
-[UNRESOLVED]
-
-#### Question: `ask_questions` Tool Form Presentation
-
-When the `ask_questions` tool is triggered by an agent, how and where should the question form be presented?
-Options:
-
-1. **Inline Card in Chat Feed (Recommended)**: The form appears as a special message block in the chat timeline. Once answered, the form inputs become disabled/read-only to preserve the historical view of what the user answered.
-2. **Modal Dialog**: A blocking Carbon `<Modal>` overlay. This forces immediate focus but hides the rest of the chat context.
-3. **Bottom Input Replacement**: The main text input area at the bottom is temporarily replaced by the form until the questions are answered.
-
-##### Response
-
-[UNRESOLVED]
-
-#### Question: Thread Branching UI and Navigation
-
-How should the user trigger branching from a message, and how should branched threads be organized in the UI?
-Options:
-
-1. **Hover Action & Side Navigation (Recommended)**: Add a "Branch" button when hovering over a message. The new thread is created, the URL updates, and the sidebar lists it.
-2. **Tree-based Navigation**: Display threads in a collapsible tree structure in the sidebar showing parent-child relationships.
-3. **Branch Selector Dropdown**: Inside the chat view, have a selector showing sibling branches at each branch point.
-
-##### Response
-
-[UNRESOLVED]
-
-#### Question: Visibility of Automatically Injected System Messages
-
-Since automatically injected system messages (specified by depth) are sent to the LLM but not saved in the IndexedDB message history, how should the user know they are active?
-Options:
-
-1. **Badged / Preview (Recommended)**: Display them in the chat message stream with a distinct badge (e.g., "Injected System Message - Not Saved") so the user understands the prompt context.
-2. **Settings Preview Only**: Show them only in a "Preview API Payload" overlay or within the workflow settings panel.
-3. **Completely Invisible**: Do not show them at all in the chat feed, keeping history completely clean.
-
-##### Response
-
-[UNRESOLVED]
-
-#### Question: Settings and API Key Configuration UI
-
-Where should the API keys (stored in plain text in IndexedDB) and global settings be managed?
-Options:
-
-1. **Dedicated Settings Panel/Page (Recommended)**: A persistent tab or sidebar option for Settings where users can view/update OpenRouter and Gemini API keys and default presets.
-2. **First-run Onboarding Modal**: If no API keys are found in IndexedDB on load, block the app with a modal asking for the keys.
-
-##### Response
-
-[UNRESOLVED]
-
-#### Question: Debate Workflow Control
-
-For the infinite debate workflow (which loops until consensus or cost limit is reached), what controls should the user have?
-Options:
-
-1. **Control Panel / Pause Button (Recommended)**: Display a control card showing the current round, number of turns, and estimated cost, with buttons to Pause, Resume, or Force Consensus / Summarize early.
-2. **Fully Autonomous**: The debate runs to completion (consensus or max rounds) without any intermediate user control options.
-
-##### Response
-
-[UNRESOLVED]
