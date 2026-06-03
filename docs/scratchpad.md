@@ -1,6 +1,8 @@
 # Scratchpad
 
-This a scratchpad for writing down vague ideas for building this LLM chat app for personal use.
+This a scratchpad for writing down vague ideas for building this LLM chat app for personal use. The goal is to provide a clear specification so that the coding agent can later build the app with minimal human intervention while still aligning with the user's vision.
+
+This file will be collaboratively updated by the human user and the coding agent, by default the coding agent should ask open questions before editing this scratchpad as per the [Open questions](#open-questions) section, don't jump into editing the other parts of this scratchpad directly.
 
 ## Tech stack
 
@@ -159,3 +161,23 @@ The `ask_questions` tool is defined as:
   - Depth `N` (positive): Insert after the N-th message.
   - Depth `-N` (negative): Insert N messages from the end of the history.
 - When sending context to the LLM API, these messages are inserted on-the-fly but are **never** persisted to the IndexedDB `messages` store for that thread.
+
+## Open questions
+
+### Process of handling open questsions
+
+When updating this file with open questions, please only add to the current open questions list below in the following format:
+
+```md
+#### Question: <short title of question here>
+
+<Description of the question, considerations made, and suggested answers/options for it, etc. This part is mostly free-form>
+
+##### Response
+
+[UNRESOLVED]
+```
+
+so the human user knows which questions are still open, the human user will then replace the UNRESOLVED tag with their response. Then the human user will prompt the coding agent to incorparate the responses into this scratchpad file, and remove those already incorparated open questions, and the questions that are no longer relevant.
+
+### Current open questions:
