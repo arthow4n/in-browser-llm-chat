@@ -21,6 +21,7 @@ This file will be collaboratively updated by the human user and the coding agent
 - Vitest for tests. "Write tests. Not too many. Mostly integration."
 - No E2E test.
 - Persistance with IndexedDB via `idb` (and `fake-indexeddb` in test) instead of localStorage/sessionStorage. This is to ensure the storage has higher quota.
+- Markdown & Math Rendering: `react-markdown`, `rehype-katex`, `remark-gfm`, and `remark-math` for rendering markdown messages and LaTeX equations.
 - Support using OpenRouter and Gemini API as LLM API provider, and potentially switching to another provider in the future.
   - API keys are stored in IndexedDB in plain text.
   - Direct API calls are made from the browser. CORS is handled by OpenRouter and Gemini API.
@@ -53,6 +54,7 @@ Fill in anything missing.
   - Current thread ID is sync with URL so refreshing should lead to the same thread
 - System message management CRUD for automatically inserting system message to agents upon API request, but these automatically inserted messages shouldn't be persisted in the chat history.
   - Should suport insertion depth (similar to SillyTavern, should be able to specify to attach system message at the Nth message from the beginning/end of the chat messages thread)
+- Render agent and user messages with rich markdown formatting, GitHub Flavored Markdown (e.g. tables, checkboxes), and LaTeX math support (both inline and block equations) using the specified rendering packages.
 - Render reasoning tokens (collapsed by default)
 - Render tool call message and tool result message (collapsed by default)
   - There should be a built-in "ask_questions" tool which LLM can invoke to render a specific UI along with the tool call message, which the user can use to answer questions by mostly clicking instead of always having to type manually. The tool accepts an array of questions, and for each question an array of suggested answers for multi-select. Next to the suggested answers, there's a freetext input field which the user can use to enter freetext answer or leave an optional comment next to the answer they selected. The user should also be able to chooe to refuse answer a certain question or all the questions, when refusing, the user can leave an optional comment to explain the refusal.
