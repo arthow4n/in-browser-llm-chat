@@ -187,22 +187,19 @@ so the human user knows which questions are still open, the human user will then
 
 ### Current open questions:
 
-#### Question: Global Layout and View Navigation
+#### Question: Global Layout and View Navigation (including Mobile Behavior)
 
-How should the main user interface be structured to navigate between chat threads, custom workflows, LLM presets, and global settings?
+How should the main user interface be structured to navigate between chat threads, custom workflows, LLM presets, and global settings on both desktop and mobile viewports?
 
 _Suggested Options:_
 
-- **Option A (Recommended):** A persistent left sidebar (Carbon `SideNav`) for navigation containing:
-  - Top header with app branding and a manual Light/Dark mode theme toggle.
+- **Option A (Recommended):** A left sidebar (Carbon `SideNav`) for navigation containing:
+  - Top header with app branding, a manual Light/Dark mode theme toggle, and a hamburger icon button.
   - A scrollable list of chat threads (with "New Chat" and "Branch" indicators).
-  - Quick-link tabs or accordion sections for switching the main content area to:
-    - **Active Chat View**
-    - **Workflows CRUD** (Text-based JSON editor)
-    - **Presets CRUD** (Config inputs)
-    - **Settings** (API Keys stored in IndexedDB)
-- **Option B:** A top navigation bar (Header tabs) for switching major views (Chat, Workflows, Presets, Settings), with chat threads shown in a sidebar only when the Chat view is active.
-- **Option C:** Chat-centric UI where threads are in the left sidebar, and Workflows, Presets, and Settings are accessed via overlay modals or slide-over drawers.
+  - Quick-link tabs or accordion sections for switching the main content area (Chat, Workflows CRUD, Presets CRUD, Settings).
+  - **Mobile Adaptation:** On mobile viewports (< 672px), the sidebar collapses completely. Tapping the header's hamburger icon slides the navigation menu over the content as an overlay panel. Tapping any option or clicking the overlay background auto-collapses it.
+- **Option B:** A top navigation bar (Header tabs) for switching major views. On mobile, this bar wraps or collapses into a dropdown select menu. Chat threads are listed in a collapsible sidebar drawer.
+- **Option C:** A persistent minimal sidebar on desktop. On mobile, the interface uses a bottom navigation tab bar (similar to a native mobile app) for switching views, with chat threads accessible via a slide-right drawer.
 
 ##### Response
 
@@ -319,6 +316,27 @@ _Suggested Options:_
 - **Option A (Recommended):** Auto-detect and sync with system color scheme by default. Provide a selector in the header/settings to manually override it to "Light" (Carbon `g10` / `white`) or "Dark" (Carbon `g100` / `g90`).
 - **Option B:** Auto-detect and sync with system color scheme only, with no manual override.
 - **Option C:** Manual override only (defaults to Dark).
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Mobile Responsiveness and Touch Target Adaptations
+
+Since this application must be fully usable on mobile browsers, how should we adapt complex desktop-centric interactions (such as hover menus, JSON editors, and dense control dashboards) for touch screens and smaller viewports?
+
+_Suggested Options:_
+
+- **Hover Actions (Edit / Delete / Branch) on Mobile:**
+  - **Option A (Recommended):** On touch devices, instead of hover triggers, tapping a message reveals a slide-up bottom sheet or a modal menu listing the actions ("Branch Thread", "Edit Message", "Delete Message").
+  - **Option B:** Render a permanent, low-profile row of action icons (Edit, Delete, Branch) under/next to each message card on mobile (opacity 0.6) so they are directly tappable without hover or extra clicks.
+  - **Option C:** Use a long-press gesture to trigger a context menu over the selected message.
+- **Text-based JSON Workflow Editor on Mobile:**
+  - **Option A (Recommended):** Render the JSON editor as a full-screen-width text area with word-wrap enabled, and show a helper bar above the software keyboard containing quick-tap insertion buttons for structural characters (`{`, `}`, `[`, `]`, `"`, `:`).
+  - **Option B:** Keep the simple `TextArea` but with horizontal and vertical scrolling, relying entirely on the native mobile keyboard.
+- **Loop Control Card on Mobile:**
+  - **Option A (Recommended):** Collapse the Loop Control Panel on small screens into a compact, sticky bottom bar (or overlay) displaying just the round count and estimated cost, with a single tap triggering a full-screen control overlay.
+  - **Option B:** Keep the same layout as desktop but scaled down, which might require horizontal scrolling or very small font sizes.
 
 ##### Response
 
