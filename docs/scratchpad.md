@@ -68,7 +68,7 @@ Fill in anything missing.
   - There should be a built-in "ask_questions" tool which LLM can invoke to render a specific form directly in the chat feed to let users answer questions with check-boxes and comments.
   - There should be built-in tools for creating/updating custom workflows interactively via LLM chat. Any database-modifying tools (like custom workflow creation) require explicit user confirmation via an inline approval card.
 - Manual history edit and branching: Allow editing/deleting any message in history, inserting new messages with selectable roles (prefill), and branching threads. Editing or deleting a message (say, message M at sequence `idx`) in-place in a thread's history truncates the history and rolls back the LangGraph state using these steps:
-  1. Identify the checkpoint associated with the message immediately preceding the edited/deleted message (i.e. message M-1's `checkpointId` and `checkpointNs`). If editing the first message, there is no preceding checkpoint, so the latest checkpoint is set to null.
+  1. Identify the preceding checkpoint by traversing backward starting from the message immediately preceding the edited/deleted message (i.e. from sequence index `idx - 1`) until a message with a non-null `checkpointId` and `checkpointNs` is found. If no such message exists (e.g. we reach the beginning of the thread), the target checkpoint is set to `null` (resets the thread to the beginning).
   2. Set the thread's `latestCheckpointId` and `latestCheckpointNs` to those of the preceding checkpoint.
   3. Delete all checkpoints and checkpoint writes whose creation timestamp is greater than the preceding checkpoint's creation timestamp, or that descend from it in parent-child lineage traversal.
   4. Truncate the message history by deleting all messages in that thread where `sequence >= idx` (for deletion) or `sequence > idx` (for inline editing).
@@ -95,7 +95,7 @@ We propose using the following stores in the `in-browser-llm-chat-db` database:
 - **`threads`**: Chat sessions.
   - Key: `id` (UUID)
   - Fields: `title`, `workflowId`, `workflowSnapshot` (a copy of workflow configuration JSON, copied from the workflow definition upon thread creation for both built-in and custom workflows to ensure execution stability against schema modifications), `activePresetId`, `createdAt`, `updatedAt`, `parentThreadId` (null or parent UUID for branched threads), `parentMessageId` (null or parent message UUID at which branching occurred), `status` (`"inactive" | "executing" | "awaiting_input" | "error"`), `errorMessage` (null or string), `latestCheckpointId` (null or string), `latestCheckpointNs` (null or string), `tokenStats` (`{ promptTokens: number, completionTokens: number, totalTokens: number } | null`)
-  - _Branching Behavior_: When branching a thread, the messages from the parent thread up to and including the `parentMessageId` are copied (cloned) to the new thread in the `messages` store under the new thread's ID (with their `sequence` order preserved). The `workflowSnapshot` is also copied from the parent thread to the new thread's record in the `threads` store to preserve execution consistency. To ensure that the branched thread's history can be edited or rewound later, ALL checkpoints and `checkpoint_writes` associated with the copied messages (i.e. all checkpoints in the parent thread's history up to and including the checkpoint associated with the `parentMessageId`) must be copied/cloned to the `checkpoints` and `checkpoint_writes` stores under the `newThreadId`. Subsequent checkpoints are not copied. Child threads remain fully functional even if their parent thread is later deleted (as they hold independent clones of historical messages and checkpoints); in such cases, their `parentThreadId` is retained for provenance but resolves to null/absent in reference checks.
+  - _Branching Behavior_: When branching a thread, the messages from the parent thread up to and including the `parentMessageId` are copied (cloned) to the new thread in the `messages` store under the new thread's ID (with their `sequence` order preserved). The `workflowSnapshot` is also copied from the parent thread to the new thread's record in the `threads` store to preserve execution consistency. To ensure that the branched thread's history can be edited or rewound later, ALL checkpoints and `checkpoint_writes` associated with the copied messages must be copied/cloned to the `checkpoints` and `checkpoint_writes` stores under the `newThreadId`. Subsequent checkpoints are not copied. To identify the checkpoints and writes associated with the copied messages, the cloning process gathers the set of all unique non-null `[checkpointNs, checkpointId]` pairs stored in the `checkpointNs` and `checkpointId` fields of the copied messages (messages with sequence <= parent message's sequence). It then queries the `checkpoints` and `checkpoint_writes` stores for records matching the parent `threadId` and these gathered namespace/ID pairs, and clones them to the new `threadId` in IndexedDB. Child threads remain fully functional even if their parent thread is later deleted (as they hold independent clones of historical messages and checkpoints); in such cases, their `parentThreadId` is retained for provenance but resolves to null/absent in reference checks.
 - **`messages`**: Individual messages in threads.
   - Key: `id` (UUID)
   - Fields: `threadId` (indexed for query performance), `sequence` (integer index within thread for deterministic sorting and truncation), `role` (`"system" | "user" | "assistant" | "tool"`), `content`, `type` (`"text" | "reasoning" | "tool_call" | "tool_result"`), `toolCallId` (optional), `name` (agent/tool name), `createdAt`, `metadata` (reasoning tokens, raw response, etc.), `checkpointId` (null or string), `checkpointNs` (null or string)
@@ -281,7 +281,7 @@ The `ask_questions` tool is defined as:
 
 ### 5. `declare_consensus` Tool Schema
 
-The `declare_consensus` tool is used by debating agents to signal agreement and exit the loop.
+The `declare_consensus` tool is used by debating agents to signal agreement and exit the loop. Unlike interactive tools, the `declare_consensus` tool is non-interactive: when invoked by a debater agent, the tool node executes automatically, updates the graph state's `consensusReached` flag to `true`, and the workflow continues execution without pausing or requiring user input.
 
 - **Input Parameters (Zod)**:
   ```typescript
@@ -540,7 +540,7 @@ The checkpointer implements the following core API mapping:
 
 When a user deletes or edits a message at sequence index `idx`, or branches a thread, the thread's execution checkpoint is rolled back:
 
-1. **Find Target Checkpoint**: Find the database message preceding the target message (i.e. message at sequence `idx - 1`). Extract its stored `checkpointId` and `checkpointNs` fields. If no preceding message exists, the rollback target is `null` (resets the thread to the beginning).
+1. **Find Target Checkpoint**: Find the preceding checkpoint by traversing backward starting from the message immediately preceding the edited/deleted message (i.e. from sequence index `idx - 1`) until a message with a non-null `checkpointId` and `checkpointNs` is found. If no such message exists (e.g. we reach the beginning of the thread), the target checkpoint is set to `null` (resets the thread to the beginning).
 2. **Truncate Messages Store**: Perform a transaction on the `messages` store to delete all records for the active thread where `sequence >= idx` (for deletions) or `sequence > idx` (for inline editing).
 3. **Purge Descendant Checkpoints**: Query the `checkpoints` store using the `threadId` index. Delete all checkpoints (and matching writes in `checkpoint_writes`) where `createdAt` is strictly greater than the target checkpoint's `createdAt` timestamp.
 4. **Update Thread Reference**: Update the active thread record in the `threads` store:
@@ -852,6 +852,7 @@ The parent coordinator state machine context maintains the following variables:
   - `tokenStats`: `{ promptTokens: number; completionTokens: number; totalTokens: number } | null` - Statistics tracking input and output tokens for the current execution.
 - `errorMessage`: `string | null` - Details of the most recent execution or database error.
 - `apiKeysConfigured`: `boolean` - Indicates whether required API keys (either a global API key or at least one preset-specific API key) are configured in the database.
+- `apiKeysLocked`: `boolean` - Indicates whether API keys are encrypted and currently locked (requiring a master password to decrypt/encrypt them).
 - `graphRunnerActor`: `any` - A reference to the active spawned child actor managing LangGraph execution.
 
 ### 2. State Descriptions
@@ -1206,7 +1207,7 @@ Triggered from Thread Settings to synchronize a thread's workflow snapshot with 
   - `ANALYSIS_FAILURE` (contains error): Transitions `analyzing` to `failure` (updates `errorMessage`).
   - `CONFIRM_SYNC` (from prompting states): Transitions to `syncing`.
   - `CANCEL_SYNC`: Transitions prompting/analyzing states back to `idle`.
-  - `SYNC_SUCCESS`: Transitions `syncing` to `success` (updates the thread record in the database, and if a Hard Sync was performed, deletes all message and checkpoint records for the thread and dispatches `INITIALIZE_CHECKPOINT` to the parent coordinator to reset the active execution state to `inactive` and reload the empty thread state).
+  - `SYNC_SUCCESS`: Transitions `syncing` to `success` (updates the thread record in the database, and if a Hard Sync was performed, deletes all message, checkpoint, and checkpoint write records for the thread, resets the thread's `latestCheckpointId`, `latestCheckpointNs`, and `tokenStats` to `null` in IndexedDB, and dispatches `INITIALIZE_CHECKPOINT` to the parent coordinator to reset the active execution state to `inactive` and reload the empty thread state).
   - `SYNC_FAILURE` (contains error): Transitions `syncing` to `failure` (updates `errorMessage`).
   - `DISMISS`: Transitions `success` or `failure` back to `idle`.
 
@@ -1276,9 +1277,9 @@ Triggered in Global Settings to purge old checkpoints of a thread.
 
 _Note on Compaction Consequences_: Once compaction deletes historical checkpoints, the message options to Edit, Delete, or Branch from those historical messages (whose associated checkpoints were purged) are disabled in the UI, and a descriptive tooltip is shown explaining that historical checkpoints have been compacted.
 
-#### I. Inline Message Editor State Machine
+#### I. Inline Message Editor & Action State Machine
 
-Governs editing a single message in the chat history. Note: The Edit option is disabled if the message's corresponding checkpoint was removed (e.g., due to compaction).
+Governs the lifecycle of editing, deleting, and branching a single message in the chat history. Note: The Edit, Delete, and Branch options are disabled if the message's corresponding checkpoint was removed (e.g., due to compaction).
 
 - **Context**:
   - `messageId`: `string`
@@ -1286,6 +1287,7 @@ Governs editing a single message in the chat history. Note: The Edit option is d
   - `editContent`: `string`
   - `role`: `string`
   - `isValidContent`: `boolean`
+  - `branchNameInput`: `string`
   - `errorMessage`: `string | null`
 - **States**:
   - `viewing`: Standard rendering mode.
@@ -1307,9 +1309,21 @@ Governs editing a single message in the chat history. Note: The Edit option is d
     - _Text Area Field_: Disabled.
     - _Save Button_: Disabled, shows loading spinner.
     - _Cancel Button_: Disabled.
-  - `error`: Saving failed, showing retry/error inline.
-    - _Text Area Field_: Enabled.
-    - _Save Button_: Enabled.
+  - `promptingDelete`: Confirmation dialog for deleting the message.
+    - _Confirmation Modal_: Visible.
+    - _Confirm Delete Button_: Enabled, colored red (Carbon danger button).
+    - _Cancel Button_: Enabled.
+  - `deleting`: Truncating history/checkpoints in the database to remove this message and subsequent items.
+    - _Controls/Buttons_: Disabled, shows loading spinner.
+  - `promptingBranch`: Modal dialog prompting the user to name the new branched thread.
+    - _Branch Name Input Field_: Enabled, prefilled with "Branch of [Parent Thread Title]".
+    - _Confirm Branch Button_: Enabled.
+    - _Cancel Button_: Enabled.
+  - `branching`: Cloning the historical messages and checkpoints up to this message in the database into a new thread.
+    - _Controls/Buttons_: Disabled, shows loading spinner.
+  - `error`: Action failed (saving, deleting, or branching), showing retry/error inline.
+    - _Text Area Field / Modal controls_: Enabled.
+    - _Save/Confirm Buttons_: Enabled.
     - _Cancel Button_: Enabled.
     - _Error text_: Displayed inline.
 - **Transitions / Events**:
@@ -1324,6 +1338,17 @@ Governs editing a single message in the chat history. Note: The Edit option is d
     - If `editContent !== originalContent`, transitions to `promptingDiscard`.
   - `CONFIRM_DISCARD`: Transitions `promptingDiscard` to `viewing` (discards edits).
   - `ABORT_DISCARD`: Transitions `promptingDiscard` back to `editing.idle`.
+  - `TRIGGER_DELETE`: Transitions `viewing` to `promptingDelete`.
+  - `CONFIRM_DELETE`: Transitions `promptingDelete` to `deleting`.
+  - `CANCEL_DELETE`: Transitions `promptingDelete` to `viewing`.
+  - `DELETE_SUCCESS`: Transitions `deleting` to `viewing` (clears message and dispatches `INITIALIZE_CHECKPOINT` to the parent coordinator to reload the thread's checkpoint state).
+  - `DELETE_FAILURE` (contains error): Transitions `deleting` to `error` (updates `errorMessage`).
+  - `TRIGGER_BRANCH`: Transitions `viewing` to `promptingBranch`.
+  - `UPDATE_BRANCH_NAME` (contains name): Updates `branchNameInput` in context.
+  - `CONFIRM_BRANCH`: Transitions `promptingBranch` to `branching` (triggers IndexedDB cloning transaction).
+  - `CANCEL_BRANCH`: Transitions `promptingBranch` to `viewing`.
+  - `BRANCH_SUCCESS` (contains newThreadId): Transitions `branching` to `viewing` (triggers parent navigation to the newly branched thread).
+  - `BRANCH_FAILURE` (contains error): Transitions `branching` to `error` (updates `errorMessage`).
 
 #### J. Main Application Layout State Machine
 
@@ -1416,6 +1441,8 @@ Governs the lifecycle of modifying or creating an LLM Preset Configuration.
     - _Modal Overlay_: Visible.
     - _Clone and Save Button_: Enabled, triggers `CONFIRM_CLONE`.
     - _Cancel Button_: Enabled.
+  - `checkingKeysUnlock`: Active when the database keys are encrypted and locked, and the user is attempting to save a preset containing a new/edited API key. This triggers the Master Password Unlock Modal.
+    - _Form controls / Modal buttons_: Disabled.
   - `saving`: Running IndexedDB transaction to insert or update the preset.
     - _Form controls / Modal buttons_: Disabled.
     - _Save Button / Clone Button_: Disabled, shows loading spinner.
@@ -1437,8 +1464,11 @@ Governs the lifecycle of modifying or creating an LLM Preset Configuration.
   - `EDIT_FIELD` (contains field and value): Updates `presetData` field, sets `isDirty` to `true`, and transitions to `idle.dirty`.
   - `SAVE`: Transitions `idle.dirty` or `error` to `validating`.
   - `VALIDATION_SUCCESS`:
-    - If `isBuiltIn` is true, transitions to `promptingClone`.
-    - If `isBuiltIn` is false, transitions to `saving`.
+    - If the preset's API key field has been modified AND master-password encryption is active AND the keys are locked: transitions to `checkingKeysUnlock` and dispatches `TRIGGER_UNLOCK` to the Master Password Unlock Modal.
+    - Otherwise, if `isBuiltIn` is true, transitions to `promptingClone`.
+    - Otherwise, transitions to `saving`.
+  - `UNLOCK_SUCCESS` (from `checkingKeysUnlock`): Transitions to `saving`.
+  - `CANCEL_UNLOCK` (from `checkingKeysUnlock`): Transitions back to `idle.dirty`.
   - `CONFIRM_CLONE`: Generates a new UUID for `presetId`, sets `isBuiltIn` to false, prefixes name with `"Copy of "`, and transitions to `saving`.
   - `CANCEL_CLONE`: Transitions back to `idle.dirty`.
   - `VALIDATION_FAILURE` (contains errors): Transitions back to `idle.dirty` (populates `validationErrors` to display inline under invalid fields).
@@ -1803,6 +1833,141 @@ Governs the pagination, sorting, searching, loading, and deletion states in the 
   - `DELETE_SUCCESS`: Transitions `deleting` to `loading`.
   - `DELETE_FAILURE` (contains `error` details): Transitions `deleting` to `idle` (updates `errorMessage` and clears `deletingWorkflowId`).
   - `DISMISS_ERROR`: Transitions `error` to `idle` (clears `errorMessage`).
+
+#### U. Global Settings Form State Machine
+
+Governs the lifecycle of editing, validating, and saving fields in the Global Settings Panel.
+
+- **Context**:
+  - `openRouterApiKey`: `string`
+  - `geminiApiKey`: `string`
+  - `showOpenRouterKey`: `boolean`
+  - `showGeminiKey`: `boolean`
+  - `corsProxy`: `string`
+  - `theme`: `"light" | "dark" | "system"`
+  - `injectedSystemMessages`: `Array<{ content: string; depth: number }>`
+  - `originalSettings`: `any` (loaded settings)
+  - `isDirty`: `boolean`
+  - `validationErrors`: `Record<string, string>`
+  - `errorMessage`: `string | null`
+- **States**:
+  - `loading`: Querying IndexedDB `settings` store on entry.
+    - _UI Controls_: Disabled. Shows skeleton loader.
+  - `idle`: Form is interactive.
+    - `idle.clean`: Form values match `originalSettings`.
+      - _Form controls (keys, proxy, theme, injected messages)_: Enabled.
+      - _Save Settings Button_: Disabled.
+      - _Reset Fields Button_: Disabled.
+    - `idle.dirty`: Form values differ from `originalSettings`.
+      - _Form controls (keys, proxy, theme, injected messages)_: Enabled.
+      - _Save Settings Button_: Enabled.
+      - _Reset Fields Button_: Enabled.
+  - `validating`: Parsing and validating CORS Proxy URL format, and checking that depths are valid integers.
+    - _All controls_: Disabled.
+  - `checkingKeysUnlock`: Active when the database keys are encrypted and locked, and the user is attempting to save settings that modify API keys. This triggers the Master Password Unlock Modal.
+    - _All controls_: Disabled.
+  - `saving`: Running a database transaction to update `settings` store (and encrypting API keys if master-password encryption is active and unlocked).
+    - _All controls_: Disabled, shows loading spinner on Save button.
+  - `error`: Failed to load or save settings.
+    - _All controls_: Enabled.
+    - _Error Banner_: Visible.
+- **Transitions / Events**:
+  - `LOAD`: Enters `loading`.
+  - `LOAD_SUCCESS` (contains settings): Transitions `loading` to `idle.clean` (populates context).
+  - `LOAD_FAILURE` (contains error): Transitions `loading` to `error` (updates `errorMessage`).
+  - `EDIT_FIELD` (contains field and value): Updates context, sets `isDirty` to true, transitions to `idle.dirty`.
+  - `TOGGLE_KEY_VISIBILITY` (contains provider): Toggles `showOpenRouterKey` or `showGeminiKey` visibility.
+  - `ADD_INJECTED_MESSAGE`: Appends a default system message placeholder to `injectedSystemMessages` list, sets `isDirty` to true, transitions to `idle.dirty`.
+  - `UPDATE_INJECTED_MESSAGE` (contains index, field, value): Modifies the injected message at the given index, sets `isDirty` to true, transitions to `idle.dirty`.
+  - `REMOVE_INJECTED_MESSAGE` (contains index): Deletes the injected message at the given index, sets `isDirty` to true, transitions to `idle.dirty`.
+  - `SAVE`: Transitions `idle.dirty` or `error` to `validating`.
+  - `VALIDATION_SUCCESS`:
+    - If API keys were modified AND master-password encryption is active AND the keys are locked: transitions to `checkingKeysUnlock` and dispatches `TRIGGER_UNLOCK` to the Master Password Unlock Modal.
+    - Otherwise, transitions to `saving`.
+  - `UNLOCK_SUCCESS` (from `checkingKeysUnlock`): Transitions to `saving`.
+  - `CANCEL_UNLOCK` (from `checkingKeysUnlock`): Transitions back to `idle.dirty`.
+  - `VALIDATION_FAILURE` (contains errors): Transitions to `idle.dirty` (populates `validationErrors` to display inline).
+  - `SAVE_SUCCESS`: Transitions to `idle.clean` (updates `originalSettings`, updates layout theme if changed, dispatches setting updates).
+  - `SAVE_FAILURE` (contains error): Transitions to `error` (updates `errorMessage`).
+  - `RESET_FIELDS`: Reverts form inputs to `originalSettings`, sets `isDirty` to false, transitions to `idle.clean`.
+  - `DISMISS_ERROR`: Transitions `error` to `idle` (clears `errorMessage`).
+
+#### V. New Chat Form State Machine
+
+Governs the form in the "New Chat" selection panel when no thread is active.
+
+- **Context**:
+  - `selectedWorkflowId`: `string`
+  - `selectedPresetId`: `string`
+  - `initialMessage`: `string`
+  - `workflows`: `Array<Workflow>`
+  - `presets`: `Array<Preset>`
+  - `errorMessage`: `string | null`
+- **States**:
+  - `loading`: Fetching workflows and presets from IndexedDB to populate selection dropdowns.
+    - _UI Controls_: Disabled. Shows skeleton loader.
+  - `idle`: Form is interactive.
+    - _Workflow Dropdown_: Enabled.
+    - _Preset Dropdown_: Enabled.
+    - _Initial Message Textarea_: Enabled.
+    - _Submit Button_: Enabled only if `initialMessage` is non-empty.
+  - `submitting`: Creating a new thread in the database, cloning the workflow snapshot, writing the initial message, and initializing checkpointer state.
+    - _All controls_: Disabled, shows loading spinner on Submit button.
+  - `error`: Failed to load options or create thread.
+    - _All controls_: Enabled.
+    - _Error Banner_: Visible.
+- **Transitions / Events**:
+  - `LOAD`: Enters `loading`.
+  - `LOAD_SUCCESS` (contains workflows, presets): Transitions `loading` to `idle` (sets lists, defaults selections).
+  - `LOAD_FAILURE` (contains error): Transitions `loading` to `error` (updates `errorMessage`).
+  - `CHANGE_WORKFLOW` (contains workflowId): Updates `selectedWorkflowId` in context.
+  - `CHANGE_PRESET` (contains presetId): Updates `selectedPresetId` in context.
+  - `UPDATE_MESSAGE` (contains message): Updates `initialMessage` in context.
+  - `SUBMIT`: Transitions `idle` or `error` to `submitting`.
+  - `SUBMIT_SUCCESS` (contains newThreadId): Transitions `submitting` to `idle` (resets message input, triggers route navigation to the new thread).
+  - `SUBMIT_FAILURE` (contains error): Transitions `submitting` to `error` (updates `errorMessage`).
+  - `DISMISS_ERROR`: Transitions `error` to `idle` (clears `errorMessage`).
+
+#### W. Thread Settings Modal State Machine
+
+Governs renaming a thread, switching thread-specific presets, syncing workflows, compacting checkpoints, or deleting the thread from within the Thread Settings Modal.
+
+- **Context**:
+  - `threadId`: `string`
+  - `threadTitle`: `string`
+  - `selectedPresetId`: `string`
+  - `isEditingTitle`: `boolean`
+  - `presets`: `Array<Preset>`
+  - `errorMessage`: `string | null`
+- **States**:
+  - `closed`: Modal is hidden.
+  - `opened`: Modal is visible.
+    - `opened.idle`: Waiting for user action.
+      - _Rename input field_: Read-only by default (shows edit icon), editable when `isEditingTitle` is true.
+      - _Preset selection dropdown_: Enabled.
+      - _Sync Workflow button_: Enabled.
+      - _Compact Checkpoints button_: Enabled.
+      - _Delete Thread button_: Enabled.
+      - _Save/Close buttons_: Enabled.
+    - `opened.saving`: Running database transaction to update title or preset.
+      - _All controls_: Disabled.
+    - `opened.error`: Database operation failed.
+      - _All controls_: Enabled.
+      - _Error Banner_: Visible.
+- **Transitions / Events**:
+  - `OPEN` (contains threadId, threadTitle, selectedPresetId, presets): Transitions `closed` to `opened.idle` (populates context).
+  - `CLOSE`: Transitions any `opened` state to `closed` (clears context).
+  - `EDIT_TITLE`: Sets `isEditingTitle` to `true`.
+  - `CANCEL_EDIT_TITLE`: Sets `isEditingTitle` to `false` (reverts title input to the saved title).
+  - `UPDATE_TITLE` (contains title): Updates `threadTitle` in context.
+  - `CHANGE_PRESET` (contains presetId): Updates `selectedPresetId` in context.
+  - `SAVE`: Transitions `opened.idle` or `opened.error` to `opened.saving` (saves updated title and preset to the thread record in IndexedDB).
+  - `SAVE_SUCCESS`: Transitions to `opened.idle` (dispatches updates to parent machine, sets `isEditingTitle` to false).
+  - `SAVE_FAILURE` (contains error): Transitions to `opened.error` (updates `errorMessage`).
+  - `TRIGGER_SYNC`: Dispatches `START_SYNC` to the Workflow Syncing State Machine.
+  - `TRIGGER_COMPACTION`: Dispatches `START_COMPACT` to the Checkpoint Compaction Dialog State Machine.
+  - `TRIGGER_DELETE`: Dispatches `TRIGGER_DELETE` to the Left Sidebar State Machine and transitions modal to `closed`.
+  - `DISMISS_ERROR`: Transitions `opened.error` to `opened.idle` (clears `errorMessage`).
 
 ## Open questions
 
