@@ -1296,7 +1296,7 @@ Governs the lifecycle of editing, deleting, and branching a single message in th
   - `viewing`: Standard rendering mode.
     - `viewing.idle`: Standard message bubble display, overflow options menu is closed.
       - _Message Content_: Rendered as markdown.
-      - _Overflow Menu Trigger Button_: Enabled. Focused.
+      - _Overflow Menu Trigger Button_: Enabled. Focused. On mobile viewports, this button is persistently visible to ensure accessibility without hover.
     - `viewing.menuOpen`: Message overflow options menu is open, displaying action choices.
       - _Edit / Delete / Branch options in OverflowMenu_: Enabled subject to the compaction enabling rules (parent coordinator `ExecutionState` is `inactive` or `error`, and either the checkpoint references are non-null OR it is an initial/pre-checkpoint sequence message). Focused.
   - `editing`: Textarea input is active.
@@ -2187,7 +2187,7 @@ Governs the display state of individual message bubbles in a multi-agent chat fe
       - If `message.role === "user"`, the bubble is aligned to the right, styled distinctly from assistants.
     - _Tool Call Nesting_:
       - If the agent makes a tool call, the tool call accordion (governed by the Message Accordion State Machine) is nested *inside* the bottom of the agent's message bubble block, rather than floating independently, visually linking the tool execution to the agent that triggered it.
-    - _Timestamps_: Hovering over the message bubble reveals an exact timestamp tooltip for the message creation time.
+    - _Timestamps_: On desktop viewports, hovering over the message bubble reveals an exact timestamp tooltip for the message creation time. On mobile viewports, the timestamp is either displayed persistently beneath the message or revealed when the user taps on the message bubble.
 - **Transitions / Events**: None (purely declarative based on message props).
 - **Database Reads/Writes**: None.
 - **API Request/Response Sequence**: None.
