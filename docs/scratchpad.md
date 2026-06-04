@@ -107,15 +107,23 @@ We propose using the following stores in the `in-browser-llm-chat-db` database:
        - All other messages (actual user messages, other agents' messages, and other agents' tool calls/results) are mapped to the `user` role.
     3. **On-the-fly Context Pruning**: If the agent node specifies `maxHistoryMessages`, the compiler truncates the base history on-the-fly before preparing the API payload. It traverses the compiled messages backward from the latest message, keeping up to `maxHistoryMessages` messages.
     4. **Pruning Boundary Adjustment**: If the cutoff point falls within a tool call/response transaction (i.e., a tool result is kept but its preceding tool call is excluded, or vice versa), the compiler adjusts the cutoff boundary backward to include the complete tool transaction. The compiler must never split a tool call and its corresponding tool result. Let the resulting list of pruned messages be `H`.
-    5. **Compile and Inject System Messages**:
-       - Retrieve all active global system messages and workflow-specific system messages configured to be injected automatically.
-       - For each system message, calculate its insertion index relative to `H`:
-         - If depth `D` is positive or zero (`D >= 0`), `targetIndex = D`.
-         - If depth `D` is negative (`D < 0`), `targetIndex = H.length + D` (e.g., depth `-1` means inserting at index `H.length - 1`, right before the last message).
-         - Clamp the index: `targetIndex = Math.max(0, Math.min(H.length, targetIndex))`.
-       - **Deduplication**: If any two system messages have the exact same `content`, keep only the one with the highest precedence (workflow-specific over global; and if same type, the one with the smaller depth / earlier index). Discard the other.
-       - **Merging at Same Index**: If multiple distinct system messages resolve to the same `targetIndex`, merge their content using double newlines (`\n\n`), with workflow-specific content preceding global content, and other messages sorted by their configuration order.
-       - **Insertion**: Insert the unique/merged system messages into `H` at their calculated indices.
+    5. **Compile and Inject System Messages (Conflict Resolution & Merging Rules)**:
+       System messages can be injected automatically at runtime from two sources: global settings and workflow-specific node definitions. Conflicts (multiple messages targeting the same insertion index) and duplication are resolved using the following deterministic steps:
+       - **Calculate Absolute Indices**: First, calculate the absolute `targetIndex` for each system message based on the original pruned history list `H` (where `H` has length `L`, before any insertions are made).
+         - For positive depth `D >= 0`, `targetIndex = D`.
+         - For negative depth `D < 0`, `targetIndex = L + D` (e.g., `D = -1` targets index `L - 1`, which is right before the last message).
+         - Clamp each index: `targetIndex = Math.max(0, Math.min(L, targetIndex))`.
+       - **Group by Target Index**: Map each calculated `targetIndex` to a list of system messages scheduled to be inserted at that index.
+       - **Deduplication (Within and Across Groups)**: If two system messages have identical content, keep only one:
+         - A workflow-specific system message takes precedence over a global system message.
+         - If both are global or both are workflow-specific, keep the one configured/defined earlier (or with the smaller depth / index).
+         - Discard the duplicate message entirely from all groups.
+       - **Resolve Conflicts and Merge at Same Target Index**: If multiple distinct system messages target the same `targetIndex`:
+         - Order them by source precedence: workflow-specific messages are ordered first, followed by global system messages.
+         - Within each source category (workflow-specific or global), preserve their relative configuration order.
+         - Merge all of their textual contents into a single compound system message using double newlines (`\n\n`) as the separator.
+         - For example, if workflow message `W1` and global message `G1` both target index `2`, they are merged into a single system message at index `2` with content: `W1.content + "\n\n" + G1.content`.
+       - **Perform Insertion**: To ensure that the calculated target indices remain valid and do not shift during the array insertion process, the compiler inserts the resolved unique/merged system messages into `H` in descending order of their `targetIndex` (from the end of the history array back to the beginning).
     6. **Assign Prefix and Format for Strict APIs**:
        - For messages in `H` mapped to the `user` role that did not originate from the human user (such as other agents' messages or tool results), prefix the content with the sender's name/identifier (e.g., `[Agent Name]: ...` or `[Tool Name Result]: ...`).
        - For APIs that do not support arbitrary `system` role messages in the conversation contents (like Gemini):
@@ -1586,6 +1594,122 @@ Governs the fallback dialog rendered inline or as a modal overlay when a CORS pr
   - `TRY_DIRECT_REQUEST`: Transitions `prompting` to `submitting` (dispatches `TRY_DIRECT_REQUEST` to the parent coordinator).
   - `CANCEL_EXECUTION`: Transitions `prompting` to `submitting` (dispatches `CANCEL_EXECUTION` to the parent coordinator).
   - `ACTION_DISPATCHED`: Transitions `submitting` to `completed`.
+
+#### R. Code Block Control State Machine
+
+Governs copy/download actions and clipboard states for code blocks rendered in assistant messages.
+
+- **Context**:
+  - `code`: `string` (the raw code content)
+  - `language`: `string` (inferred programming language, e.g., `"typescript"`)
+  - `fileName`: `string` (inferred filename based on code block comments or language default, e.g., `"script.ts"`)
+  - `errorMessage`: `string | null`
+- **States**:
+  - `idle`: Ready for user action.
+    - _Copy Button_: Enabled. Label: `"Copy Code"`. Icon: Copy icon.
+    - _Download Button_: Enabled. Label: `"Download"`. Icon: Download icon.
+  - `copying`: Asynchronously writing code to the system clipboard via `navigator.clipboard.writeText`.
+    - _Copy Button_: Disabled. Label: `"Copying..."`. Shows loading spinner.
+    - _Download Button_: Disabled.
+  - `copied`: Code successfully copied to clipboard.
+    - _Copy Button_: Disabled. Label: `"Copied!"`. Shows checkmark icon.
+    - _Download Button_: Enabled.
+    - An auto-reset 2-second timer is started.
+  - `downloading`: Asynchronously preparing the file blob, creating a temporary object URL, and initiating browser-driven file download.
+    - _Copy Button_: Disabled.
+    - _Download Button_: Disabled. Label: `"Downloading..."`. Shows loading spinner.
+  - `downloaded`: File download successfully initiated.
+    - _Copy Button_: Enabled.
+    - _Download Button_: Disabled. Label: `"Downloaded!"`. Shows checkmark icon.
+    - An auto-reset 2-second timer is started.
+  - `error`: Clipboard write or download action failed.
+    - _Copy/Download Buttons_: Enabled.
+    - _Error Indicator/Tooltip_: Visible, displays `errorMessage`.
+    - An auto-reset 4-second timer is started.
+- **Transitions / Events**:
+  - `COPY`: Transitions `idle`, `copied`, `downloaded`, or `error` to `copying`.
+  - `COPY_SUCCESS`: Transitions `copying` to `copied`.
+  - `COPY_FAILURE` (contains `error` details): Transitions `copying` to `error` (updates `errorMessage`).
+  - `DOWNLOAD`: Transitions `idle`, `copied`, `downloaded`, or `error` to `downloading`.
+  - `DOWNLOAD_SUCCESS`: Transitions `downloading` to `downloaded`.
+  - `DOWNLOAD_FAILURE` (contains `error` details): Transitions `downloading` to `error` (updates `errorMessage`).
+  - `TIMER_EXPIRED`: Transitions `copied`, `downloaded`, or `error` back to `idle` (clears `errorMessage`).
+
+#### S. Preset List View State Machine
+
+Governs the pagination, sorting, searching, loading, and deletion states in the Preset list view.
+
+- **Context**:
+  - `presets`: `Array<Preset>`
+  - `searchQuery`: `string`
+  - `sortBy`: `"name" | "provider" | "model" | "createdAt"`
+  - `sortOrder`: `"asc" | "desc"`
+  - `page`: `number` (1-indexed)
+  - `pageSize`: `number` (default 10)
+  - `totalCount`: `number`
+  - `deletingPresetId`: `string | null`
+  - `errorMessage`: `string | null`
+- **States**:
+  - `loading`: Querying the `presets` store in IndexedDB.
+    - _UI Controls (search input, sort headers, page buttons, delete icons, create button)_: Disabled. Shows loading skeleton.
+  - `idle`: Presets loaded and rendered.
+    - _UI Controls_: Enabled.
+  - `deleting`: Checking deletion safety rules and deleting in IndexedDB.
+    - _UI Controls_: Disabled. Deleting row displays a loading spinner.
+  - `error`: Loading or deleting failed.
+    - _Error Banner_: Visible with Retry and Dismiss buttons.
+- **Transitions / Events**:
+  - `FETCH`: Transitions `idle` or `error` to `loading`.
+  - `FETCH_SUCCESS` (contains `presets` and `totalCount`): Transitions `loading` to `idle` (updates `presets`, `totalCount`, and clears `errorMessage`).
+  - `FETCH_FAILURE` (contains `error` details): Transitions `loading` to `error` (updates `errorMessage`).
+  - `CHANGE_PAGE` (contains `page` number): Updates `page` in context, and transitions to `loading`.
+  - `CHANGE_SORT` (contains `sortBy` field, toggles or specifies `sortOrder`): Updates `sortBy` and `sortOrder`, resets `page` to `1`, and transitions to `loading`.
+  - `UPDATE_SEARCH` (contains search query): Updates `searchQuery`, resets `page` to `1`, and transitions to `loading`.
+  - `TRIGGER_DELETE` (contains `presetId`): Transitions `idle` to `deleting` (sets `deletingPresetId`).
+    - The action handler checks safety rules:
+      - If the preset is the global default preset (matching `default_preset_id` in settings) or is currently set as the active preset for any threads or referenced in any workflow node definitions, the transaction is rejected, `deleting` transitions back to `idle`, `errorMessage` is set, and the UI displays an inline notification listing referencing threads/workflows.
+      - Otherwise, deletes the record from IndexedDB.
+  - `DELETE_SUCCESS`: Transitions `deleting` to `loading`.
+  - `DELETE_FAILURE` (contains `error` details): Transitions `deleting` to `idle` (updates `errorMessage` and clears `deletingPresetId`).
+  - `DISMISS_ERROR`: Transitions `error` to `idle` (clears `errorMessage`).
+
+#### T. Custom Workflow List View State Machine
+
+Governs the pagination, sorting, searching, loading, and deletion states in the custom Workflow list view.
+
+- **Context**:
+  - `workflows`: `Array<Workflow>`
+  - `searchQuery`: `string`
+  - `sortBy`: `"name" | "createdAt"`
+  - `sortOrder`: `"asc" | "desc"`
+  - `page`: `number` (1-indexed)
+  - `pageSize`: `number` (default 10)
+  - `totalCount`: `number`
+  - `deletingWorkflowId`: `string | null`
+  - `errorMessage`: `string | null`
+- **States**:
+  - `loading`: Querying the `workflows` store in IndexedDB.
+    - _UI Controls (search, sort, page, delete, import, create)_: Disabled. Shows loading skeleton.
+  - `idle`: Workflows loaded and rendered.
+    - _UI Controls_: Enabled.
+  - `deleting`: Checking deletion safety rules and deleting in IndexedDB.
+    - _UI Controls_: Disabled. Deleting workflow row displays a loading spinner.
+  - `error`: Loading or deleting failed.
+    - _Error Banner_: Visible with Retry and Dismiss buttons.
+- **Transitions / Events**:
+  - `FETCH`: Transitions `idle` or `error` to `loading`.
+  - `FETCH_SUCCESS` (contains `workflows` and `totalCount`): Transitions `loading` to `idle` (updates `workflows`, `totalCount`, and clears `errorMessage`).
+  - `FETCH_FAILURE` (contains `error` details): Transitions `loading` to `error` (updates `errorMessage`).
+  - `CHANGE_PAGE` (contains `page` number): Updates `page` in context, and transitions to `loading`.
+  - `CHANGE_SORT` (contains `sortBy` and `sortOrder`): Updates `sortBy` and `sortOrder`, resets `page` to `1`, and transitions to `loading`.
+  - `UPDATE_SEARCH` (contains search query): Updates `searchQuery`, resets `page` to `1`, and transitions to `loading`.
+  - `TRIGGER_DELETE` (contains `workflowId`): Transitions `idle` to `deleting` (sets `deletingWorkflowId`).
+    - The action handler checks safety rules:
+      - If the workflow is built-in (`isBuiltIn === true`) or is currently referenced by any active/inactive threads in the database, the deletion is blocked, `deleting` transitions back to `idle`, `errorMessage` is set, and the UI displays an inline notification listing active threads referencing it.
+      - Otherwise, deletes the record from IndexedDB.
+  - `DELETE_SUCCESS`: Transitions `deleting` to `loading`.
+  - `DELETE_FAILURE` (contains `error` details): Transitions `deleting` to `idle` (updates `errorMessage` and clears `deletingWorkflowId`).
+  - `DISMISS_ERROR`: Transitions `error` to `idle` (clears `errorMessage`).
 
 ## Open questions
 
