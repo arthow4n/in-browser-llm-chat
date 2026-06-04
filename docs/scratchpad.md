@@ -24,8 +24,9 @@ This file will be collaboratively updated by the human user and the coding agent
 - Markdown & Math Rendering: `react-markdown`, `rehype-katex`, `remark-gfm`, and `remark-math` for rendering markdown messages and LaTeX equations.
 - Support using OpenRouter and Gemini API as LLM API provider, and potentially switching to another provider in the future.
   - Prefer using the official `@openrouter/sdk` and `@google/genai` client libraries within custom LangGraph nodes to execute direct browser API calls rather than a custom fetch wrapper, while retaining full control over streaming and reasoning configurations.
-  - API keys are stored in IndexedDB in plain text by default, with an option to encrypt them using a master password (utilizing the Web Crypto API, deriving an AES-GCM key from the master password via PBKDF2 with a random salt stored in settings). To verify the master password on input, the app encrypts a static verification constant (e.g., `"verification_token"`) using the derived key and stores it in settings under `"encryption_settings"`. When the user enters a password, the app derives the key, attempts to decrypt this constant, and if it succeeds, the password is confirmed correct. Since threads, messages, and custom workflows are not encrypted in the database, the master password only protects the API keys. The derived encryption key is stored in-memory as a non-serializable variable in a secure singleton service (e.g., a KeyStore or EncryptionService) and is never written to IndexedDB, localStorage, or XState context. Reloading the page clears the in-memory key, requiring the user to re-enter the master password upon the next execution attempt or settings access. The user can view settings and read/navigate chat histories while the keys are locked. The UI displays an unlock modal prompting for the master password only when the user attempts to run a workflow (e.g., sending a message or resuming execution) or view/edit the locked API keys. If the user enters an incorrect master password in the unlock modal, the decryption check fails. The UI displays an error message inline within the modal, keeping the state machine in the `awaitingUnlock` state so the user can retry. The state machine only transitions when `UNLOCK_SUCCESS` or `CANCEL_UNLOCK` is dispatched. If a CORS proxy is configured, the runner overrides the base URL of the client library (e.g. passing `baseUrl` to OpenRouter or `@google/genai` clients) to route requests through the proxy.
-  - Direct API calls are made from the browser. CORS is handled by OpenRouter and Gemini API.
+  - **Security & Connectivity Guidelines**:
+    - **API Key Storage**: API keys are stored in IndexedDB in plain text without encryption. No master password, encryption, or key locking mechanism is supported or required.
+    - **CORS Support**: All direct API calls are made from the browser. CORS does not need to be handled because both OpenRouter and Gemini API support CORS natively. No CORS proxy configuration, validation, or settings are supported.
 - `AGENTS.md` should be kept up-to-date to run the tool chains e.g. formatting, typecheck, lint with autofix, test, build.
 
 Fill in anything missing.
@@ -83,12 +84,13 @@ Fill in anything missing.
 
 We propose using the following stores in the `in-browser-llm-chat-db` database:
 
-- **`settings`**: For global configs (API keys stored in plain text or optionally encrypted, active theme, default presets, global CORS proxy URL).
-  - Key: `key` (string, e.g., `"api_keys"`, `"ui_config"`, `"encryption_settings"`, `"default_preset_id"`)
-  - Value: `{ value: any }` or `{ encrypted: true, ciphertext: string, iv: string, salt: string }` when encryption is enabled (e.g. for `"api_keys"`).
+- **`settings`**: For global configs (API keys stored in plain text, active theme, default presets).
+  - Key: `key` (string, e.g., `"api_keys"`, `"ui_config"`, `"default_preset_id"`)
+  - Value: `{ value: any }`
 - **`presets`**: LLM configurations.
   - Key: `id` (UUID)
-  - Fields: `name`, `provider` (`"openrouter" | "gemini"`), `model` (string), `apiKey` (stored as a plain string, or if master-password encryption is enabled/unlocked, stored as an encrypted object `{ encrypted: true, ciphertext: string, iv: string, salt: string }`), `temperature`, `maxTokens`, `reasoningLevel`, `budgetPolicy` (`{ maxStepsWithoutUser: number, maxTokensPerRun: number | null }`), `corsProxy` (null or string)
+  - Fields: `name`, `provider` (`"openrouter" | "gemini"`), `model` (string), `apiKey` (stored as a plain string), `temperature`, `maxTokens`, `reasoningLevel`, `budgetPolicy` (`{ maxStepsWithoutUser: number, maxTokensPerRun: number | null }`)
+  - _Model Selection Behavior_: Popular models are hardcoded as static lists in a preset schema definition to ensure they are instantly available offline or when API keys are not yet configured, with a manual text field option to input custom model identifiers in the UI.
 - **`workflows`**: Serialized LangGraph definitions.
   - Key: `id` (string/UUID)
   - Fields: `name`, `description`, `isBuiltIn` (boolean), `nodes` (Array of node definitions), `edges` (Array of transition definitions), `injectedSystemMessages` (optional Array of `{ content: string, depth: number }`)
@@ -184,6 +186,7 @@ interface GraphState {
   messages: any[]; // message history reducer to append/update messages
   lastAgentId: string | null; // records the ID of the agent node executed last (resolves routing back after tool runs)
   consensusReached: boolean; // boolean flag populated by consensus_check nodes for conditional routing
+  forceSummarize: boolean; // boolean flag set by FORCE_SUMMARIZE to bypass consensus check and route directly to summary node
   turnCount: number; // tracks total steps/messages in execution
   currentRound: number; // tracks active loop iterations
 }
@@ -218,6 +221,8 @@ Before a custom workflow is compiled or saved, the editor performs structural va
 6. **No Ambiguous Routing**: To prevent non-deterministic routing, no node may have more than one unconditional outbound edge. Additionally, except for `tool` nodes with `on_tool_result` edges (which route dynamically based on `lastAgentId`), no node may have multiple outbound edges with the same `condition`.
 7. **Consensus Check Routing**: For `consensus_check` nodes, there must be edges defined for both `on_consensus` and `on_no_consensus` conditions, OR one conditional edge and one unconditional edge acting as the default fallback.
 8. **Routing Completeness**: To prevent runtime routing failures, any node with conditional outgoing edges must have outgoing paths covering all possible outcomes (e.g. both `on_consensus` and `on_no_consensus` for `consensus_check` nodes; both `on_tool_call` and an unconditional default fallback edge for `agent` nodes), or a single default fallback unconditional edge.
+9. **Agent-Tool Wiring**: For any `agent` node that has tools configured, there must be an outbound edge from that agent node with `condition: "on_tool_call"` to a `tool` node, and a corresponding inbound edge from that `tool` node back to the agent node with `condition: "on_tool_result"`.
+10. **Tool Routing Back-Edges**: For any `tool` node, there must be corresponding `on_tool_result` edges from the tool node back to each agent node that can call it, matching their identifiers.
 
 #### Dynamic Prompt Placeholders
 
@@ -396,6 +401,7 @@ These tools allow LLM agents to interactively create or modify custom workflows 
   - `messages`: Initialized as an empty array (the first user-provided message/topic is appended to the graph state upon start).
   - `lastAgentId`: Initialized to `null`.
   - `consensusReached`: Initialized to `false`.
+  - `forceSummarize`: Initialized to `false`.
   - `turnCount`: Initialized to `0`.
   - `currentRound`: Initialized to `1`.
 
@@ -422,6 +428,8 @@ These tools allow LLM agents to interactively create or modify custom workflows 
       - Bypasses LLM evaluation to conserve tokens, and routes directly to the `Summarizer` node along the `on_no_consensus` edge (acting as a loop termination override).
     - Check if `consensusReached` is already `true` (set by a preceding `declare_consensus` tool call). If so:
       - Bypasses LLM evaluation and routes to the `Summarizer` node along the `on_consensus` edge.
+    - Check if `forceSummarize` is `true` (set by a preceding manual override `FORCE_SUMMARIZE` action). If so:
+      - Bypasses LLM evaluation and routes to the `Summarizer` node along the `on_no_consensus` edge (acting as a manual early exit override).
     - Otherwise, runs an LLM evaluation call (using the active preset and its custom evaluation prompt) to analyze the debate history. If the evaluator LLM returns `{"consensusReached": true}`:
       - Sets the state's `consensusReached` to `true` and routes to `Summarizer` along the `on_consensus` edge.
     - If the evaluator LLM returns `{"consensusReached": false}`:
@@ -429,6 +437,7 @@ These tools allow LLM agents to interactively create or modify custom workflows 
   - `Summarizer`:
     - Invokes a specialized summarization LLM node to analyze the entire debate history.
     - Appends the compiled final summary message to the history.
+    - If `consensusReached` is `true`, the summarizer compiles a consensus summary highlighting the agreed points. If `consensusReached` is `false` (either from reaching the loop limit or manual early termination via `forceSummarize`), the summarizer compiles a summary of the opposing arguments and notes that the debate was terminated without reaching full consensus.
     - Sets `lastAgentId` to `"Summarizer"`, increments `turnCount` by 1, and terminates the workflow execution (transitions graph status to `"inactive"`).
 
 - **Safety / Cost Control & Loop Controls**:
@@ -723,14 +732,13 @@ The application layout is built using the Carbon Design System (`@carbon/react`)
 
 - **Preset List**: List of configured LLM presets with options to edit or delete.
 - **Preset Configuration Panel**:
-  - Fields for configuring Name, Provider (`"openrouter" | "gemini"`), Model ID (string), API Key (optional override), Temperature, Max Tokens, Reasoning/Thinking Level, Budget Policy (e.g. max steps without user message, max tokens per run limit), and CORS Proxy URL (optional override).
-  - **Connection Testing**: Includes a "Test Connection" button next to the API Key and CORS Proxy fields to verify custom or local provider settings. Clicking it triggers an asynchronous mock API request (e.g. querying the `/v1/models` endpoint or requesting a 1-token dummy response) using the configured API Key, Endpoint, and CORS proxy, passing any custom headers. Displays a loading spinner while testing, a green success badge (showing provider/model and latency), or a red warning banner detailing status codes, CORS block warnings, or network errors on failure. This test is optional and non-blocking.
+  - Fields for configuring Name, Provider (`"openrouter" | "gemini"`), Model ID (string), API Key (optional override), Temperature, Max Tokens, Reasoning/Thinking Level, and Budget Policy (e.g. max steps without user message, max tokens per run limit).
+  - **Connection Testing**: Includes a "Test Connection" button next to the API Key field to verify custom or local provider settings. Clicking it triggers an asynchronous mock API request (e.g. querying the `/v1/models` endpoint or requesting a 1-token dummy response) using the configured API Key and model, passing any custom headers. Displays a loading spinner while testing, a green success badge (showing provider/model and latency), or a red warning banner detailing status codes, CORS block warnings, or network errors on failure. This test is optional and non-blocking.
 
 ### 5. Global Settings View
 
 - **Global Config Form**:
-  - **API Keys & Security Section**: Password-masked input fields (masked by default with a show/hide toggle button) for OpenRouter and Gemini API keys. Includes a checkbox to enable optional master-password encryption for storage (requiring the user to input a master password decrypted in-memory per session; note that reloading the page clears the in-memory password, requiring the user to re-enter it to unlock settings and resume execution) and visual status indicators (spinner, green check for valid, red cross for invalid) that asynchronously perform lightweight validation requests immediately on-save. When master-password encryption is toggled on/off, all API keys (both global keys in `settings` and any preset-specific `apiKey` overrides in the `presets` store) are encrypted or decrypted in a single batched database transaction.
-  - **Network & Proxy Section**: Global input field for configuring an optional custom CORS proxy URL and custom request headers.
+  - **API Keys & Security Section**: Password-masked input fields (masked by default with a show/hide toggle button) for OpenRouter and Gemini API keys. Includes visual status indicators (spinner, green check for valid, red cross for invalid) that asynchronously perform lightweight validation requests immediately on-save.
   - **Theme Override Selector**: Selector for manually forcing Light/Dark mode.
   - **Injected System Messages Section**: Global UI list configuration for system messages that apply to all workflows.
   - **Thread Operations Section**: Includes a "Compact Thread" button to allow manual purging of older checkpoints (preserving only the latest active checkpoint) for the active thread to reclaim IndexedDB storage. A confirmation dialog warns the user that compacting deletes the execution checkpoint history, which prevents rewinding, editing, or branching from older messages.
@@ -802,26 +810,21 @@ stateDiagram-v2
         state ExecutionState {
             [*] --> inactive
 
-            inactive --> checkingKeys : START_EXECUTION / SUBMIT_MESSAGE / FORCE_CONSENSUS / FORCE_SUMMARIZE
-            checkingKeys --> executing : [Keys Unlocked]
-            checkingKeys --> awaitingUnlock : [Keys Locked]
-
-            awaitingUnlock --> executing : UNLOCK_SUCCESS
-            awaitingUnlock --> inactive : CANCEL_UNLOCK
+            inactive --> executing : START_EXECUTION / SUBMIT_MESSAGE / FORCE_CONSENSUS / FORCE_SUMMARIZE
 
             executing --> awaitingHumanInput : INTERRUPT / ASK_QUESTIONS_TRIGGER / PAUSE / BUDGET_EXCEEDED
+            executing --> executing : FORCE_CONSENSUS / FORCE_SUMMARIZE
             executing --> inactive : EXECUTION_COMPLETE
             executing --> error : EXECUTION_ERROR
 
-            awaitingHumanInput --> executing : RESUME / SUBMIT_TOOL_RESPONSE / SUBMIT_APPROVAL / RESUME_WITH_BUDGET_OVERRIDE
-            awaitingHumanInput --> checkingKeys : FORCE_CONSENSUS / FORCE_SUMMARIZE
+            awaitingHumanInput --> executing : RESUME / SUBMIT_TOOL_RESPONSE / SUBMIT_APPROVAL / RESUME_WITH_BUDGET_OVERRIDE / FORCE_CONSENSUS / FORCE_SUMMARIZE
             awaitingHumanInput --> inactive : CANCEL_EXECUTION
 
             executing --> inactive : API_KEYS_REMOVED
             awaitingHumanInput --> inactive : API_KEYS_REMOVED
 
             error --> inactive : DISMISS_ERROR
-            error --> checkingKeys : RETRY_STEP / RESUME
+            error --> executing : RETRY_STEP / RESUME
 
             %% Route Change & Initial Checkpoint Loading
             inactive --> checkingStatus : ROUTE_CHANGED [apiKeysConfigured] / INITIALIZE_CHECKPOINT [apiKeysConfigured] / API_KEYS_CONFIGURED
@@ -831,7 +834,7 @@ stateDiagram-v2
 
             checkingStatus --> inactive : DB_CHECK_INACTIVE
             checkingStatus --> awaitingHumanInput : DB_CHECK_INTERRUPTED
-            checkingStatus --> checkingKeys : DB_CHECK_RUNNING [If background execution is active]
+            checkingStatus --> executing : DB_CHECK_RUNNING [If background execution is active]
             checkingStatus --> error : DB_CHECK_ERROR
         }
     }
@@ -852,7 +855,6 @@ The parent coordinator state machine context maintains the following variables:
   - `tokenStats`: `{ promptTokens: number; completionTokens: number; totalTokens: number } | null` - Statistics tracking input and output tokens for the current execution.
 - `errorMessage`: `string | null` - Details of the most recent execution or database error.
 - `apiKeysConfigured`: `boolean` - Indicates whether required API keys (either a global API key or at least one preset-specific API key) are configured in the database.
-- `apiKeysLocked`: `boolean` - Indicates whether API keys are encrypted and currently locked (requiring a master password to decrypt/encrypt them).
 - `graphRunnerActor`: `any` - A reference to the active spawned child actor managing LangGraph execution.
 
 ### 2. State Descriptions
@@ -878,12 +880,12 @@ The parent coordinator state machine context maintains the following variables:
   - _Interactive Controls_:
     - Main Chat Input: Enabled (unless blocked by `ExecutionState` executing/awaiting approval).
     - Role Selector Dropdown: Enabled (User / Assistant / System).
-    - Send Message Button: Enabled if chat input is not empty, and `ExecutionState` is not in `executing` or `awaitingUnlock` / `checkingStatus`.
+    - Send Message Button: Enabled if chat input is not empty, and `ExecutionState` is not in `executing` or `checkingStatus`.
     - Message list: Options menus for each message are enabled.
     - Chat Header controls (Preset Dropdown Switcher, Configure Preset Icon, API Payload Preview Button, Thread Settings): Enabled.
 - **`presetConfig`**: Modifying or creating an LLM preset.
   - _Interactive Controls_:
-    - Preset configuration forms (inputs for Name, Provider, Model, temperature, policies, CORS proxy): Enabled.
+    - Preset configuration forms (inputs for Name, Provider, Model, temperature, policies): Enabled.
     - Save / Cancel / Delete buttons: Enabled.
 - **`workflowConfig`**: Modifying or creating custom workflows in the JSON `TextArea` editor.
   - _Interactive Controls_:
@@ -892,8 +894,7 @@ The parent coordinator state machine context maintains the following variables:
 - **`globalSettings`**: Modifying API keys, manual theme override, and injected system messages.
   - _Interactive Controls_:
     - API keys input fields, toggle show/hide buttons: Enabled.
-    - Encryption toggle checkbox, Master Password prompts: Enabled.
-    - CORS proxy and injected messages inputs: Enabled.
+    - Injected messages inputs: Enabled.
     - Thread Compaction controls: Enabled.
     - Save / Close buttons: Enabled.
 
@@ -907,26 +908,17 @@ The parent coordinator state machine context maintains the following variables:
   - _Interactive Controls_:
     - Execution Control Panel: All buttons are disabled.
     - Main Chat Input / Send Button: Disabled.
-- **`checkingKeys`**: A transient state that checks if the API keys are encrypted and locked.
-  - _Interactive Controls_:
-    - Execution Control Panel: All buttons are disabled.
-    - Main Chat Input / Send Button: Disabled.
-- **`awaitingUnlock`**: Active when API keys are encrypted and locked, and the user has initiated or resumed a workflow run. Displays the master password unlock modal.
-  - _Interactive Controls_:
-    - Unlock Modal form fields (password input): Enabled.
-    - Unlock Modal Submit button: Enabled if password input is not empty; disabled during decryption validation.
-    - Unlock Modal Cancel button: Enabled, aborts the unlock and returns state to `inactive`.
-    - Chat Input / Send Button: Disabled.
 - **`executing`**: Running `@langchain/langgraph/web` steps in the browser.
   - _Interactive Controls_:
     - Execution Control Panel:
       - Pause button: Enabled, triggers `PAUSE`.
-      - Resume / Force Consensus / Summarize Early buttons: Disabled.
+      - Resume button: Disabled.
+      - Force Consensus / Summarize Early buttons: Enabled (specifically during debate or other loop phases), triggers `FORCE_CONSENSUS` or `FORCE_SUMMARIZE` (aborts current step, updates DB checkpoint state with override flag, and restarts runner).
       - Abort button: Enabled, triggers `CANCEL_EXECUTION`.
     - Main Chat Input / Send Button: Disabled.
     - Preset switcher dropdown: Disabled.
     - API Payload Preview button: Disabled.
-- **`awaitingHumanInput`**: Graph execution is suspended (either due to a manual approval card, an `ask_questions` tool interrupt, a step/token budget limit being exceeded, or a CORS proxy request failure).
+- **`awaitingHumanInput`**: Graph execution is suspended (either due to a manual approval card, an `ask_questions` tool interrupt, or a step/token budget limit being exceeded).
   - Substates:
     - `idle`: Paused at an interactive tool/approval card.
       - _Interactive Controls_:
@@ -944,13 +936,6 @@ The parent coordinator state machine context maintains the following variables:
         - Execution Control Panel:
           - Pause / Resume: Disabled.
           - Force Consensus / Summarize Early: Enabled.
-          - Abort: Enabled, triggers `CANCEL_EXECUTION`.
-    - `proxyFallback`: Paused because a request routed through the CORS proxy has failed, and is awaiting user fallback selection.
-      - _Interactive Controls_:
-        - Main Chat Input / Send Button: Disabled.
-        - Inline/Modal Proxy Fallback Dialog buttons ("Retry with Proxy", "Try Direct Request", "Cancel"): Enabled.
-        - Execution Control Panel:
-          - Pause / Resume / Force Consensus / Force Summarize: Disabled.
           - Abort: Enabled, triggers `CANCEL_EXECUTION`.
 - **`error`**: Displays error details inline inside the Error Bubble at the end of the chat feed.
   - _Interactive Controls_:
@@ -975,10 +960,9 @@ The parent coordinator state machine context maintains the following variables:
 - **Thread Status and Checkpoint Mapping to Database**: To maintain strict consistency between the in-memory XState coordinator states, the active LangGraph execution checkpoint state, and the persistent IndexedDB records:
   - **Thread `status` DB Mapping**: The `status` field of the active thread record in the `threads` store is updated in IndexedDB whenever the `ExecutionState` transitions:
     - `ExecutionState.inactive` -> `status: "inactive"`
-    - `ExecutionState.checkingStatus` / `checkingKeys` -> No DB update (transient states).
-    - `ExecutionState.awaitingUnlock` -> `status: "inactive"` (keys are locked, execution hasn't resumed).
+    - `ExecutionState.checkingStatus` -> No DB update (transient states).
     - `ExecutionState.executing` -> `status: "executing"`
-    - `ExecutionState.awaitingHumanInput` (all substates: `idle`, `budgetExceeded`, `proxyFallback`) -> `status: "awaiting_input"`
+    - `ExecutionState.awaitingHumanInput` (all substates: `idle`, `budgetExceeded`) -> `status: "awaiting_input"`
     - `ExecutionState.error` -> `status: "error"`
   - **Checkpoint Consistency and Thread Truncation**: Every successful execution step completes by persisting a new checkpoint to the `checkpoints` and `checkpoint_writes` stores. The thread record's `latestCheckpointId` and `latestCheckpointNs` are updated in the same write transaction. When the user edits or deletes a message in history, the rollback procedure (deleting downstream checkpoints/messages and updating `latestCheckpointId`/`latestCheckpointNs`) must be completed in a single batched database transaction before the parent coordinator is notified via `SAVE_SUCCESS` / `DELETE_SUCCESS`. Upon receiving this success event, the parent coordinator dispatches `INITIALIZE_CHECKPOINT` to query the updated checkpoint references from IndexedDB and reset the active execution state to `inactive` (with a clean, rolled-back state ready to resume).
   - **Active-Only Execution on Route Switch**: Switching threads in the UI triggers `ROUTE_CHANGED`. If the parent coordinator is in `ExecutionState.executing`, the router event triggers an automatic pause: the parent coordinator dispatches `STOP` to the child `graphRunnerActor` (which calls `AbortController.abort()` to terminate active fetch requests), updates the active thread's `status` to `"inactive"` / `"paused"` in the database, and transitions `ExecutionState` to `inactive`. The new thread is then initialized via `checkingStatus`. This prevents multi-thread run conflicts and database write race conditions.
@@ -987,45 +971,7 @@ The parent coordinator state machine context maintains the following variables:
 
 To support rich user interactions and manage complex local UI lifecycle, several key UI components are governed by their own structured state machines:
 
-#### A. Master Password Unlock Modal State Machine
-
-Manages the modal overlay displayed when the user attempts to run a workflow, view/edit keys in the Preset Editor or Global Settings while the database keys are encrypted and locked.
-
-- **Context**:
-  - `passwordInput`: `string`
-  - `errorMessage`: `string | null`
-- **States**:
-  - `closed`: The modal is completely hidden. Upon entry, both `passwordInput` and `errorMessage` are reset and cleared to avoid state leakage.
-  - `opened`: The modal is visible.
-    - `opened.idle`: Waiting for the user to input the master password.
-      - _Submit Button_: Enabled only if `passwordInput` is non-empty.
-      - _Cancel Button_: Enabled, dismisses modal.
-      - _Password Input Field_: Enabled and focused.
-    - `opened.deriving`: Deriving the 256-bit AES-GCM key from the password using PBKDF2 (configured with 600,000 iterations and SHA-256) in the Web Crypto API.
-      - _Submit/Cancel Buttons_: Disabled.
-      - _Password Input Field_: Disabled.
-      - _Loading status_: Shows spinning progress indicator.
-    - `opened.decrypting`: Attempting to decrypt the static verification token using the derived key.
-      - _Submit/Cancel Buttons_: Disabled.
-      - _Password Input Field_: Disabled.
-      - _Loading status_: Shows decrypting progress indicator.
-    - `opened.success`: Verification succeeded. The derived key is stored in memory, the modal transitions to `closed`, and the parent machine/context is notified via `UNLOCK_SUCCESS`.
-    - `opened.error`: Verification or derivation failed. Displays an error message inline and remains in the modal.
-      - _Password Input Field_: Enabled and auto-selected.
-      - _Error notification_: Displays "Incorrect master password. Please try again" or native Web Crypto error description.
-      - _Submit Button_: Enabled if password input is non-empty.
-      - _Cancel Button_: Enabled.
-- **Transitions / Events**:
-  - `TRIGGER_UNLOCK`: Transitions `closed` to `opened.idle`.
-  - `UPDATE_PASSWORD` (contains password): Updates `passwordInput` context.
-  - `SUBMIT`: Transitions `opened.idle` or `opened.error` to `opened.deriving`.
-  - `DERIVE_SUCCESS`: Transitions `opened.deriving` to `opened.decrypting`.
-  - `DECRYPT_SUCCESS`: Transitions `opened.decrypting` to `opened.success`.
-  - `DECRYPT_FAILURE`: Transitions `opened.decrypting` to `opened.error` (updates `errorMessage` to "Incorrect master password").
-  - `CRYPTO_ERROR` (triggered if Web Crypto APIs fail natively): Transitions from `opened.deriving` or `opened.decrypting` to `opened.error` (updates `errorMessage` to "Cryptographic operation failed: [error details]").
-  - `CANCEL_UNLOCK`: Transitions any `opened` state to `closed` (sends `CANCEL_UNLOCK` to parent machine, halting the action/execution).
-
-#### B. Preset Connection Tester State Machine
+#### A. Preset Connection Tester State Machine
 
 Governs the "Test Connection" button lifecycle within the LLM Preset Configuration panel.
 
@@ -1038,28 +984,26 @@ Governs the "Test Connection" button lifecycle within the LLM Preset Configurati
   - `idle`: Initial state. Displays the "Test Connection" button.
     - _Test Connection Button_: Enabled.
     - _Cancel Button_: Hidden.
-    - _Fields (API Key, Proxy URL)_: Enabled.
-  - `testing`: Asynchronously executing a lightweight dummy request (e.g. model listing or 1-token request) using the configured API Key, Endpoint, and CORS proxy. A 10-second timeout timer is started upon entry.
+    - _Fields (API Key)_: Enabled.
+  - `testing`: Asynchronously executing a lightweight dummy request (e.g. model listing or 1-token request) using the configured API Key. A 10-second timeout timer is started upon entry.
     - _Test Connection Button_: Disabled, displays loading spinner.
     - _Cancel Button_: Visible and enabled, allowing user to abort the request.
-    - _Fields (API Key, Proxy URL)_: Disabled.
+    - _Fields (API Key)_: Disabled.
   - `success`: Test succeeded. Displays a green badge showing the latency and model info.
     - _Test Connection Button_: Enabled, label updated to "Test Connection".
     - _Badge_: Visible, displays latency (e.g., `120ms`) and model name.
-  - `failure`: Test failed. Displays a red banner detailing status codes, CORS block warnings, or network errors.
+  - `failure`: Test failed. Displays a red banner detailing status codes or network errors.
     - _Test Connection Button_: Enabled, label updated to "Retry Test".
     - _Error Banner_: Visible below inputs, shows error string and recommendations.
 - **Transitions / Events**:
-  - `TEST_CONNECTION` (contains config):
-    - If the preset's API key is stored encrypted in the database and the keys are currently locked, clicking "Test Connection" with the stored key will first dispatch a `TRIGGER_UNLOCK` event to the Master Password Unlock Modal. If the user successfully unlocks the keys (`UNLOCK_SUCCESS`), the Connection Tester proceeds to the `testing` state. If the user cancels (`CANCEL_UNLOCK`), the tester returns to the `idle` state.
-    - Otherwise, aborts any active in-flight request via `abortController`, instantiates a new `AbortController`, updates context with parameters, and transitions `idle`, `success`, or `failure` to `testing`.
+  - `TEST_CONNECTION` (contains config): Aborts any active in-flight request via `abortController`, instantiates a new `AbortController`, updates context with parameters, and transitions `idle`, `success`, or `failure` to `testing`.
   - `TEST_SUCCESS` (contains latency and metadata): Transitions `testing` to `success` (updates context).
   - `TEST_FAILURE` (contains error details): Transitions `testing` to `failure` (updates context).
   - `TIMEOUT`: Triggered if the 10-second test request timer expires. Aborts the request via `abortController` and transitions `testing` to `failure` (updates `errorMessage` to "Connection test timed out after 10s").
   - `INPUT_CHANGED` (when preset fields are modified): Transitions `success` or `failure` back to `idle`.
   - `CANCEL`: Aborts active request via `abortController` and transitions to `idle`.
 
-#### C. `ask_questions` Tool Form State Machine
+#### B. `ask_questions` Tool Form State Machine
 
 Governs the lifecycle of the inline form rendered in the chat feed when execution is interrupted by the `ask_questions` tool. All events are dispatched to the parent coordinator machine, which handles routing/forwarding events to the active `graphRunnerActor`.
 
@@ -1104,7 +1048,7 @@ Governs the lifecycle of the inline form rendered in the chat feed when executio
   - `SUBMIT_FAILURE` (contains error): Transitions `submitting` back to `active.editing` (updates `errorMessage` to display the submission failure).
   - `REFUSE` (contains refusalReason): Transitions to `refused` (formats the refusal response, marking all questions as `refused: true` with the provided `refusalReason`, and dispatches `SUBMIT_TOOL_RESPONSE` containing the compiled `AskQuestionsResponse` JSON payload to the parent coordinator machine).
 
-#### D. Proposed Action Card (Approval Form) State Machine
+#### C. Proposed Action Card (Approval Form) State Machine
 
 Governs database-modifying tool calls (like creating or updating a workflow) that require explicit user approval before execution. All events are dispatched to the parent coordinator machine, which handles routing/forwarding events to the active `graphRunnerActor`.
 
@@ -1137,7 +1081,7 @@ Governs database-modifying tool calls (like creating or updating a workflow) tha
   - `APPROVE_FAILURE` (contains error): Transitions `approving` to `error` (updates `errorMessage`).
   - `RETRY_APPROVE`: Transitions `error` to `approving`.
 
-#### E. Budget Exceeded Card State Machine
+#### D. Budget Exceeded Card State Machine
 
 Rendered inline within the chat feed when a running thread execution cycle exceeds its token budget or step limits.
 
@@ -1167,7 +1111,7 @@ Rendered inline within the chat feed when a running thread execution cycle excee
   - `ABORT_SUCCESS`: Transitions `aborted` to `completed` (dispatched by parent machine upon terminating the run).
   - `ABORT_FAILURE` (contains error): Transitions `aborted` back to `prompting` (updates `errorMessage`).
 
-#### F. Workflow Syncing (Soft/Hard Sync) State Machine
+#### E. Workflow Syncing (Soft/Hard Sync) State Machine
 
 Triggered from Thread Settings to synchronize a thread's workflow snapshot with the latest definition in the database.
 
@@ -1211,7 +1155,7 @@ Triggered from Thread Settings to synchronize a thread's workflow snapshot with 
   - `SYNC_FAILURE` (contains error): Transitions `syncing` to `failure` (updates `errorMessage`).
   - `DISMISS`: Transitions `success` or `failure` back to `idle`.
 
-#### G. API Payload Preview Modal State Machine
+#### F. API Payload Preview Modal State Machine
 
 Governs the modal displaying compiled messages and injected system messages for LLM API calls.
 
@@ -1242,7 +1186,7 @@ Governs the modal displaying compiled messages and injected system messages for 
   - `CLOSE`: Transitions any `opened` state to `closed` (clears context).
   - `ROUTE_CHANGED`: Transitions any `opened` state to `closed` (clears context) to prevent showing outdated payload data from a previous thread.
 
-#### H. Checkpoint Compaction Dialog State Machine
+#### G. Checkpoint Compaction Dialog State Machine
 
 Triggered in Global Settings to purge old checkpoints of a thread.
 
@@ -1277,7 +1221,7 @@ Triggered in Global Settings to purge old checkpoints of a thread.
 
 _Note on Compaction Consequences_: Once compaction deletes historical checkpoints, the message options to Edit, Delete, or Branch from those historical messages (whose associated checkpoints were purged) are disabled in the UI, and a descriptive tooltip is shown explaining that historical checkpoints have been compacted.
 
-#### I. Inline Message Editor & Action State Machine
+#### H. Inline Message Editor & Action State Machine
 
 Governs the lifecycle of editing, deleting, and branching a single message in the chat history. Note: The Edit, Delete, and Branch options are disabled if the message's corresponding checkpoint was removed (e.g., due to compaction).
 
@@ -1291,8 +1235,11 @@ Governs the lifecycle of editing, deleting, and branching a single message in th
   - `errorMessage`: `string | null`
 - **States**:
   - `viewing`: Standard rendering mode.
-    - _Message Content_: Rendered as markdown.
-    - _Edit / Delete / Branch options in OverflowMenu_: Enabled (subject to checkpoint availability).
+    - `viewing.idle`: Standard message bubble display, overflow options menu is closed.
+      - _Message Content_: Rendered as markdown.
+      - _Overflow Menu Trigger Button_: Enabled.
+    - `viewing.menuOpen`: Message overflow options menu is open, displaying action choices.
+      - _Edit / Delete / Branch options in OverflowMenu_: Enabled (subject to checkpoint availability).
   - `editing`: Textarea input is active.
     - `editing.idle`: User is editing the content.
       - _Text Area Field_: Enabled, focused.
@@ -1327,7 +1274,9 @@ Governs the lifecycle of editing, deleting, and branching a single message in th
     - _Cancel Button_: Enabled.
     - _Error text_: Displayed inline.
 - **Transitions / Events**:
-  - `EDIT`: Transitions `viewing` to `editing.idle` (clones `originalContent` to `editContent`).
+  - `OPEN_MENU`: Transitions `viewing.idle` to `viewing.menuOpen`.
+  - `CLOSE_MENU`: Transitions `viewing.menuOpen` to `viewing.idle`.
+  - `EDIT`: Transitions `viewing.menuOpen` to `editing.idle` (clones `originalContent` to `editContent` and closes menu).
   - `UPDATE_CONTENT` (contains content): Transitions to `editing.validating` (updates `editContent`).
   - `VALIDATION_RESULT` (contains isValid): Transitions back to `editing.idle` (updates `isValidContent` flag).
   - `SAVE` (guard: `isValidContent` is true): Transitions `editing.idle` or `error` to `saving`.
@@ -1350,7 +1299,7 @@ Governs the lifecycle of editing, deleting, and branching a single message in th
   - `BRANCH_SUCCESS` (contains newThreadId): Transitions `branching` to `viewing` (triggers parent navigation to the newly branched thread).
   - `BRANCH_FAILURE` (contains error): Transitions `branching` to `error` (updates `errorMessage`).
 
-#### J. Main Application Layout State Machine
+#### I. Main Application Layout State Machine
 
 Governs the top-level application shell, responsive navigation drawer, and global UI theme.
 
@@ -1373,7 +1322,7 @@ Governs the top-level application shell, responsive navigation drawer, and globa
   - `WINDOW_RESIZED` (contains isMobile): Updates `isMobile` context. If `isMobile` transitions to `false`, forces `sidebarOpen` to `false`.
   - `ROUTE_CHANGED` (contains route): Updates `currentRoute`. If `isMobile` is `true`, sets `sidebarOpen` to `false` to close the navigation overlay.
 
-#### K. Left Sidebar State Machine
+#### J. Left Sidebar State Machine
 
 Manages the active thread list loading, searching, and thread-level cascading deletion interactions.
 
@@ -1408,7 +1357,7 @@ Manages the active thread list loading, searching, and thread-level cascading de
   - `DELETE_SUCCESS`: Transitions `deleting` back to `idle` (clears `deletingThreadId`, dispatches URL navigate to root or another thread if the deleted thread was active).
   - `DELETE_FAILURE` (contains error): Transitions `deleting` to `idle` (sets `errorMessage` and displays sidebar error warning, clears `deletingThreadId`).
 
-#### L. Preset Editor State Machine
+#### K. Preset Editor State Machine
 
 Governs the lifecycle of modifying or creating an LLM Preset Configuration.
 
@@ -1441,8 +1390,6 @@ Governs the lifecycle of modifying or creating an LLM Preset Configuration.
     - _Modal Overlay_: Visible.
     - _Clone and Save Button_: Enabled, triggers `CONFIRM_CLONE`.
     - _Cancel Button_: Enabled.
-  - `checkingKeysUnlock`: Active when the database keys are encrypted and locked, and the user is attempting to save a preset containing a new/edited API key. This triggers the Master Password Unlock Modal.
-    - _Form controls / Modal buttons_: Disabled.
   - `saving`: Running IndexedDB transaction to insert or update the preset.
     - _Form controls / Modal buttons_: Disabled.
     - _Save Button / Clone Button_: Disabled, shows loading spinner.
@@ -1464,11 +1411,8 @@ Governs the lifecycle of modifying or creating an LLM Preset Configuration.
   - `EDIT_FIELD` (contains field and value): Updates `presetData` field, sets `isDirty` to `true`, and transitions to `idle.dirty`.
   - `SAVE`: Transitions `idle.dirty` or `error` to `validating`.
   - `VALIDATION_SUCCESS`:
-    - If the preset's API key field has been modified AND master-password encryption is active AND the keys are locked: transitions to `checkingKeysUnlock` and dispatches `TRIGGER_UNLOCK` to the Master Password Unlock Modal.
-    - Otherwise, if `isBuiltIn` is true, transitions to `promptingClone`.
+    - If `isBuiltIn` is true, transitions to `promptingClone`.
     - Otherwise, transitions to `saving`.
-  - `UNLOCK_SUCCESS` (from `checkingKeysUnlock`): Transitions to `saving`.
-  - `CANCEL_UNLOCK` (from `checkingKeysUnlock`): Transitions back to `idle.dirty`.
   - `CONFIRM_CLONE`: Generates a new UUID for `presetId`, sets `isBuiltIn` to false, prefixes name with `"Copy of "`, and transitions to `saving`.
   - `CANCEL_CLONE`: Transitions back to `idle.dirty`.
   - `VALIDATION_FAILURE` (contains errors): Transitions back to `idle.dirty` (populates `validationErrors` to display inline under invalid fields).
@@ -1481,7 +1425,7 @@ Governs the lifecycle of modifying or creating an LLM Preset Configuration.
   - `CONFIRM_DISCARD`: Closes preset editor and discards unsaved edits.
   - `ABORT_DISCARD`: Transitions back to `idle.dirty`.
 
-#### M. Workflow JSON Editor State Machine
+#### L. Workflow JSON Editor State Machine
 
 Governs the JSON editor interface used to inspect or build custom agent orchestration workflows.
 
@@ -1544,55 +1488,7 @@ Governs the JSON editor interface used to inspect or build custom agent orchestr
   - `CONFIRM_DISCARD`: Transitions to workflow list view.
   - `ABORT_DISCARD`: Transitions back to `editing.dirty`.
 
-#### N. Master Password Setup / Toggle State Machine
-
-Governs toggling master-password encryption on or off in the Global Settings panel.
-
-- **Context**:
-  - `action`: `"enable" | "disable" | "reset"`
-  - `passwordInput`: `string`
-  - `confirmPasswordInput`: `string`
-  - `errorMessage`: `string | null`
-- **States**:
-  - `idle`: Toggling is inactive.
-    - _Master Password encryption checkbox_: Enabled.
-  - `promptingEnable`: Modal open to enter and confirm new master password.
-    - `promptingEnable.idle`: Waiting for input.
-      - _Password & Confirm Password fields_: Enabled.
-      - _Submit Button_: Disabled.
-      - _Cancel Button_: Enabled.
-    - `promptingEnable.validating`: Verifying that password is at least 8 characters and matches the confirmation password.
-      - _Form fields / Buttons_: Disabled.
-  - `promptingDisable`: Modal open to enter current master password to disable encryption.
-    - _Password field_: Enabled.
-    - _Submit Button_: Enabled if password is non-empty.
-    - _Cancel Button_: Enabled.
-    - _Reset Keys Button_: Enabled, colored red (Carbon danger button).
-  - `processing`: Performing batch database transaction (encrypting or decrypting all keys in `settings` and `presets` stores, writing/deleting verification tokens, or purging keys on reset).
-    - _Modal fields / Buttons_: Disabled.
-    - _Submit/Reset Buttons_: Disabled, show loading spinner.
-  - `success`: Toggle complete.
-    - _Modal_: Closed.
-    - _Status Notification_: Inline success banner displayed.
-    - _Dismiss Button_: Enabled, returns to `idle`.
-  - `error`: Failed to toggle, displaying error inline.
-    - _Form fields_: Enabled.
-    - _Submit Button_: Enabled.
-    - _Cancel Button_: Enabled.
-    - _Error Notification Banner_: Visible inside the modal.
-- **Transitions / Events**:
-  - `TOGGLE_ENCRYPTION` (contains action):
-    - If `action` is `"enable"`, transition to `promptingEnable.idle`.
-    - If `action` is `"disable"`, transition to `promptingDisable`.
-  - `SUBMIT_ENABLE` (guard: inputs match and are valid): Transition to `processing`.
-  - `SUBMIT_DISABLE`: Transition to `processing` (after verifying entered password decrypts the verification token).
-  - `RESET_KEYS`: Transitions from `promptingDisable` or `error` to `processing` (sets `action` to `"reset"`). In `processing`, it purges all stored API keys (global settings and preset overrides), disables encryption, deletes the verification token, and transitions to `success` with a warning message that keys have been reset. This serves as a safety reset option if the user forgets their master password.
-  - `PROCESS_SUCCESS`: Transition to `success` (clears password inputs).
-  - `PROCESS_FAILURE` (contains error): Transition to `error` (updates `errorMessage`).
-  - `CANCEL`: Transition back to `idle`.
-  - `DISMISS`: Transition from `success` or `error` back to `idle`.
-
-#### O. Graph Runner Actor State Machine
+#### M. Graph Runner Actor State Machine
 
 Governs the lifecycle of the LangGraph background execution runner, which runs as a spawned child actor.
 
@@ -1608,14 +1504,13 @@ Governs the lifecycle of the LangGraph background execution runner, which runs a
 - **States**:
   - `initializing`: Compiles the `StateGraph` using the `workflowSnapshot`, instantiates the custom checkpointer, and prepares the runner.
   - `running`: Actively invoking `graph.stream()` or resuming the stream generator step-by-step.
-    - `running.requesting`: Sending request to LLM API (direct client call or through CORS proxy).
+    - `running.requesting`: Sending request to LLM API (direct client call).
     - `running.streaming`: Buffering text and reasoning tokens in real-time, throttling UI updates.
   - `paused`: Suspended, persisting state and waiting for further instructions.
   - `interrupted`: Suspended awaiting human action, response, or decisions.
     - `interrupted.awaitingToolInput`: Paused at a tool call interrupt (such as the `ask_questions` tool).
     - `interrupted.awaitingApproval`: Paused at a database-modifying action tool requiring user approval.
     - `interrupted.budgetExceeded`: Paused because step or token execution limits have been exceeded.
-    - `interrupted.awaitingProxyFallback`: Paused because a request routed through the CORS proxy has failed, and is awaiting user fallback selection.
   - `completed`: Workflow has finished execution successfully.
   - `failed`: An unhandled execution or connection error occurred.
 - **Transitions / Events**:
@@ -1628,15 +1523,12 @@ Governs the lifecycle of the LangGraph background execution runner, which runs a
   - `STOP` (triggered during thread switches or unspawning): Aborts any active request, cleans up listeners, and terminates.
   - `TIMEOUT`: Triggered if the active step API call exceeds the timeout (e.g. 30 seconds without response/token activity). Aborts request and transitions to `failed` (updates thread status to `"error"`, notifies parent machine).
   - `INTERRUPT` (contains interrupt details/form schema): Persists checkpoint, transitions to `interrupted.awaitingToolInput` (for interactive form tool calls) or `interrupted.awaitingApproval` (for DB modification tool calls) and notifies parent machine.
-  - `SUBMIT_TOOL_RESPONSE` (contains tool response): Transition from `interrupted.awaitingToolInput`, `interrupted.awaitingApproval`, or `interrupted.awaitingProxyFallback` back to `running.requesting` (passes tool response to graph state, and resets `stepsInCurrentRun` and `tokensInCurrentRun` to `0` and `budgetOverride` to `null` due to human intervention/new execution cycle).
+  - `SUBMIT_TOOL_RESPONSE` (contains tool response): Transition from `interrupted.awaitingToolInput` or `interrupted.awaitingApproval` back to `running.requesting` (passes tool response to graph state, and resets `stepsInCurrentRun` and `tokensInCurrentRun` to `0` and `budgetOverride` to `null` due to human intervention/new execution cycle).
   - `RESUME_WITH_BUDGET_OVERRIDE` (contains stepOverride and tokenOverride): Transition from `interrupted.budgetExceeded` back to `running.requesting` (stores overrides in `budgetOverride` and resumes).
-  - `PROXY_ERROR` (contains error details and proxy URL): Transitions from `running.requesting` to `interrupted.awaitingProxyFallback` and notifies the parent coordinator (rendering the proxy fallback dialog).
-  - `RETRY_WITH_PROXY`: Transition from `interrupted.awaitingProxyFallback` back to `running.requesting` (attempts requesting again using proxy).
-  - `TRY_DIRECT_REQUEST`: Transition from `interrupted.awaitingProxyFallback` back to `running.requesting` (attempts requesting directly, bypassing proxy for the current step).
   - `COMPLETE`: Persists final state, updates thread status to `"inactive"`, transitions to `completed`.
   - `ERROR` (contains error details): Transitions to `failed` (updates thread status to `"error"`, notifies parent machine).
 
-#### P. Execution & Loop Control Panel State Machine
+#### N. Execution & Loop Control Panel State Machine
 
 Governs the state, buttons, counters, and mobile overlay visibility of the execution control panel. All execution events are dispatched to the parent coordinator machine, which handles routing/forwarding to the active `graphRunnerActor`.
 
@@ -1647,6 +1539,7 @@ Governs the state, buttons, counters, and mobile overlay visibility of the execu
   - `turnCount`: `number`
   - `tokenStats`: `{ promptTokens: number; completionTokens: number; totalTokens: number }`
   - `isMobileOverlayOpen`: `boolean`
+  - `isExpanded`: `boolean` (desktop control panel expanded/collapsed state, default true)
   - `errorMessage`: `string | null`
 - **States**:
   - `hidden`: Hidden if the active thread is empty and has no loaded workflow snapshot or message history.
@@ -1667,6 +1560,7 @@ Governs the state, buttons, counters, and mobile overlay visibility of the execu
   - `HIDE_PANEL`: Transition from `visible` to `hidden`.
   - `TOGGLE_MOBILE_OVERLAY`: Transition between `overlayClosed` and `overlayOpened` (only on mobile viewports).
   - `CLOSE_MOBILE_OVERLAY`: Transition `overlayOpened` to `overlayClosed`.
+  - `TOGGLE_PANEL_EXPANDED`: Toggles the desktop view panel between expanded and collapsed to save vertical/horizontal screen space, setting the `isExpanded` boolean in context.
   - `CLICK_PAUSE`: Transitions `idle` or `actionError` to `requestingPause`.
   - `CLICK_RESUME`: Transitions `idle` or `actionError` to `requestingResume`.
   - `CLICK_ABORT`: Transitions `idle` or `actionError` to `requestingAbort`.
@@ -1695,30 +1589,7 @@ Governs the state, buttons, counters, and mobile overlay visibility of the execu
     - Enabled: When parent coordinator `ExecutionState` is `executing` or `awaitingHumanInput` (specifically during the debate or other loop phases), and `Action Region` is `idle`.
     - Disabled: Otherwise.
 
-#### Q. CORS Proxy Fallback Prompt State Machine
-
-Governs the fallback dialog rendered inline or as a modal overlay when a CORS proxy API request fails during execution. All selected actions are dispatched to the parent coordinator machine to be forwarded to the active `graphRunnerActor`.
-
-- **Context**:
-  - `failedUrl`: `string`
-  - `proxyUrl`: `string`
-  - `errorMessage`: `string`
-- **States**:
-  - `prompting`: Displays the warning details and options.
-    - _Retry with Proxy Button_: Enabled, triggers `RETRY_WITH_PROXY`.
-    - _Try Direct Request Button_: Enabled, triggers `TRY_DIRECT_REQUEST`.
-    - _Cancel Button_: Enabled, triggers `CANCEL_EXECUTION`.
-  - `submitting`: Dispatches the selected action to the parent coordinator machine and awaits transition.
-    - _All Buttons_: Disabled, shows loading spinner next to selected option.
-  - `completed`: The prompt has been answered and is removed/hidden.
-- **Transitions / Events**:
-  - `LOAD_ERROR` (contains failedUrl, proxyUrl, errorMessage): Initializer, enters `prompting`.
-  - `RETRY_WITH_PROXY`: Transitions `prompting` to `submitting` (dispatches `RETRY_WITH_PROXY` to the parent coordinator).
-  - `TRY_DIRECT_REQUEST`: Transitions `prompting` to `submitting` (dispatches `TRY_DIRECT_REQUEST` to the parent coordinator).
-  - `CANCEL_EXECUTION`: Transitions `prompting` to `submitting` (dispatches `CANCEL_EXECUTION` to the parent coordinator).
-  - `ACTION_DISPATCHED`: Transitions `submitting` to `completed`.
-
-#### R. Code Block Control State Machine
+#### O. Code Block Control State Machine
 
 Governs copy/download actions and clipboard states for code blocks rendered in assistant messages.
 
@@ -1758,7 +1629,7 @@ Governs copy/download actions and clipboard states for code blocks rendered in a
   - `DOWNLOAD_FAILURE` (contains `error` details): Transitions `downloading` to `error` (updates `errorMessage`).
   - `TIMER_EXPIRED`: Transitions `copied`, `downloaded`, or `error` back to `idle` (clears `errorMessage`).
 
-#### S. Preset List View State Machine
+#### P. Preset List View State Machine
 
 Governs the pagination, sorting, searching, loading, and deletion states in the Preset list view.
 
@@ -1796,7 +1667,7 @@ Governs the pagination, sorting, searching, loading, and deletion states in the 
   - `DELETE_FAILURE` (contains `error` details): Transitions `deleting` to `idle` (updates `errorMessage` and clears `deletingPresetId`).
   - `DISMISS_ERROR`: Transitions `error` to `idle` (clears `errorMessage`).
 
-#### T. Custom Workflow List View State Machine
+#### Q. Custom Workflow List View State Machine
 
 Governs the pagination, sorting, searching, loading, and deletion states in the custom Workflow list view.
 
@@ -1834,7 +1705,7 @@ Governs the pagination, sorting, searching, loading, and deletion states in the 
   - `DELETE_FAILURE` (contains `error` details): Transitions `deleting` to `idle` (updates `errorMessage` and clears `deletingWorkflowId`).
   - `DISMISS_ERROR`: Transitions `error` to `idle` (clears `errorMessage`).
 
-#### U. Global Settings Form State Machine
+#### R. Global Settings Form State Machine
 
 Governs the lifecycle of editing, validating, and saving fields in the Global Settings Panel.
 
@@ -1843,7 +1714,6 @@ Governs the lifecycle of editing, validating, and saving fields in the Global Se
   - `geminiApiKey`: `string`
   - `showOpenRouterKey`: `boolean`
   - `showGeminiKey`: `boolean`
-  - `corsProxy`: `string`
   - `theme`: `"light" | "dark" | "system"`
   - `injectedSystemMessages`: `Array<{ content: string; depth: number }>`
   - `originalSettings`: `any` (loaded settings)
@@ -1855,18 +1725,16 @@ Governs the lifecycle of editing, validating, and saving fields in the Global Se
     - _UI Controls_: Disabled. Shows skeleton loader.
   - `idle`: Form is interactive.
     - `idle.clean`: Form values match `originalSettings`.
-      - _Form controls (keys, proxy, theme, injected messages)_: Enabled.
+      - _Form controls (keys, theme, injected messages)_: Enabled.
       - _Save Settings Button_: Disabled.
       - _Reset Fields Button_: Disabled.
     - `idle.dirty`: Form values differ from `originalSettings`.
-      - _Form controls (keys, proxy, theme, injected messages)_: Enabled.
+      - _Form controls (keys, theme, injected messages)_: Enabled.
       - _Save Settings Button_: Enabled.
       - _Reset Fields Button_: Enabled.
-  - `validating`: Parsing and validating CORS Proxy URL format, and checking that depths are valid integers.
+  - `validating`: Validating that message depths are valid integers.
     - _All controls_: Disabled.
-  - `checkingKeysUnlock`: Active when the database keys are encrypted and locked, and the user is attempting to save settings that modify API keys. This triggers the Master Password Unlock Modal.
-    - _All controls_: Disabled.
-  - `saving`: Running a database transaction to update `settings` store (and encrypting API keys if master-password encryption is active and unlocked).
+  - `saving`: Running a database transaction to update the `settings` store.
     - _All controls_: Disabled, shows loading spinner on Save button.
   - `error`: Failed to load or save settings.
     - _All controls_: Enabled.
@@ -1881,18 +1749,14 @@ Governs the lifecycle of editing, validating, and saving fields in the Global Se
   - `UPDATE_INJECTED_MESSAGE` (contains index, field, value): Modifies the injected message at the given index, sets `isDirty` to true, transitions to `idle.dirty`.
   - `REMOVE_INJECTED_MESSAGE` (contains index): Deletes the injected message at the given index, sets `isDirty` to true, transitions to `idle.dirty`.
   - `SAVE`: Transitions `idle.dirty` or `error` to `validating`.
-  - `VALIDATION_SUCCESS`:
-    - If API keys were modified AND master-password encryption is active AND the keys are locked: transitions to `checkingKeysUnlock` and dispatches `TRIGGER_UNLOCK` to the Master Password Unlock Modal.
-    - Otherwise, transitions to `saving`.
-  - `UNLOCK_SUCCESS` (from `checkingKeysUnlock`): Transitions to `saving`.
-  - `CANCEL_UNLOCK` (from `checkingKeysUnlock`): Transitions back to `idle.dirty`.
+  - `VALIDATION_SUCCESS`: Transitions to `saving`.
   - `VALIDATION_FAILURE` (contains errors): Transitions to `idle.dirty` (populates `validationErrors` to display inline).
   - `SAVE_SUCCESS`: Transitions to `idle.clean` (updates `originalSettings`, updates layout theme if changed, dispatches setting updates).
   - `SAVE_FAILURE` (contains error): Transitions to `error` (updates `errorMessage`).
   - `RESET_FIELDS`: Reverts form inputs to `originalSettings`, sets `isDirty` to false, transitions to `idle.clean`.
   - `DISMISS_ERROR`: Transitions `error` to `idle` (clears `errorMessage`).
 
-#### V. New Chat Form State Machine
+#### S. New Chat Form State Machine
 
 Governs the form in the "New Chat" selection panel when no thread is active.
 
@@ -1928,7 +1792,7 @@ Governs the form in the "New Chat" selection panel when no thread is active.
   - `SUBMIT_FAILURE` (contains error): Transitions `submitting` to `error` (updates `errorMessage`).
   - `DISMISS_ERROR`: Transitions `error` to `idle` (clears `errorMessage`).
 
-#### W. Thread Settings Modal State Machine
+#### T. Thread Settings Modal State Machine
 
 Governs renaming a thread, switching thread-specific presets, syncing workflows, compacting checkpoints, or deleting the thread from within the Thread Settings Modal.
 
@@ -1997,20 +1861,6 @@ None.
 
 ### Resolved open questions:
 
-#### Question: CORS proxy error handling and fallback behavior
-
-If a custom CORS proxy is configured for a preset or globally in settings, but requests routed through it fail (e.g., due to proxy timeout, proxy 502/504 errors, or SSL issues on the proxy host), how should the runner behave?
-
-##### Response
-
-[RESOLVED] Option C (User Prompt Retry/Fallback Dialog) is selected.
-If a CORS proxy request fails (due to network error, timeout, or proxy server errors), the runner pauses execution and the UI displays a prompt dialog offering three choices:
-
-1. **Retry with Proxy**: Re-attempts the request using the same CORS proxy configuration.
-2. **Try Direct Request**: Attempts to bypass the CORS proxy for the current step and send the request directly to the API provider.
-3. **Cancel / Abort**: Halts the execution run and returns the runner to the `inactive` state, allowing the user to modify settings.
-   This balances usability and safety without assuming a direct connection will always succeed or silently bypassing proxy privacy/routing configurations.
-
 #### Question: Handle concurrent background execution of multiple threads
 
 The application supports navigating to other views and threads while a background workflow is running. However, the active execution policy currently specifies that switching away from a thread pauses the runner actor, and the thread state in the DB is saved as paused ("Active-Only Execution Mode").
@@ -2029,14 +1879,4 @@ When the app initializes or the user re-opens the app, how should it handle thre
 ##### Response
 
 [RESOLVED] Option B (Mark as paused/inactive) is selected.
-Upon application load, any thread records with `"executing"` status are automatically transitioned to `"inactive"` / `"paused"` in the database. When the thread is subsequently opened, a warning banner is displayed offering a manual "Resume" option. This is necessary because API keys are encrypted under a session-only in-memory key derived from the master password (which is lost when the browser tab is closed). The runner cannot resume execution automatically without first prompting the user to unlock the keys.
-
-#### Question: Master password reset and recovery policy for user-defined workflows
-
-If a user encrypts their settings using a master password and subsequently forgets it, they can use the `RESET_KEYS` action to purge all stored API keys and disable encryption.
-However, if a user-defined workflow has preset configurations with custom API key overrides, should those custom preset keys also be purged during a master password reset?
-
-##### Response
-
-[RESOLVED] Option A (Purge all key overrides) is selected.
-A master password reset must perform a clean, batched transaction that purges all API keys in the database—both global settings keys and any preset-specific API key overrides. This prevents orphan, un-decryptable ciphertext from remaining in the database and ensures a consistent security posture where a password reset completely clears all credentials.
+Upon application load, any thread records with `"executing"` status are automatically transitioned to `"inactive"` / `"paused"` in the database. When the thread is subsequently opened, a warning banner is displayed offering a manual "Resume" option. This is necessary because closing the browser tab abruptly terminates the in-memory graph runner. The runner cannot automatically recover active in-memory state on reload without user initiation, so marking it as inactive/paused is the most robust approach.
