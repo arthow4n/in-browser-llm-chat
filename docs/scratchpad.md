@@ -2229,6 +2229,61 @@ Governs the display state of individual message bubbles in a multi-agent chat fe
 - **Database Reads/Writes**: None.
 - **API Request/Response Sequence**: None.
 
+#### AB. Proposed Action Card State Machine
+
+Governs the inline card shown when a tool requires explicit user approval (e.g., database-modifying tools like workflow creation).
+
+- **Context**:
+  - `toolCallId`: `string`
+  - `proposedChanges`: `any`
+  - `errorMessage`: `string | null`
+- **States**:
+  - `pending`: Waiting for user decision.
+    - _Approve Button_: Enabled. Focused.
+    - _Deny Button_: Enabled, colored red (danger).
+  - `submitting`: Dispatching the decision back to the execution runner.
+    - _Approve/Deny Buttons_: Disabled, showing loading spinner on the clicked button.
+  - `completed`: Decision recorded, card becomes read-only history.
+    - _Approve/Deny Buttons_: Hidden or displayed as static status badge ("Approved" or "Denied").
+  - `error`: Failed to dispatch the response.
+    - _Approve/Deny Buttons_: Enabled.
+    - _Error Banner_: Visible inline.
+- **Transitions / Events**:
+  - `APPROVE`: Transitions `pending` to `submitting` (dispatches `SUBMIT_TOOL_RESPONSE` with approval to parent coordinator).
+  - `DENY`: Transitions `pending` to `submitting` (dispatches `SUBMIT_TOOL_RESPONSE` with denial to parent coordinator).
+  - `SUBMIT_SUCCESS`: Transitions `submitting` to `completed`.
+  - `SUBMIT_FAILURE` (contains error): Transitions `submitting` to `error` (updates `errorMessage`).
+- **Database Reads/Writes**: None (handled by the runner actor).
+- **API Request/Response Sequence**: None.
+
+#### AC. Budget Exceeded Card State Machine
+
+Governs the inline card displayed when the execution token or step limit is exceeded.
+
+- **Context**:
+  - `currentTokens`: `number`
+  - `maxTokens`: `number | null`
+  - `stepCount`: `number`
+  - `errorMessage`: `string | null`
+- **States**:
+  - `pending`: Waiting for user decision.
+    - _Increase Budget & Resume Button_: Enabled. Focused.
+    - _Abort Button_: Enabled, colored red (danger).
+  - `submitting`: Dispatching the override limits back to the execution runner.
+    - _Buttons_: Disabled, showing loading spinner on the clicked button.
+  - `completed`: Decision recorded, card becomes read-only history.
+    - _Buttons_: Hidden or displayed as static status badge ("Budget Increased" or "Aborted").
+  - `error`: Failed to dispatch the response.
+    - _Buttons_: Enabled.
+    - _Error Banner_: Visible inline.
+- **Transitions / Events**:
+  - `INCREASE_BUDGET`: Transitions `pending` to `submitting` (dispatches `RESUME_WITH_BUDGET_OVERRIDE` to parent coordinator).
+  - `ABORT`: Transitions `pending` to `submitting` (dispatches `CANCEL_EXECUTION` to parent coordinator).
+  - `SUBMIT_SUCCESS`: Transitions `submitting` to `completed`.
+  - `SUBMIT_FAILURE` (contains error): Transitions `submitting` to `error` (updates `errorMessage`).
+- **Database Reads/Writes**: None (handled by the runner actor).
+- **API Request/Response Sequence**: None.
+
 ## Open questions
 
 ### Process of handling open questions
@@ -2253,21 +2308,13 @@ The human user will replace the `[UNRESOLVED]` tag with their response. The huma
 
 ### Current open questions:
 
-#### Question: Concurrent Thread Execution limits
-
-Currently, the "Active-Only Execution Mode" pauses execution when switching threads. Is this too restrictive? What if the user explicitly wants a long-running workflow (like a deep debate) to continue in the background while they chat in another thread?
-
-##### Response
-
-[UNRESOLVED]
-
 #### Question: Throttling Markdown/LaTeX Rendering
 
 Since Markdown and LaTeX rendering can be computationally expensive, rendering it on every new token might cause UI jank. How should the application throttle or debounce the rendering during streaming to ensure a smooth UX?
 
 ##### Response
 
-[UNRESOLVED]
+[RESOLVED] The rendering of Markdown and LaTeX will be debounced by 100ms during active streaming. A lightweight streaming text renderer will display incoming text immediately without full Markdown/LaTeX compilation. When the 100ms debounce interval is reached, or when the stream naturally completes a chunk, the full `react-markdown` compilation is triggered. This maintains smooth 60fps scrolling while ensuring math and formatted text appear promptly.
 
 ### Resolved open questions:
 
