@@ -1653,7 +1653,10 @@ Governs the lifecycle of the LangGraph background execution runner, which runs a
 - **Database Reads/Writes & API Request/Response Sequences**:
   - **Reads**: During `initializing`, uses custom LangGraph checkpointer to load state from `checkpoints` and `checkpoint_writes` stores. Syncs missing DB messages.
   - **Writes**: During `STEP_COMPLETE`, opens a read-write transaction to write the new message to `messages` store, save graph checkpoint config to `checkpoints` and `checkpoint_writes`, and update `latestCheckpointId`, `latestCheckpointNs`, and cumulative `tokenStats` in the `threads` store.
-  - **LLM API Streaming Sequence**: Directly connects to Gemini/OpenRouter endpoints using the API key read from `settings` store, streaming delta responses (tokens) via chunked transfer, buffering text and reasoning, and dispatching throttled events to the UI.
+  - **LLM API Streaming Request/Response Sequence**:
+    - **Gemini**: `POST https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?alt=sse&key={apiKey}` with body `{ contents: [...], systemInstruction: {...}, tools: [...], generationConfig: {...} }`. Returns Server-Sent Events (SSE) where each `data:` chunk is a JSON containing `candidates[0].content.parts[0].text`, `candidates[0].content.parts[0].functionCall`, and optionally `usageMetadata`.
+    - **OpenRouter**: `POST https://openrouter.ai/api/v1/chat/completions` with headers `Authorization: Bearer {apiKey}` and body `{ model: "{model}", messages: [...], tools: [...], stream: true }`. Returns Server-Sent Events (SSE) where each `data:` chunk is a JSON containing `choices[0].delta.content` or `choices[0].delta.tool_calls`, and optionally `usage` statistics in the final chunk.
+    - Both are consumed via chunked transfer, buffering text and reasoning, and dispatching throttled events to the UI.
 
 #### N. Execution & Loop Control Panel State Machine
 
@@ -2036,6 +2039,25 @@ Governs the text area and send button behavior in the active chat thread.
     - Action: Dispatches the message to the parent coordinator machine for processing and clears `draftMessage`.
     - Transitions back to `enabled.empty`.
 - **Database Reads/Writes**: None (handled by parent machine on submit).
+- **API Request/Response Sequence**: None.
+
+#### W. Message Accordion State Machine
+
+Governs the expansion and collapse behavior of accordions for Reasoning Processes and Tool Call/Result blocks within message bubbles.
+
+- **Context**:
+  - `isOpen`: `boolean` (initial state is `false`)
+- **States**:
+  - `collapsed`: The accordion body is hidden, only the header/summary is visible.
+    - _Header Button_: Enabled, triggers `TOGGLE_EXPAND`. Focused.
+    - _Accordion Content_: Hidden from view and accessibility tree.
+  - `expanded`: The accordion body is visible.
+    - _Header Button_: Enabled, triggers `TOGGLE_COLLAPSE`. Focused.
+    - _Accordion Content_: Visible (scrollable up to `max-height: 250px`).
+- **Transitions / Events**:
+  - `TOGGLE_EXPAND`: Transitions `collapsed` to `expanded` (sets `isOpen` to `true`). Preserves scroll anchoring so chat view does not jump.
+  - `TOGGLE_COLLAPSE`: Transitions `expanded` to `collapsed` (sets `isOpen` to `false`). Preserves scroll anchoring.
+- **Database Reads/Writes**: None.
 - **API Request/Response Sequence**: None.
 
 ## Open questions
