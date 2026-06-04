@@ -56,7 +56,7 @@ Fill in anything missing.
 - Thread management CRUD
   - Current thread ID is synced with the URL so refreshing leads to the same thread.
   - Thread-level presets are strictly inherited from the selected preset. The active preset is displayed as a dropdown trigger in the Chat Header, allowing quick switching. A configure icon next to it allows editing the preset in a modal panel. If a built-in preset is edited, the UI prompts the user to "Clone and Customize" to create a new custom preset copy.
-  - Cascading deletes for thread checkpoints and messages are performed in batched transactions (deleting up to 500 records per chunk) scheduled asynchronously via microtasks or `requestIdleCallback` to keep the UI responsive.
+  - Cascading deletes for thread checkpoints, checkpoint writes, and messages are performed in batched transactions (deleting up to 500 records per chunk) scheduled asynchronously via `requestIdleCallback` to keep the UI responsive. See the [Asynchronous Batched Cascading Deletions](#10-asynchronous-batched-cascading-deletions) section for complete transaction and scheduling details.
   - Active thread workflows use a snapshot (`workflowSnapshot`) stored in the thread record. If the custom workflow definition is modified in the Workflow Manager, it does not affect already active/paused threads. Users can manually sync the thread to the latest workflow definition via a "Sync to Latest Workflow" button in the thread settings. The sync feature automatically detects if the update is a simple update to system prompts or presets (i.e. identical node IDs and edges). If so, it performs a "Soft Sync" that updates the `workflowSnapshot` inline without clearing the message history or checkpoints, allowing execution to resume with the new prompts/presets. If the graph topology has changed (nodes or edges added, removed, or renamed), it performs a "Hard Sync" (destructive) which prompts the user for confirmation, updates the snapshot, and purges all checkpoints/messages for the thread. A Hard Sync purges all checkpoints and message history, resetting the thread's chat feed to an empty state, while preserving the thread's metadata (such as its title, creation date, and selected preset ID).
 - System message management CRUD for automatically inserting system message to agents upon API request, but these automatically inserted messages shouldn't be persisted in the chat history.
   - Should support insertion depth (similar to SillyTavern, should be able to specify to attach system message at the Nth message from the beginning/end of the chat messages thread).
@@ -576,6 +576,94 @@ When a user deletes or edits a message at sequence index `idx`, or branches a th
     - If an injected system message resolves to index `0` (the very start of the payload), the compiler concatenates its content with the model's main system prompt (`systemInstruction`), separated by double newlines.
     - If an injected system message resolves to index `> 0`, it is mapped to a `user` role message with a prefix `[System Notification]: ...` to ensure compatibility with alternating role requirements while conveying the injected context.
 
+### 10. Asynchronous Batched Cascading Deletions
+
+To delete a thread and all of its associated records (messages, checkpoints, and checkpoint writes) without locking the IndexedDB database or blocking the main browser thread (which would freeze the React UI), the deletion is performed using a scheduled, chunked asynchronous transaction pipeline.
+
+#### A. DB Stores Involved and Indexes
+
+- **`threads`**: Stores the thread metadata. Key: `id`.
+- **`messages`**: Stores conversation history. Key: `id`. Indexed by `threadId` to support quick range queries.
+- **`checkpoints`**: Stores LangGraph checkpoints. Compound key: `[threadId, checkpointNs, checkpointId]`. Indexed by `threadId` to support range queries.
+- **`checkpoint_writes`**: Stores intermediate writes. Compound key: `[threadId, checkpointNs, checkpointId, taskId, idx]`. Indexed by `threadId` to support range queries.
+
+#### B. The Asynchronous Batched Deletion Algorithm
+
+When the user confirms the deletion of a thread:
+
+1. **Phase 1: UI Optimistic Invalidation (Immediate)**:
+   - The deletion processor opens a quick, atomic read-write transaction on the `threads` store.
+   - It updates the thread record's status to `"deleting"`.
+   - The Left Sidebar navigation immediately filters out any thread with status `"deleting"` from the rendered thread list context. To the user, the deletion appears instantaneous and zero-latency. If the active thread was deleted, the UI immediately redirects the URL route to a new empty chat view or the next available thread.
+2. **Phase 2: Asynchronous Chunking Pipeline**:
+   - The deletion processor initiates an asynchronous execution loop, scheduling batches using `requestIdleCallback` (with a timeout configuration of `1000ms` as a fallback) to run during the browser's idle periods. If `requestIdleCallback` is unavailable, `setTimeout(..., 0)` or microtasks are used.
+   - Each scheduled execution run performs the deletion of **at most 500 records** in a single database transaction across the child stores to keep transaction execution time under `16ms` (one frame at 60fps).
+3. **Phase 3: Delete Messages (Batch Size: 500)**:
+   - The loop checks the `messages` store first.
+   - Open a transaction on `messages` in `readwrite` mode.
+   - Retrieve a cursor using the `threadId` index: `index("threadId").openCursor(IDBKeyRange.only(threadId))`.
+   - Delete up to 500 matching message records using `cursor.delete()`.
+   - If the cursor reaches the end of the batch (500 records deleted) and indicates there are more records (via `cursor.continue()`), commit the transaction and schedule the next batch in the next idle callback.
+   - If the cursor returns `null` (all messages for the thread are deleted), transition to Phase 4.
+4. **Phase 4: Delete Checkpoint Writes (Batch Size: 500)**:
+   - Open a transaction on `checkpoint_writes` in `readwrite` mode.
+   - Retrieve a cursor using the `threadId` index: `index("threadId").openCursor(IDBKeyRange.only(threadId))`.
+   - Delete up to 500 checkpoint write records.
+   - If more records exist, commit the transaction and schedule the next batch.
+   - If cursor returns `null`, transition to Phase 5.
+5. **Phase 5: Delete Checkpoints (Batch Size: 500)**:
+   - Open a transaction on `checkpoints` in `readwrite` mode.
+   - Retrieve a cursor using the `threadId` index: `index("threadId").openCursor(IDBKeyRange.only(threadId))`.
+   - Delete up to 500 checkpoint records.
+   - If more records exist, commit the transaction and schedule the next batch.
+   - If cursor returns `null`, transition to Phase 6.
+6. **Phase 6: Finalize Thread Purge**:
+   - Open a transaction on `threads` in `readwrite` mode.
+   - Delete the single thread record from the `threads` store using its `id`.
+   - Commit the transaction.
+   - Dispatch `DELETE_SUCCESS` to the Left Sidebar State Machine.
+7. **Phase 7: Error Recovery / Startup Sweep**:
+   - If the user closes the browser tab or refreshes the page during the chunking loop, some messages or checkpoints will remain in the database, and the thread record will still exist with status `"deleting"`.
+   - During the application initialization phase (the `ViewState.initializing` state), the coordinator queries the `threads` store for any records matching `status == "deleting"`.
+   - For each found thread, it automatically restarts the asynchronous batched deletion pipeline from Phase 3, ensuring that storage is eventually fully reclaimed and no orphaned records leak.
+
+### 11. Error Rendering and Graph Runner Actor Error Transitions
+
+When a workflow run fails (due to API failures, network dropouts, or graph compilation problems), the app avoids global page blocks. Instead, it transitions to structured error states and displays contextual recovery options directly inside the conversation thread.
+
+#### A. Error Rendering Bubble UI
+
+If the thread execution fails and the coordinator enters `ExecutionState.error`, a dedicated, styled error bubble is rendered inline at the very end of the chat feed (as the latest item in the sequence, representing the failed execution turn).
+
+- **Visual Style**: Structured using a Carbon `Tile` or `InlineNotification` styled with Carbon's danger theme (`theme="danger"`, red border, light-red background, and a warning/error icon). Sized with a minimum of `44x44px` touch targets for interactive items.
+- **Content**: Displays:
+  - The name of the agent node that was executing when the error occurred.
+  - The specific error type/code (e.g. `401 Unauthorized`, `429 Rate Limit Exceeded`, `Timeout`, `CORS Blocked`).
+  - A detailed descriptive message of the error (e.g. API response body details or network diagnostics).
+- **Interactive Recovery Controls**:
+  - **"Retry" Button**: Re-initiates execution from the last successful checkpoint. Triggers `RETRY_STEP`.
+  - **"Change Preset" Dropdown**: Displays a selection dropdown listing alternative LLM presets. Selecting a preset updates the thread's `activePresetId` in the database, reloads the preset configs, and enables a "Resume with New Preset" action.
+  - **"Edit Last Message" Shortcut**: Focuses the inline message editor on the user's preceding message, prompting them to change their input or configuration and resubmit (which automatically performs rollback/truncation, clearing the error state).
+  - **"Dismiss" Button**: Clears the active error, transitions `ExecutionState` to `inactive`, and updates the thread's database status to `"inactive"`.
+
+#### B. Graph Runner Actor State Machine Error Transitions
+
+The child `graphRunnerActor` manages its internal error states as follows:
+
+- **`failed` Substates**:
+  - `failed.apiError`: Entered when the LLM API provider returns an error status (e.g. `400`, `401`, `429`, `500` status codes).
+  - `failed.networkError`: Entered when a connection fails, requests are blocked by CORS policies, or a step timeout (e.g., 30s) occurs.
+  - `failed.graphError`: Entered when LangGraph compilation fails, a node throws a validation exception, or routing fails.
+- **Error Transitions**:
+  - On entering any `failed` substate, the actor:
+    1. Triggers its internal cleanup, aborting any pending fetch requests via `AbortController`.
+    2. Writes the error type, code, and description to the thread record's `errorMessage` in the database, and sets the thread's `status` to `"error"`.
+    3. Dispatches `ERROR` (with error details) to the parent coordinator machine.
+  - The actor listens for the following recovery events while in `failed`:
+    - `RETRY_STEP`: Transitions the actor back to `initializing`, which re-loads the thread configuration, re-compiles the graph, and transitions to `running.requesting` to execute from the thread's `latestCheckpointId`.
+    - `CHANGE_PRESET_AND_RESUME` (contains new `presetId`): Updates the runner's preset config, transitions back to `initializing`, re-compiles the graph using the updated preset, and retries the failed node.
+    - `RESET_TO_CHECKPOINT` (contains `checkpointId`): Rolls back active checkpointer context and transitions the runner actor to `paused` (awaiting manual start or new inputs).
+
 ## User Interface (UI) Specification
 
 The application layout is built using the Carbon Design System (`@carbon/react`) out-of-the-box. There are no custom styling overrides (no custom glassmorphism, HSL custom palettes, or custom animations). The UI is structured into a persistent navigation layout with a primary content area that switches depending on the active view.
@@ -863,11 +951,15 @@ The parent coordinator state machine context maintains the following variables:
         - Execution Control Panel:
           - Pause / Resume / Force Consensus / Force Summarize: Disabled.
           - Abort: Enabled, triggers `CANCEL_EXECUTION`.
-- **`error`**: Displays error information if an API request or state transition fails.
+- **`error`**: Displays error details inline inside the Error Bubble at the end of the chat feed.
   - _Interactive Controls_:
-    - Error Banner Retry Button: Enabled, triggers `RETRY_STEP` or `RESUME`.
-    - Error Banner Dismiss Button: Enabled, transitions to `inactive`.
-    - Execution Control Panel: All execution buttons are disabled.
+    - Inline Error Bubble controls:
+      - Retry button: Enabled, triggers `RETRY_STEP` (re-spawns/resumes the runner actor).
+      - Preset selector dropdown: Enabled, allows selecting an alternative preset, triggering `CHANGE_PRESET_AND_RESUME`.
+      - Edit & Resubmit button: Triggers message editor scroll/focus.
+      - Dismiss button: Enabled, triggers `DISMISS_ERROR` (transitions parent `ExecutionState` to `inactive` and updates the thread status to `"inactive"` in IndexedDB).
+    - Main Chat Input: Disabled.
+    - Execution Control Panel: Resume button enabled (acts as Retry); other buttons disabled.
 
 ### 3. Resolved State Machine Design Decisions
 
@@ -1281,13 +1373,14 @@ Manages the active thread list loading, searching, and thread-level cascading de
     - _Modal buttons_: Disabled.
     - _Confirm Delete Button_: Disabled, displays loading spinner.
     - _Cancel Button_: Disabled.
+    - _Background Behavior_: Triggers optimistic invalidation by setting the thread status to `"deleting"`, removing it from local sidebar search list, and launching the chunked async deletion loop.
 - **Transitions / Events**:
-  - `LOAD_THREADS` (contains threads): Updates the `threads` list.
+  - `LOAD_THREADS` (contains threads): Updates the `threads` list (filters out any threads with status `"deleting"`).
   - `FILTER_THREADS` (contains query): Updates `searchQuery`.
   - `TRIGGER_DELETE` (contains threadId): Sets `deletingThreadId` and transitions to `confirmingDelete`.
-  - `CONFIRM_DELETE`: Transitions `confirmingDelete` to `deleting`.
+  - `CONFIRM_DELETE`: Transitions `confirmingDelete` to `deleting` (triggers optimistic UI updates and schedules background async chunked deletion).
   - `CANCEL_DELETE`: Transitions `confirmingDelete` back to `idle` (clears `deletingThreadId`).
-  - `DELETE_SUCCESS`: Transitions `deleting` back to `idle` (clears `deletingThreadId`, dispatches URL navigate if the deleted thread was active).
+  - `DELETE_SUCCESS`: Transitions `deleting` back to `idle` (clears `deletingThreadId`, dispatches URL navigate to root or another thread if the deleted thread was active).
   - `DELETE_FAILURE` (contains error): Transitions `deleting` to `idle` (sets `errorMessage` and displays sidebar error warning, clears `deletingThreadId`).
 
 #### L. Preset Editor State Machine
