@@ -1598,7 +1598,8 @@ Governs the JSON editor interface used to inspect or build custom agent orchestr
   - `VALIDATE_FAILURE` (contains errors): Transitions back to `editing.dirty` (populates `validationErrors` list rendered under the editor text area).
   - `SAVE_SUCCESS`: Transitions to `editing.clean` (updates `originalContent`, navigates back to list).
   - `SAVE_FAILURE` (contains error): Transitions to `error` (updates `errorMessage`).
-  - `DELETE_WORKFLOW` (contains workflowId): Transitions `editing` or `viewing` to `deleting`. Checks if the workflow is built-in, or is currently in use by any threads. If blocked, transitions back to `editing` / `viewing` (updates `errorMessage` with referencing threads). If safe, performs the delete and transitions to `SAVE_SUCCESS`.
+  - `DELETE_WORKFLOW` (contains workflowId): Transitions `editing` or `viewing` to `deleting`. Checks if the workflow is built-in, or is currently in use by any threads. If blocked, transitions back to `editing` / `viewing` (updates `errorMessage` with referencing threads). If safe, performs the delete and transitions to `DELETE_SUCCESS`.
+  - `DELETE_SUCCESS`: Transitions to the workflow list view (navigates away) and resets the editor context.
   - `CANCEL`:
     - If `isDirty` is `false`, transitions to list view.
     - If `isDirty` is `true`, transitions to `promptingDiscard`.
@@ -1933,12 +1934,12 @@ Governs the form in the "New Chat" selection panel when no thread is active.
   - `CHANGE_PRESET` (contains presetId): Updates `selectedPresetId` in context.
   - `UPDATE_MESSAGE` (contains message): Updates `initialMessage` in context.
   - `SUBMIT`: Transitions `idle` or `error` to `submitting`.
-  - `SUBMIT_SUCCESS` (contains newThreadId): Transitions `submitting` to `idle` (resets message input, triggers route navigation to the new thread).
+  - `SUBMIT_SUCCESS` (contains newThreadId): Transitions `submitting` to `idle` (resets message input, triggers route navigation to the new thread, and dispatches an event to the parent coordinator to auto-start execution).
   - `SUBMIT_FAILURE` (contains error): Transitions `submitting` to `error` (updates `errorMessage`).
   - `DISMISS_ERROR`: Transitions `error` to `idle` (clears `errorMessage`).
 - **Database Reads/Writes**:
   - **Reads**: During `loading`, reads active presets from the `presets` store and custom/built-in workflows from the `workflows` store.
-  - **Writes**: During `submitting`, opens a read-write transaction on `threads` and `messages`. Creates a new thread record (generates UUID, sets title, copies workflow snapshot, sets default active preset ID, sets `status = "inactive"`, sets `tokenStats` to `{ promptTokens: 0, completionTokens: 0, totalTokens: 0 }`). Appends the user's initial prompt message to the `messages` store under `sequence = 0`, then commits the transaction.
+  - **Writes**: During `submitting`, opens a read-write transaction on `threads` and `messages`. Creates a new thread record (generates UUID, sets title, copies workflow snapshot, sets default active preset ID, sets `status = "inactive"`, sets `tokenStats` to `{ promptTokens: 0, completionTokens: 0, totalTokens: 0 }`). Appends the user's initial prompt message to the `messages` store under `sequence = 0`, then commits the transaction. The actual transition to `executing` occurs when the parent coordinator loads the thread and processes the auto-start event.
 - **API Request/Response Sequence**: None.
 
 #### T. Thread Settings Modal State Machine
@@ -1984,6 +1985,57 @@ Governs renaming a thread, switching thread-specific presets, syncing workflows,
 - **Database Reads/Writes**:
   - **Reads**: Reads target thread details from the `threads` store, and active presets list from the `presets` store.
   - **Writes**: On `SAVE`, opens a read-write transaction on the `threads` store to update the thread title and active preset ID values, then commits.
+- **API Request/Response Sequence**: None.
+
+#### U. Chat Feed Auto-Scroll State Machine
+
+Governs the scrolling behavior of the chat feed to ensure a smooth reading experience while content streams in.
+
+- **Context**:
+  - `isAtBottom`: `boolean` (whether the scroll position is pinned to the bottom)
+  - `scrollTimeout`: `number | null` (debouncing auto-scroll events)
+- **States**:
+  - `lockedToBottom`: Auto-scroll is active. As new messages or tokens arrive, the scroll view is automatically pushed to the bottom.
+  - `userScrolledUp`: The user has manually scrolled up to read history. Auto-scroll is paused so their reading experience is not disrupted.
+    - _Scroll to Bottom Button_: Visible and enabled.
+- **Transitions / Events**:
+  - `SCROLL_EVENT` (contains scroll position info):
+    - If scroll is near bottom (e.g. within 10px), transitions to `lockedToBottom`.
+    - If scroll is further up, transitions to `userScrolledUp`.
+  - `NEW_MESSAGE` / `NEW_TOKEN`:
+    - If in `lockedToBottom`, smoothly scrolls to bottom.
+    - If in `userScrolledUp`, does nothing (leaves scroll position unchanged, optionally shows a badge on the "Scroll to Bottom" button).
+  - `SCROLL_TO_BOTTOM_CLICKED`: Transitions to `lockedToBottom` and forces a scroll to the bottom.
+- **Database Reads/Writes**: None.
+- **API Request/Response Sequence**: None.
+
+#### V. Chat Input Area State Machine
+
+Governs the text area and send button behavior in the active chat thread.
+
+- **Context**:
+  - `draftMessage`: `string`
+  - `isShiftPressed`: `boolean`
+- **States**:
+  - `disabled`: Input is blocked by the parent machine (e.g. executing, waiting for approval, onboarding).
+    - _Text Area Field_: Disabled.
+    - _Send Button_: Disabled.
+  - `enabled`: Ready for user input.
+    - `enabled.empty`: No text typed.
+      - _Send Button_: Disabled.
+    - `enabled.typing`: Text is present.
+      - _Send Button_: Enabled.
+- **Transitions / Events**:
+  - `ENABLE`: Transitions from `disabled` to `enabled`.
+  - `DISABLE`: Transitions to `disabled`.
+  - `UPDATE_DRAFT` (contains text):
+    - If text is empty, transitions to `enabled.empty`.
+    - If text is non-empty, transitions to `enabled.typing`.
+  - `SUBMIT`: (Triggered by Send Button or Enter key without Shift)
+    - Guard: only if `draftMessage` is non-empty.
+    - Action: Dispatches the message to the parent coordinator machine for processing and clears `draftMessage`.
+    - Transitions back to `enabled.empty`.
+- **Database Reads/Writes**: None (handled by parent machine on submit).
 - **API Request/Response Sequence**: None.
 
 ## Open questions
