@@ -105,13 +105,26 @@ We propose using the following stores in the `in-browser-llm-chat-db` database:
        - The active agent's own previous messages are kept as `assistant` role.
        - The active agent's own tool calls/results are kept in their native roles (`assistant` for tool calls, `tool` for results) and kept in sequence.
        - All other messages (actual user messages, other agents' messages, and other agents' tool calls/results) are mapped to the `user` role.
-    3. **Prefix Non-User Messages**: For messages mapped to the `user` role that did not originate from the human user, prefix the content with the sender's name/identifier (e.g., `[Agent Name]: ...` or `[Tool Name Result]: ...`).
-    4. **Merge Consecutive Messages of the Same Role**:
-       - Consecutive `user` messages (including actual user messages and mapped-to-user messages) are merged into a single logical `user` message, concatenating their content with double newlines.
-       - Consecutive `assistant` messages from the active agent (e.g. separate reasoning, text, or tool_call entries) are merged into a single logical `assistant` message, combining text/reasoning contents and populating the `tool_calls` array.
+    3. **On-the-fly Context Pruning**: If the agent node specifies `maxHistoryMessages`, the compiler truncates the base history on-the-fly before preparing the API payload. It traverses the compiled messages backward from the latest message, keeping up to `maxHistoryMessages` messages.
+    4. **Pruning Boundary Adjustment**: If the cutoff point falls within a tool call/response transaction (i.e., a tool result is kept but its preceding tool call is excluded, or vice versa), the compiler adjusts the cutoff boundary backward to include the complete tool transaction. The compiler must never split a tool call and its corresponding tool result. Let the resulting list of pruned messages be `H`.
+    5. **Compile and Inject System Messages**:
+       - Retrieve all active global system messages and workflow-specific system messages configured to be injected automatically.
+       - For each system message, calculate its insertion index relative to `H`:
+         - If depth `D` is positive or zero (`D >= 0`), `targetIndex = D`.
+         - If depth `D` is negative (`D < 0`), `targetIndex = H.length + D` (e.g., depth `-1` means inserting at index `H.length - 1`, right before the last message).
+         - Clamp the index: `targetIndex = Math.max(0, Math.min(H.length, targetIndex))`.
+       - **Deduplication**: If any two system messages have the exact same `content`, keep only the one with the highest precedence (workflow-specific over global; and if same type, the one with the smaller depth / earlier index). Discard the other.
+       - **Merging at Same Index**: If multiple distinct system messages resolve to the same `targetIndex`, merge their content using double newlines (`\n\n`), with workflow-specific content preceding global content, and other messages sorted by their configuration order.
+       - **Insertion**: Insert the unique/merged system messages into `H` at their calculated indices.
+    6. **Assign Prefix and Format for Strict APIs**:
+       - For messages in `H` mapped to the `user` role that did not originate from the human user (such as other agents' messages or tool results), prefix the content with the sender's name/identifier (e.g., `[Agent Name]: ...` or `[Tool Name Result]: ...`).
+       - For APIs that do not support arbitrary `system` role messages in the conversation contents (like Gemini):
+         - If a system message is at index `0` (the very start), merge it into the main `systemInstruction` or `systemPrompt` parameter of the LLM call (concatenated with double newlines).
+         - If a system message is at index `> 0`, convert its role to `user` and prefix its content with `[System Notification]: ...`.
+    7. **Merge Consecutive Messages of the Same Role**:
+       - Merge consecutive `user` messages (including actual user messages, mapped-to-user messages, and converted system messages) into a single logical `user` message, concatenating their content with double newlines.
+       - Merge consecutive `assistant` messages from the active agent (e.g. separate reasoning, text, or tool_call entries) into a single logical `assistant` message, combining text/reasoning contents and populating the `tool_calls` array.
          This maintains strictly alternating user/assistant roles (or user/assistant/user/assistant) and ensures compatibility with strict API providers without losing the distinct identities of the debating agents.
-    5. **On-the-fly Context Pruning**: If the agent node specifies `maxHistoryMessages`, the compiler truncates history on-the-fly before preparing the API payload. It traverses compiled messages backward from the latest message, keeping up to `maxHistoryMessages` messages (system prompts and injected system messages are always preserved at their designated positions and do not count towards this limit).
-    6. **Pruning Boundary Adjustment**: If the cutoff point falls within a tool call/response transaction (i.e. a tool result is kept but its preceding tool call is excluded, or vice versa), the compiler adjusts the cutoff boundary backward to include the complete tool transaction. The compiler must never split a tool call and its corresponding tool result to avoid formatting validation errors with strict API providers.
 - **`checkpoints`**: LangGraph checkpointer state to enable resuming active graph execution and supporting history rewinding/branching.
   - Key: `[threadId, checkpointNs, checkpointId]` (compound key)
   - Indices: `threadId` (indexed to support cascading cleanup on thread deletion)
@@ -415,7 +428,31 @@ These tools allow LLM agents to interactively create or modify custom workflows 
   - The debaters themselves must call a `declare_consensus` tool when they agree, which terminates the loop.
   - **Tool Exclusion Policy**: The workflow configuration must support forcing a minimum of X rounds of loop before the `declare_consensus` tool is given to the debaters (X can be set to 0 to disable this forced loop). During the first X rounds, the compiler excludes the `declare_consensus` tool from the tool bindings for the debater LLM calls, making the tool unavailable to them.
   - **General Loop Control Panel**: Any workflow with loops (including the debate workflow) should render a control card in the UI showing the current round, number of turns, and token usage, with buttons to Pause, Resume, or Force Consensus / Summarize early. On mobile viewports, the panel collapses into a compact, sticky bottom bar (or overlay) showing the round count and token statistics, where a single tap opens a full-screen control overlay detailing all stats and controls.
-  - **Budget Policy Temporary Overrides**: Clicking "Increase Budget & Resume" (e.g. when the token limit is exceeded) applies a temporary override to the active execution run's state (stored in the running actor/thread execution context) rather than permanently updating the preset in the database. The temporary override is reset when the execution finishes or when a new user message is submitted.
+  - **Budget Policy and Run Enforcement Details**:
+    - **Definition of an Execution Run**: An execution run (or cycle) is the sequence of automated graph steps executed from the moment the user triggers execution (either by sending a new message or clicking "Resume" / "Increase Budget & Resume") until the workflow pauses (e.g., at an `input` node, tool interrupt, or error) or terminates.
+    - **Run-Level Tracking Context**: The `Graph Runner Actor` maintains three local tracking variables in its context:
+      - `stepsInCurrentRun`: A counter tracking the number of graph node execution steps completed during this run.
+      - `tokensInCurrentRun`: A counter tracking the sum of all tokens (both prompt and completion) consumed during this run.
+      - `budgetOverride`: A temporary budget configuration structure `{ maxStepsWithoutUser: number, maxTokensPerRun: number | null } | null`, initialized to `null`.
+    - **Verification and Enforcement Checks**: Immediately after each step of the LangGraph execution is completed:
+      1. If the step generated an LLM response containing token usage statistics inside the message's `metadata.usage`, the runner actor extracts `prompt_tokens` and `completion_tokens`.
+      2. It adds these counts to the `tokensInCurrentRun` counter (as well as updating the cumulative thread stats in the database).
+      3. It increments `stepsInCurrentRun` by `1`.
+      4. It resolves the active budget limits: if `budgetOverride` is not `null`, it uses the overridden limits; otherwise, it falls back to the preset's configured `maxStepsWithoutUser` and `maxTokensPerRun`.
+      5. It checks if the budget is exceeded:
+         - If `stepsInCurrentRun >= activeMaxSteps`
+         - Or if `activeMaxTokens !== null` and `tokensInCurrentRun >= activeMaxTokens`
+      6. If either condition is met, it halts execution, persists the current checkpoint to IndexedDB, dispatches a `BUDGET_EXCEEDED` event (containing `currentTokens: tokensInCurrentRun`, `maxTokens: activeMaxTokens`, and `stepCount: stepsInCurrentRun`) to the parent coordinator machine, and transitions its own state to `interrupted.budgetExceeded`.
+    - **Temporary Budget Overrides**:
+      - Upon receiving `BUDGET_EXCEEDED`, the parent coordinator machine transitions its `ExecutionState` to `awaitingHumanInput.budgetExceeded`, causing the chat feed to render the inline `Budget Exceeded Card` and disabling the main chat text input.
+      - If the user clicks "Increase Budget & Resume" in the card, the card transitions to `resuming` and dispatches `RESUME_WITH_BUDGET_OVERRIDE` to the parent coordinator.
+      - The parent coordinator calculates the temporary override limits:
+        - `stepsOverride = stepsInCurrentRun + originalMaxSteps` (or `+10` if `originalMaxSteps` was 0).
+        - `tokensOverride = tokensInCurrentRun + (originalMaxTokens || 100000)`.
+      - The parent coordinator transitions back to `executing`, sends the `RESUME` event with these overrides to the runner actor, and dispatches `RESUME_SUCCESS` to the card (transitioning the card state to `completed`).
+      - The runner actor saves these overrides to its local `budgetOverride` context, transitions to `running`, and resumes execution.
+    - **Resetting Run Trackers and Overrides**:
+      - The runner's local trackers (`stepsInCurrentRun` and `tokensInCurrentRun`) and the `budgetOverride` context are reset to `0` and `null` respectively when the execution run concludes (transitions to `completed` or `paused` due to normal termination or user input interrupts), or when the user submits a new message (which begins a new execution run).
   - **Force Consensus / Force Summarize early**:
     - **Force Consensus**: Sets the state's `consensusReached` flag to `true` via `graph.updateState` and resumes the graph execution, causing the routing logic to bypass further debate rounds and transition straight to the summarizer node.
     - **Force Summarize early**: Bypasses any remaining evaluation and uses a state update or routing override (via `graph.updateState` or router override logic) to transition the graph execution directly to the summarizer node.
@@ -514,13 +551,22 @@ When a user deletes or edits a message at sequence index `idx`, or branches a th
 ### 9. System Message Injection Details
 
 - System messages to automatically inject are configured per workflow or globally.
+- **Integration with Pruning**: The compilation pipeline performs system message injection _after_ "On-the-fly Context Pruning" has been applied to the message history. The insertion depth indices are computed and applied relative to the pruned base history `H` rather than the unpruned total history. This ensures injected system messages are correctly positioned within the active context window sent to the LLM and are not lost during truncation.
 - **Insertion Depth**:
-  - Depth `0`: Prepend to the very beginning of the messages list.
-  - Depth `N` (positive): Insert after the N-th message.
-  - Depth `-N` (negative): Insert N messages from the end of the history.
-  - _Note_: If the active message history length is less than the calculated injection index, the insertion index is clamped to the range of valid indices: `Math.max(0, Math.min(messages.length, targetIndex))`.
+  - Depth `0`: Prepend to the very beginning of the message list (target index `0`).
+  - Depth `N` (positive): Insert after the N-th message (target index `N` in the 0-indexed list).
+  - Depth `-N` (negative): Insert N messages from the end of the history (target index `H.length - N` in the 0-indexed list). For example, depth `-1` inserts the message right before the last message (target index `H.length - 1`).
+  - _Note_: The calculated target index is clamped to the range of valid insertion indices: `targetIndex = Math.max(0, Math.min(H.length, targetIndex))`.
+- **Deduplication**: If two or more system messages have the exact same `content`, only one copy is kept to prevent redundant prompt pollution. Precedence is determined as follows:
+  - Workflow-specific system messages take precedence over global system messages.
+  - If multiple duplicates are of the same configuration type (e.g., both are global), the one configured with the shallower insertion depth (yielding the smaller target index) is kept.
+- **Merging at Same Index**: If multiple distinct system messages (after deduplication) resolve to the exact same `targetIndex`, they are merged into a single system message by concatenating their text content with double newlines (`\n\n`). In this merged message, workflow-specific system messages are ordered before global system messages, and if they are of the same type, they are sorted by their original configuration order.
 - **Dynamic On-the-Fly Injection**: When sending context to the LLM API, these messages are injected dynamically immediately prior to calling the LLM within the agent node execution. They are **never** persisted to the IndexedDB `messages` store or stored in the LangGraph state/checkpoint history. This ensures that the message list in the checkpoint remains clean and matches the user's persisted database messages. Injected messages are invisible in the main chat feed, and can only be viewed/previewed within a "Preview API Payload" overlay or in the workflow settings panel.
-- **Merging Global & Workflow Injection**: When compiling the final prompt payload for an LLM node, the runner merges both global injected system messages and workflow-specific injected system messages based on their respective insertion depths.
+- **Role Mapping and Compatibility with Strict APIs**:
+  - For models/APIs that support `system` role messages at arbitrary positions (like OpenRouter), injected system messages are sent in the payload as `role: "system"`.
+  - For APIs that do not support arbitrary system messages (like Gemini, which expects a single `systemInstruction` in the API configuration and only `user`/`model` roles in the contents list):
+    - If an injected system message resolves to index `0` (the very start of the payload), the compiler concatenates its content with the model's main system prompt (`systemInstruction`), separated by double newlines.
+    - If an injected system message resolves to index `> 0`, it is mapped to a `user` role message with a prefix `[System Notification]: ...` to ensure compatibility with alternating role requirements while conveying the injected context.
 
 ## User Interface (UI) Specification
 
@@ -659,11 +705,11 @@ stateDiagram-v2
             awaitingUnlock --> executing : UNLOCK_SUCCESS
             awaitingUnlock --> inactive : CANCEL_UNLOCK
 
-            executing --> awaitingHumanInput : INTERRUPT / ASK_QUESTIONS_TRIGGER / PAUSE
+            executing --> awaitingHumanInput : INTERRUPT / ASK_QUESTIONS_TRIGGER / PAUSE / BUDGET_EXCEEDED
             executing --> inactive : EXECUTION_COMPLETE
             executing --> error : EXECUTION_ERROR
 
-            awaitingHumanInput --> executing : RESUME / SUBMIT_TOOL_RESPONSE / SUBMIT_APPROVAL
+            awaitingHumanInput --> executing : RESUME / SUBMIT_TOOL_RESPONSE / SUBMIT_APPROVAL / RESUME_WITH_BUDGET_OVERRIDE
             awaitingHumanInput --> checkingKeys : FORCE_CONSENSUS / FORCE_SUMMARIZE
             awaitingHumanInput --> inactive : CANCEL_EXECUTION
 
@@ -722,7 +768,7 @@ The state machine context maintains the following variables:
 - **`checkingKeys`**: A transient state that checks if the API keys are encrypted and locked. If they are unlocked (or not encrypted), transitions immediately to `executing`. If they are encrypted and locked, transitions to `awaitingUnlock`.
 - **`awaitingUnlock`**: Active when API keys are encrypted and locked, and the user has initiated or resumed a workflow run. Displays a modal dialog requesting the master password. If the user enters the correct password (`UNLOCK_SUCCESS`), the keys are decrypted in-memory, and execution transitions to `executing`. If the user cancels (`CANCEL_UNLOCK`), it transitions back to `inactive`.
 - **`executing`**: Running `@langchain/langgraph/web` steps in the browser (input disabled).
-- **`awaitingHumanInput`**: Graph execution is suspended (either due to a manual approval card or an `ask_questions` tool interrupt).
+- **`awaitingHumanInput`**: Graph execution is suspended (either due to a manual approval card, an `ask_questions` tool interrupt, or a step/token budget limit being exceeded). If suspended due to a budget limit being exceeded, the state machine enters the `awaitingHumanInput.budgetExceeded` sub-state. In this sub-state, the main chat input remains blocked/disabled, and the inline `Budget Exceeded Card` is displayed in the chat feed to prompt the user for action (either "Increase Budget & Resume" or "Abort").
 - **`error`**: Displays error information if an API request or state transition fails. Manually resuming execution from the last successful checkpoint via `RETRY_STEP` or `RESUME` transitions the state machine back to `checkingKeys`.
 - **Force Consensus / Force Summarize Early**: Permitted only in `inactive` or `awaitingHumanInput` states. Triggering `FORCE_CONSENSUS` or `FORCE_SUMMARIZE` executes an asynchronous database transaction to update the active thread's checkpoint state (setting the `consensusReached` flag to `true` or bypassing evaluation routing in the graph state) before transitioning the machine to `checkingKeys` to resume graph execution.
 
@@ -846,21 +892,22 @@ Governs database-modifying tool calls (like creating or updating a workflow) tha
 
 #### E. Budget Exceeded Card State Machine
 
-Rendered inline when a running thread exceeds its cumulative token budget or steps.
+Rendered inline within the chat feed when a running thread execution cycle exceeds its token budget or step limits.
 
 - **Context**:
-  - `currentTokens`: `number`
-  - `maxTokens`: `number`
-  - `stepCount`: `number`
+  - `currentTokens`: `number` (extracted from `tokensInCurrentRun` when the interrupt triggered)
+  - `maxTokens`: `number | null` (the token budget limit that was exceeded)
+  - `stepCount`: `number` (the step limit that was exceeded)
 - **States**:
-  - `prompting`: Displays warning card with "Increase Budget & Resume" and "Abort" buttons active.
-  - `resuming`: Sending temporary override budget settings and resuming execution.
-  - `aborted`: Aborting and clearing active execution.
-  - `completed`: Card is disabled/read-only (transitioned once execution is successfully resumed or aborted).
+  - `prompting`: Displays warning card inline. "Increase Budget & Resume" and "Abort" buttons are active.
+  - `resuming`: User clicked resume; waiting for parent machine to apply override, notify the runner actor, and restart execution.
+  - `aborted`: User clicked abort; waiting for parent machine to cancel execution, terminate runner actor, and mark thread status as inactive.
+  - `completed`: The card's actions are disabled/read-only (transitioned once execution is successfully resumed or aborted).
 - **Transitions / Events**:
-  - `INCREASE_BUDGET`: Transitions `prompting` to `resuming` (sends `RESUME` with override context to main machine).
-  - `ABORT`: Transitions `prompting` to `aborted` (sends `CANCEL_EXECUTION` to main machine).
-  - `RESUME_SUCCESS` / `ABORT_SUCCESS`: Transitions `resuming` or `aborted` to `completed`.
+  - `INCREASE_BUDGET`: Transitions `prompting` to `resuming` (sends `RESUME_WITH_BUDGET_OVERRIDE` to parent machine).
+  - `ABORT`: Transitions `prompting` to `aborted` (sends `CANCEL_EXECUTION` to parent machine).
+  - `RESUME_SUCCESS`: Transitions `resuming` to `completed` (dispatched by parent machine upon starting the resumed run).
+  - `ABORT_SUCCESS`: Transitions `aborted` to `completed` (dispatched by parent machine upon terminating the run).
 
 #### F. Workflow Syncing (Soft/Hard Sync) State Machine
 
@@ -1107,22 +1154,31 @@ Governs the lifecycle of the LangGraph background execution runner, which runs a
   - `presetConfig`: `any`
   - `abortController`: `AbortController | null`
   - `currentStepIndex`: `number`
+  - `stepsInCurrentRun`: `number` (tracks steps in the active execution cycle)
+  - `tokensInCurrentRun`: `number` (tracks cumulative tokens in the active execution cycle)
+  - `budgetOverride`: `{ maxStepsWithoutUser: number; maxTokensPerRun: number | null } | null` (active temporary budget override values)
 - **States**:
   - `initializing`: Compiles the `StateGraph` using the `workflowSnapshot`, instantiates the custom checkpointer, and prepares the runner.
   - `running`: Actively invoking `graph.stream()` or resuming the stream generator step-by-step.
     - `running.requesting`: Sending request to LLM API (direct client call or through CORS proxy).
     - `running.streaming`: Buffering text and reasoning tokens in real-time, throttling UI updates.
   - `paused`: Suspended, persisting state and waiting for further instructions.
-  - `interrupted`: Suspended at an `input` node, or due to a tool interrupt (such as `ask_questions` or manual database approval).
+  - `interrupted`: Suspended awaiting human action, response, or decisions.
+    - `interrupted.awaitingToolInput`: Paused at a tool call interrupt (such as the `ask_questions` tool).
+    - `interrupted.awaitingApproval`: Paused at a database-modifying action tool requiring user approval.
+    - `interrupted.budgetExceeded`: Paused because step or token execution limits have been exceeded.
   - `completed`: Workflow has finished execution successfully.
   - `failed`: An unhandled execution or connection error occurred.
 - **Transitions / Events**:
   - `START`: Transition from `initializing` to `running.requesting`.
   - `RECEIVE_TOKEN` (contains token, reasoning, and delta): Updates buffering state, emits throttled event to parent.
-  - `STEP_COMPLETE` (contains message, checkpointId, and usage): Writes message and token usage to database, persists checkpoint, updates `currentStepIndex`, and routes to next node.
+  - `STEP_COMPLETE` (contains message, checkpointId, and usage): Writes message and token usage to database, persists checkpoint, updates `currentStepIndex`, updates `stepsInCurrentRun` and `tokensInCurrentRun`, and performs budget checks:
+    - If budget limits (from `budgetOverride` or `presetConfig`) are exceeded, sends `BUDGET_EXCEEDED` to parent coordinator and transitions to `interrupted.budgetExceeded`.
+    - Otherwise, routes to next node.
   - `PAUSE`: Aborts active API requests via `abortController`, persists checkpoint, transitions to `paused` (notifies parent machine).
-  - `INTERRUPT` (contains interrupt details/form schema): Persists checkpoint, transitions to `interrupted` (notifies parent machine).
-  - `SUBMIT_TOOL_RESPONSE` (contains tool response): Transition from `interrupted` back to `running.requesting` (passes tool response to graph state).
+  - `INTERRUPT` (contains interrupt details/form schema): Persists checkpoint, transitions to `interrupted.awaitingToolInput` (for interactive form tool calls) or `interrupted.awaitingApproval` (for DB modification tool calls) and notifies parent machine.
+  - `SUBMIT_TOOL_RESPONSE` (contains tool response): Transition from `interrupted.awaitingToolInput` or `interrupted.awaitingApproval` back to `running.requesting` (passes tool response to graph state, and resets `stepsInCurrentRun` and `tokensInCurrentRun` to `0` and `budgetOverride` to `null` due to human intervention/new execution cycle).
+  - `RESUME_WITH_BUDGET_OVERRIDE` (contains stepOverride and tokenOverride): Transition from `interrupted.budgetExceeded` back to `running.requesting` (stores overrides in `budgetOverride` and resumes).
   - `COMPLETE`: Persists final state, updates thread status to `"inactive"`, transitions to `completed`.
   - `ERROR` (contains error details): Transitions to `failed` (updates thread status to `"error"`, notifies parent machine).
 
