@@ -71,18 +71,18 @@ Fill in anything missing.
 
 We propose using the following stores in the `in-browser-llm-chat-db` database:
 
-- **`settings`**: For global configs (API keys stored in plain text, active theme, default presets).
-  - Key: `key` (string, e.g., `"api_keys"`, `"ui_config"`)
+- **`settings`**: For global configs (API keys stored in plain text or optionally encrypted, active theme, default presets, global CORS proxy URL).
+  - Key: `key` (string, e.g., `"api_keys"`, `"ui_config"`, `"encryption_settings"`)
   - Value: `{ value: any }`
 - **`presets`**: LLM configurations.
   - Key: `id` (UUID)
-  - Fields: `name`, `provider` (`"openrouter" | "gemini"`), `model` (string), `apiKey` (if not global), `temperature`, `maxTokens`, `reasoningLevel`, `budgetPolicy` (`{ maxStepsWithoutUser: number }`)
+  - Fields: `name`, `provider` (`"openrouter" | "gemini"`), `model` (string), `apiKey` (if not global), `temperature`, `maxTokens`, `reasoningLevel`, `budgetPolicy` (`{ maxStepsWithoutUser: number }`), `corsProxy` (null or string)
 - **`workflows`**: Serialized LangGraph definitions.
   - Key: `id` (string/UUID)
   - Fields: `name`, `description`, `isBuiltIn` (boolean), `nodes` (Array of node definitions), `edges` (Array of transition definitions)
 - **`threads`**: Chat sessions.
   - Key: `id` (UUID)
-  - Fields: `title`, `workflowId`, `activePresetId`, `createdAt`, `updatedAt`, `parentThreadId` (null or parent UUID for branched threads), `parentMessageId` (null or parent message UUID at which branching occurred), `status` (`"inactive" | "executing" | "awaiting_input" | "error"`), `errorMessage` (null or string), `latestCheckpointId` (null or string), `latestCheckpointNs` (null or string)
+  - Fields: `title`, `workflowId`, `activePresetId`, `createdAt`, `updatedAt`, `parentThreadId` (null or parent UUID for branched threads), `parentMessageId` (null or parent message UUID at which branching occurred), `status` (`"inactive" | "executing" | "awaiting_input" | "error"`), `errorMessage` (null or string), `latestCheckpointId` (null or string), `latestCheckpointNs` (null or string), `tokenStats` (`{ promptTokens: number, completionTokens: number, totalTokens: number } | null`)
   - _Branching Behavior_: When branching a thread, the messages from the parent thread up to and including the `parentMessageId` are copied (cloned) to the new thread in the `messages` store under the new thread's ID. The checkpoint associated with the `parentMessageId` (specifically, the parent checkpoint matching `[parentThreadId, checkpointNs, checkpointId]`) must also be copied to the `checkpoints` store under the new thread's ID (`[newThreadId, checkpointNs, checkpointId]`) to serve as the initial state of the branched thread. Subsequent checkpoints are not copied.
 - **`messages`**: Individual messages in threads.
   - Key: `id` (UUID)
@@ -150,6 +150,7 @@ Before a custom workflow is compiled or saved, the editor performs structural va
 2. **Edge Validity**: The `from` and `to` properties of every edge must reference existing node IDs in the `nodes` array.
 3. **Graph Entry Point**: There must be exactly one entry point node (defined either as an `input` node or a node with no incoming edges). If multiple entry nodes or none are found, compilation fails.
 4. **Loop Exit Paths**: Any loop/cycle in the graph must contain at least one conditional routing node (such as a `consensus_check` node or an `agent` node with tool capabilities) that can branch out of the loop, preventing compile-time or run-time infinite loop errors.
+5. **Topology Restrictions**: The workflow topology must be restricted to sequential and conditional execution DAGs. Parallel execution branches (where a node has multiple concurrent outgoing paths executing at once) are not supported.
 
 #### Dynamic Prompt Placeholders
 
@@ -185,8 +186,9 @@ The `ask_questions` tool is defined as:
       z.object({
         id: z.string(),
         text: z.string(),
-        options: z.array(z.string()), // suggested multi-select options
-        allowFreetext: z.boolean().default(true),
+        type: z.enum(["single-select", "multi-select", "free-text"]).default("multi-select"),
+        options: z.array(z.string()).optional(), // suggested options (required for select types)
+        allowFreetext: z.boolean().default(true), // allows comments/free-text alongside select options
       }),
     ),
   });
@@ -210,7 +212,7 @@ The `ask_questions` tool is defined as:
   - **General Loop Control Panel**: Any workflow with loops (including the debate workflow) should render a control card in the UI showing the current round, number of turns, and token usage, with buttons to Pause, Resume, or Force Consensus / Summarize early. On mobile viewports, the panel collapses into a compact, sticky bottom bar (or overlay) showing the round count and token statistics, where a single tap opens a full-screen control overlay detailing all stats and controls.
   - **Loop Round & Turn Tracking**: `turnCount` is defined as the total number of agent execution steps (nodes executed or messages generated) during the active run. `currentRound` tracks loop iterations and is incremented each time execution transitions back to a designated loop header node (e.g. `Debater_A` in the debate workflow). The workflow JSON schema supports designating a node as the `loopHeader` to identify where a round boundary is.
   - **Step-by-Step Execution and Pausing**: Pausing a loop is implemented using LangGraph's step-by-step streaming capability. The graph runner consumes the stream generator step-by-step. When "Pause" is clicked or the thread is switched, the runner stops pulling from the generator, aborts any active streaming LLM connection using an `AbortController` (to save costs and prevent orphaned calls), persists the current checkpoint, and transitions the state machine to `awaitingHumanInput` or `inactive`.
-  - **Cost and Token Tracking Details**: Each LLM request response stores usage statistics (e.g., `prompt_tokens`, `completion_tokens`) inside the message's `metadata` field under `metadata.usage`. The LangGraph runner updates the `loopControl.tokenStats` context property in real-time by summing up the usage statistics from new messages generated during the current execution run, tracking both `promptTokens` and `completionTokens` separately.
+  - **Cost and Token Tracking Details**: Each LLM request response stores usage statistics (e.g., `prompt_tokens`, `completion_tokens`) inside the message's `metadata` field under `metadata.usage`. The LangGraph runner updates the `loopControl.tokenStats` context property in real-time by summing up the usage statistics from new messages generated during the current execution run, tracking both `promptTokens` and `completionTokens` separately, and persists these updated stats to the active thread's record in IndexedDB at the completion of each execution step.
   - **Streaming Buffer & Performance**: To prevent performance bottlenecks during real-time streaming, text tokens and reasoning tokens are buffered within the `graphRunnerActor`'s local state and sent to the parent machine's context via throttled events (e.g., every 100ms) for UI display. The cumulative stream content is only written to the IndexedDB `messages` store upon completion of the active node execution step, rather than on every individual token received. This prevents excessive database write transactions and UI re-renders.
 
 ### 6. System Message Injection Details
@@ -270,18 +272,20 @@ The application layout is built using the Carbon Design System (`@carbon/react`)
 - **Workflow JSON Editor Pane**:
   - Text-based JSON editor containing a `TextArea` displaying the JSON content.
   - **Mobile**: Rendered as a simple `TextArea` with word-wrap and scrolling, relying on the native mobile keyboard (no helper keyboard bar or custom virtual buttons).
+  - **Import/Export & Clipboard**: Includes buttons to "Export to File" (downloads the active workflow configuration as a `.json` file), "Import from File" (allows uploading a `.json` configuration file), and "Copy JSON" to quickly copy the schema to the clipboard.
   - Validation: Performed when the user clicks "Save" (or dynamically as they type, debounced). If invalid, helper text describing the schema validation errors is displayed directly under the `TextArea`, and the "Save" button is disabled. No modal dialog validation interrupts should be used.
 
 ### 4. LLM Preset CRUD View
 
 - **Preset List**: List of configured LLM presets with options to edit or delete.
 - **Preset Configuration Panel**:
-  - Fields for configuring Name, Provider (`"openrouter" | "gemini"`), Model ID (string), API Key (optional override), Temperature, Max Tokens, Reasoning/Thinking Level, and Budget Policy (e.g. max steps without user message).
+  - Fields for configuring Name, Provider (`"openrouter" | "gemini"`), Model ID (string), API Key (optional override), Temperature, Max Tokens, Reasoning/Thinking Level, Budget Policy (e.g. max steps without user message), and CORS Proxy URL (optional override).
 
 ### 5. Global Settings View
 
 - **Global Config Form**:
-  - **API Keys Section**: Password-masked input fields (masked by default with a show/hide toggle button) for OpenRouter and Gemini API keys (stored in IndexedDB).
+  - **API Keys & Security Section**: Password-masked input fields (masked by default with a show/hide toggle button) for OpenRouter and Gemini API keys. Includes a checkbox to enable optional master-password encryption for storage (requiring the user to input a master password decrypted in-memory per session) and visual status indicators (spinner, green check for valid, red cross for invalid) that asynchronously perform lightweight validation requests immediately on-save.
+  - **Network & Proxy Section**: Global input field for configuring an optional custom CORS proxy URL and custom request headers.
   - **Theme Override Selector**: Selector for manually forcing Light/Dark mode.
   - **Injected System Messages Section**: Global UI list configuration for system messages that apply to all workflows.
 - **Onboarding / Warning Banner**:
@@ -421,9 +425,8 @@ In parallel, in `ViewState`, to prevent the UI from becoming stuck in configurat
 
 ### 3. Resolved State Machine Design Decisions
 
-- **Navigation during active graph execution**: Resolved using XState **parallel states** (separate `ViewState` and `ExecutionState` regions). Users can navigate away to edit presets, customize workflows, or adjust global settings while a LangGraph run continues executing in the background.
-  - **Active-Only Execution Mode**: Switching away from a thread pauses the runner actor, and the thread state in the DB is saved as paused (resolving to `inactive` or `awaitingHumanInput` when queried again).
-  - **Background Multi-Thread Execution Mode**: The runner actor continues running in the background, resolving to `executing` when the user navigates back to it.
+- **Navigation during active graph execution**: Resolved using XState **parallel states** (separate `ViewState` and `ExecutionState` regions). Users can navigate away to edit presets, customize workflows, or adjust global settings.
+  - **Active-Only Execution Mode**: Switching away from a thread pauses the runner actor, and the thread state in the DB is saved as paused (resolving to `inactive` or `awaitingHumanInput` when queried again). This mode is used to prevent resource runaway and simplify client-side DB tracking.
 - **React Router integration**: Resolved by making **React Router the single source of truth** for thread navigation. URL route changes emit a `ROUTE_CHANGED` event containing the route details (e.g. `threadId`), triggering the corresponding state machine transitions (e.g., loading the selected thread). Non-route navigation (such as opening settings modals or CRUD sub-views) is driven directly by XState events. Direct redirects initiated by XState (e.g., redirecting to settings on first-load key checking) are executed as side effects that call React Router's `navigate` function.
 - **LangGraph execution state storage**: Resolved by using the **XState Actor Model**. The state machine invokes or spawns a child actor (`graphRunnerActor`) whenever entering the `executing` state. This actor encapsulates the non-serializable LangGraph `CompiledStateGraph` instance and manages execution handles, streaming promises, and DB connections. The parent machine context only stores serializable metadata and handles state transitions by receiving events (`STEP`, `INTERRUPT`, `COMPLETE`, `ERROR`) from the child actor.
 - **View-Level Database Error Handling**: Errors occurring during CRUD operations (e.g., editing/deleting threads, presets, or workflows) do not trigger execution-level `ExecutionState.error` transitions. Instead, they write to the context's `errorMessage` property and render a transient Carbon inline notification (`InlineNotification`) in the active CRUD panel or sidebar, allowing the user to retry the action without interrupting any ongoing background execution.
@@ -459,7 +462,7 @@ Should the application support executing multiple LangGraph workflows in the bac
 
 ##### Response
 
-[UNRESOLVED]
+The application will support Active-Only Execution Mode. Switching away from a thread pauses the runner actor, and the thread state in the DB is saved as paused (resolving to `inactive` or `awaitingHumanInput` when queried again). This prevents resource runaway and simplifies state management in client-side IndexedDB.
 
 #### Question: Token Usage and Cost Tracking Persistence
 
@@ -467,7 +470,7 @@ The Loop Control Panel tracks estimated token usage and turn counts during workf
 
 ##### Response
 
-[UNRESOLVED]
+Token usage and turn statistics will be persisted in a `tokenStats` field on the `threads` database store (e.g. `{ promptTokens: number, completionTokens: number, totalTokens: number }`). This ensures the stats remain visible when reloading threads or returning to previous chat sessions.
 
 #### Question: Default Presets Seeding for First-Time Users
 
@@ -475,7 +478,7 @@ When a new user loads the application for the first time, they will not have any
 
 ##### Response
 
-[UNRESOLVED]
+Yes, the application will automatically seed a set of default presets (e.g., "Default Gemini Flash" using `gemini-2.5-flash` and "Default OpenRouter Flash" using `google/gemini-2.5-flash`) into the database once the user configures their API keys for the first time. This enables an immediate out-of-the-box chatting experience.
 
 #### Question: LangGraph Checkpoint Cleanup and Size Management
 
@@ -483,7 +486,7 @@ As users run various agents and workflows, LangGraph creates checkpoints for eac
 
 ##### Response
 
-[UNRESOLVED]
+Checkpoints will be kept indefinitely for active threads to allow full historical navigation, rewinding, and branching. However, a cascading delete policy will be enforced to remove all associated checkpoints and checkpoint writes when a thread is deleted. Additionally, a manual "Compact Thread" button will be provided in settings to allow users to manually purge older checkpoints.
 
 #### Question: Custom User-Defined JavaScript Tools
 
@@ -491,7 +494,7 @@ Database-modifying actions trigger inline approval cards. However, how should we
 
 ##### Response
 
-[UNRESOLVED]
+For the initial version, users are limited to built-in system tools (such as `ask_questions`, `declare_consensus`, and predefined database tools). Custom JavaScript tool definition is not supported in the JSON schema to avoid security/sandboxing risks and simplify compiling.
 
 #### Question: Debating Agent Context Window and Memory Management
 
@@ -499,7 +502,7 @@ In a debate workflow loop, two agents debate potentially infinitely. As the conv
 
 ##### Response
 
-[UNRESOLVED]
+The orchestration graph runner will support an optional message-trimming policy per node (e.g., `maxHistoryMessages: number`) to prune historical messages, keeping only the N most recent messages plus the system prompt and initial topic message. This prevents context window overflow and controls API costs.
 
 #### Question: Error Recovery and Resume Policy in Active Loops
 
@@ -507,7 +510,7 @@ If an API call fails mid-stream or during a workflow step (e.g., rate limit hit,
 
 ##### Response
 
-[UNRESOLVED]
+The application will perform automatic retries with exponential backoff (up to 3 times) for transient API or network errors. If the error persists, the graph runner will transition the state machine to the `error` state, pause execution, and render a "Retry Step" button in the UI to let the user manually resume from the last successful checkpoint.
 
 #### Question: Unresolved Debate Resolution on Max Loops
 
@@ -515,7 +518,7 @@ If a debate loop reaches the maximum loop limit (e.g., 5 rounds) without the age
 
 ##### Response
 
-[UNRESOLVED]
+When the max loop limit is reached without consensus, the workflow will automatically transition to the `summary` node to compile a summary of the unresolved debate (explicitly noting that consensus was not achieved), write it to the thread, and mark execution as complete.
 
 #### Question: Custom Tool UI Customization
 
@@ -523,7 +526,7 @@ If custom user-defined tools are supported, how should their outputs and executi
 
 ##### Response
 
-[UNRESOLVED]
+Since user-defined custom tools are not supported in the first version, tool results will always render using the generic JSON viewer accordion under "Tool: [Name]".
 
 #### Question: Support for Single-Select and Input Types in ask_questions
 
@@ -531,7 +534,7 @@ The current `ask_questions` schema assumes multi-select options. Should we suppo
 
 ##### Response
 
-[UNRESOLVED]
+Yes, the `ask_questions` schema will support a `type` field (`"single-select" | "multi-select" | "free-text"`) to render radio buttons, checkboxes, or text input areas accordingly, providing a more versatile user form interface.
 
 #### Question: Abort and Token Preservation on Thread Switch / App Pause
 
@@ -539,7 +542,7 @@ When a thread execution is paused or the user switches threads, how should we ha
 
 ##### Response
 
-[UNRESOLVED]
+When execution is aborted/paused mid-step, any partially received tokens for the active node will be discarded. The execution will resume from the beginning of the interrupted node using the last persisted checkpoint.
 
 #### Question: Workflow Resumption and Message History Mutations
 
@@ -547,7 +550,7 @@ When editing or deleting a message in the middle of a thread's history, the curr
 
 ##### Response
 
-[UNRESOLVED]
+When a message is edited or deleted before the latest checkpoint, the application will delete all subsequent checkpoints for that thread, rewinding the graph execution state to the last matching checkpoint prior to the mutated message. This allows full editing flexibility while keeping LangGraph's internal state synchronized with the message feed history.
 
 #### Question: CORS Proxies for Client-Side-Only API Calls
 
@@ -555,7 +558,7 @@ The application is a client-side-only app deployed to GitHub Pages, executing di
 
 ##### Response
 
-[UNRESOLVED]
+The application will support an optional custom CORS proxy URL and custom headers configuration within both the global settings and preset configurations to allow flexibility for self-hosted models (like Ollama) or other third-party API providers.
 
 #### Question: Plain-text vs Encrypted API Key Storage in IndexedDB
 
@@ -563,7 +566,7 @@ While IndexedDB is sandboxed to the origin, browser extensions or client-side sc
 
 ##### Response
 
-[UNRESOLVED]
+By default, keys are stored in plain text in IndexedDB as acceptable for a local-first personal app. However, the application will provide an optional setting to encrypt API keys using a user-provided master password (leveraging Web Crypto API PBKDF2/AES-GCM). If enabled, the user must input their master password once per session to decrypt keys in-memory.
 
 #### Question: Message Feed Virtualization for Long Threads
 
@@ -571,7 +574,7 @@ For threads with large histories (e.g., after long debate loops of 100+ turns), 
 
 ##### Response
 
-[UNRESOLVED]
+For the initial version, the application will rely on standard browser rendering. The message feed list will be structured to avoid excessive re-renders, and virtualization will be deferred unless performance benchmarks degrade for threads exceeding 200+ messages.
 
 #### Question: Workflow Import/Export Format and Sharing
 
@@ -579,7 +582,7 @@ To facilitate sharing custom agent orchestrations, should we support file-based 
 
 ##### Response
 
-[UNRESOLVED]
+The application will support file-based import/export (downloading and uploading `.json` files) and a "Copy JSON to Clipboard" action directly within the Workflow Management CRUD View to simplify sharing and backups.
 
 #### Question: Parallel Node Execution and State Merge Policies
 
@@ -587,7 +590,7 @@ In a complex custom workflow, multiple agent nodes might execute in parallel. La
 
 ##### Response
 
-[UNRESOLVED]
+To prevent complex race conditions and message synchronization issues, custom user-defined workflows will be restricted to sequential and conditional DAG topologies (no parallel execution branches).
 
 #### Question: API Key Validation in Settings
 
@@ -595,7 +598,7 @@ When a user inputs or updates their API key in Global Settings, should the appli
 
 ##### Response
 
-[UNRESOLVED]
+The application will perform a lightweight, asynchronous validation request on-save in the settings page to verify key validity, showing immediate visual feedback (e.g. valid/invalid badges), while still handling execution-time API errors gracefully.
 
 #### Question: Cascading Delete Performance for Thread Checkpoints
 
@@ -603,4 +606,4 @@ Deleting a thread requires removing the thread record, all of its messages, all 
 
 ##### Response
 
-[UNRESOLVED]
+Cascading deletes for long-running threads will be performed in batched transactions (deleting up to 500 checkpoints/messages per chunk) scheduled asynchronously via microtasks or `requestIdleCallback` to keep the UI completely responsive.
