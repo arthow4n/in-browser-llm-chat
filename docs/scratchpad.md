@@ -2253,6 +2253,24 @@ The human user will replace the `[UNRESOLVED]` tag with their response. The huma
 
 ### Current open questions:
 
+#### Question: Concurrent Thread Execution limits
+
+Currently, the "Active-Only Execution Mode" pauses execution when switching threads. Is this too restrictive? What if the user explicitly wants a long-running workflow (like a deep debate) to continue in the background while they chat in another thread?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Throttling Markdown/LaTeX Rendering
+
+Since Markdown and LaTeX rendering can be computationally expensive, rendering it on every new token might cause UI jank. How should the application throttle or debounce the rendering during streaming to ensure a smooth UX?
+
+##### Response
+
+[UNRESOLVED]
+
+### Resolved open questions:
+
 #### Question: Markdown rendering of unclosed code blocks during streaming
 
 During streaming (in the `running.streaming` state), the LLM might send markdown code blocks that are not yet closed with triple backticks. If rendered naively, this can cause the entire subsequent chat UI to break or render incorrectly as part of the code block. How should the application handle streaming markdown that contains unclosed code blocks?
@@ -2276,8 +2294,6 @@ Editing complex JSON workflows on a mobile device is generally a poor UX and pro
 ##### Response
 
 [RESOLVED] The JSON editor will remain accessible on mobile for power users, but a dismissible warning banner is displayed at the top: "Editing complex workflows on mobile devices is not recommended and may lead to syntax errors."
-
-### Resolved open questions:
 
 #### Question: Handle concurrent background execution of multiple threads
 
