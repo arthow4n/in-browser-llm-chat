@@ -86,9 +86,9 @@ We propose using the following stores in the `in-browser-llm-chat-db` database:
 - **`messages`**: Individual messages in threads.
   - Key: `id` (UUID)
   - Fields: `threadId`, `role` (`"system" | "user" | "assistant" | "tool"`), `content`, `type` (`"text" | "reasoning" | "tool_call" | "tool_result"`), `toolCallId` (optional), `name` (agent/tool name), `createdAt`, `metadata` (reasoning tokens, raw response, etc.)
-- **`checkpoints`**: LangGraph checkpointer state to enable resuming active graph execution across page reloads.
-  - Key: `threadId` (UUID)
-  - Fields: LangGraph checkpoint state objects (checkpoints, metadata, writes).
+- **`checkpoints`**: LangGraph checkpointer state to enable resuming active graph execution and supporting history rewinding/branching.
+  - Key: `[threadId, checkpointId]` (compound key)
+  - Fields: LangGraph checkpoint state objects (checkpoint data, metadata, writes, parent checkpoint ID).
 
 ### 2. Custom Workflow JSON Serialization
 
@@ -123,9 +123,18 @@ During runtime, a factory function converts this JSON schema into a compiled `@l
 
 During graph compilation, the factory function maps conditional routes by creating custom router functions passed to `StateGraph.addConditionalEdges`:
 
-- **Agent Routing**: If an `agent` node has tools, the graph needs to check if the agent produced a tool call. The compiled graph evaluates whether the state's last message is a tool call request. If yes, it routes along the edge with `condition: "on_tool_call"` (typically to a `tool` node). If no, it routes along the direct/unconditional edge (or an edge with `condition: "on_tool_result"`, though a default edge is preferred).
+- **Agent Routing**: If an `agent` node has tools, the graph needs to check if the agent produced a tool call. The compiled graph evaluates whether the state's last message is a tool call request. If yes, it routes along the edge with `condition: "on_tool_call"` (typically to a `tool` node). If no, it routes along the direct/unconditional edge (typically to a user input or another agent node). Note that `condition: "on_tool_result"` is only applicable to edges originating from `tool` nodes routing back to their parent agents.
 - **Consensus Routing**: A `consensus_check` node returns a state flag (e.g. `consensusReached: boolean`). The routing function evaluates this flag: if `true`, it routes to the destination defined in the edge with `condition: "on_consensus"`; if `false`, it routes to the edge with `condition: "on_no_consensus"`.
 - **Default Fallback**: If a node has multiple outbound edges and none of the specific conditions match the node execution outcome, the compiler uses the unconditional edge (i.e. where `condition` is omitted) as the default fallback target. If no fallback is defined, execution throws an error.
+
+#### Custom Workflow Structural Validation Rules
+
+Before a custom workflow is compiled or saved, the editor performs structural validation. The validation checks must verify:
+
+1. **Connectivity**: Every node (except the initial input/entry node) must have at least one incoming path from the entry node, and there must be no completely isolated nodes.
+2. **Edge Validity**: The `from` and `to` properties of every edge must reference existing node IDs in the `nodes` array.
+3. **Graph Entry Point**: There must be exactly one entry point node (defined either as an `input` node or a node with no incoming edges). If multiple entry nodes or none are found, compilation fails.
+4. **Loop Exit Paths**: Any loop/cycle in the graph must contain at least one conditional routing node (such as a `consensus_check` node or an `agent` node with tool capabilities) that can branch out of the loop, preventing compile-time or run-time infinite loop errors.
 
 ### 3. XState Application States
 
@@ -171,9 +180,11 @@ The `ask_questions` tool is defined as:
 - **Safety / Cost Control & Loop Controls**:
   - Max loop limit (default: 5 rounds of debate / 10 turns) to prevent infinite loops and runaway API costs.
   - The debaters themselves must call a `declare_consensus` tool when they agree, which terminates the loop.
-  - The workflow configuration must support forcing a minimum of X rounds of loop before the `declare_consensus` tool is given to the debaters (X can be set to 0 to disable this forced loop).
-  - General Loop Control Panel: Any workflow with loops (including the debate workflow) should render a control card in the UI showing the current round, number of turns, and token usage, with buttons to Pause, Resume, or Force Consensus / Summarize early. On mobile viewports, the panel collapses into a compact, sticky bottom bar (or overlay) showing the round count and token statistics, where a single tap opens a full-screen control overlay detailing all stats and controls.
-  - Cost and Token Tracking Details: Each LLM request response stores usage statistics (e.g., `prompt_tokens`, `completion_tokens`) inside the message's `metadata` field under `metadata.usage`. The LangGraph runner updates the `loopControl.tokenStats` context property in real-time by summing up the usage statistics from new messages generated during the current execution run, tracking both `promptTokens` and `completionTokens` separately.
+  - **Tool Exclusion Policy**: The workflow configuration must support forcing a minimum of X rounds of loop before the `declare_consensus` tool is given to the debaters (X can be set to 0 to disable this forced loop). During the first X rounds, the compiler excludes the `declare_consensus` tool from the tool bindings for the debater LLM calls, making the tool unavailable to them.
+  - **General Loop Control Panel**: Any workflow with loops (including the debate workflow) should render a control card in the UI showing the current round, number of turns, and token usage, with buttons to Pause, Resume, or Force Consensus / Summarize early. On mobile viewports, the panel collapses into a compact, sticky bottom bar (or overlay) showing the round count and token statistics, where a single tap opens a full-screen control overlay detailing all stats and controls.
+  - **Loop Round & Turn Tracking**: `turnCount` is defined as the total number of agent execution steps (nodes executed or messages generated) during the active run. `currentRound` tracks loop iterations and is incremented each time execution transitions back to a designated loop header node (e.g. `Debater_A` in the debate workflow). The workflow JSON schema supports designating a node as the `loopHeader` to identify where a round boundary is.
+  - **Step-by-Step Execution and Pausing**: Pausing a loop is implemented using LangGraph's step-by-step streaming capability. The graph runner consumes the stream generator step-by-step. When "Pause" is clicked or the thread is switched, the runner stops pulling from the generator, aborts any active streaming LLM connection using an `AbortController` (to save costs and prevent orphaned calls), persists the current checkpoint, and transitions the state machine to `awaitingHumanInput` or `inactive`.
+  - **Cost and Token Tracking Details**: Each LLM request response stores usage statistics (e.g., `prompt_tokens`, `completion_tokens`) inside the message's `metadata` field under `metadata.usage`. The LangGraph runner updates the `loopControl.tokenStats` context property in real-time by summing up the usage statistics from new messages generated during the current execution run, tracking both `promptTokens` and `completionTokens` separately.
 
 ### 6. System Message Injection Details
 
@@ -183,7 +194,7 @@ The `ask_questions` tool is defined as:
   - Depth `N` (positive): Insert after the N-th message.
   - Depth `-N` (negative): Insert N messages from the end of the history.
   - _Note_: If the active message history length is less than the calculated injection index, the insertion index is clamped to the range of valid indices: `Math.max(0, Math.min(messages.length, targetIndex))`.
-- When sending context to the LLM API, these messages are inserted on-the-fly but are **never** persisted to the IndexedDB `messages` store for that thread. They are invisible in the main chat feed, and can only be viewed/previewed within a "Preview API Payload" overlay or in the workflow settings panel.
+- **Dynamic On-the-Fly Injection**: When sending context to the LLM API, these messages are injected dynamically immediately prior to calling the LLM within the agent node execution. They are **never** persisted to the IndexedDB `messages` store or stored in the LangGraph state/checkpoint history. This ensures that the message list in the checkpoint remains clean and matches the user's persisted database messages. Injected messages are invisible in the main chat feed, and can only be viewed/previewed within a "Preview API Payload" overlay or in the workflow settings panel.
 
 ## User Interface (UI) Specification
 
@@ -206,7 +217,7 @@ The application layout is built using the Carbon Design System (`@carbon/react`)
 - **Chat Header**:
   - Displays the active thread's title.
   - Displays the active preset and active workflow.
-  - **Preview API Payload Button**: Clicking it opens a Modal showing the exact JSON structure of messages (including injected system messages) that would be sent to the LLM API next. Injected messages are highlighted with a distinct background/border and marked with an `[INJECTED]` badge to assist debugging. Since a workflow may contain multiple agents, the modal includes a dropdown selector showing all agents in the current workflow (defaulting to the next scheduled agent based on the graph's execution checkpoint) so the user can inspect the preview payload for any specific agent. For new or empty threads with no message history, the payload preview displays the initial system prompt configuration for the selected agent, combined with any active injected system messages. During active background execution, the preview button is disabled to prevent race conditions with running state updates.
+  - **Preview API Payload Button**: Clicking it opens a Modal showing the exact JSON structure of messages (including injected system messages) that would be sent to the LLM API next. Injected messages are highlighted with a distinct background/border and marked with an `[INJECTED]` badge to assist debugging. Since a workflow may contain multiple agents, the modal includes a dropdown selector showing all agents in the current workflow (defaulting to the workflow's entry agent node if the thread is empty, or the next scheduled agent based on the graph's execution checkpoint) so the user can inspect the preview payload for any specific agent. For new or empty threads with no message history, the payload preview displays the initial system prompt configuration for the selected agent, combined with any active injected system messages. During active background execution, the preview button is disabled to prevent race conditions with running state updates.
 - **Loop Control Panel (Sticky)**:
   - **Desktop**: Rendered as a sticky control bar at the top of the chat area.
   - **Mobile**: Collapses into a compact floating action button (FAB) or thin top status bar to save vertical space; tapping it opens a modal overlay with the detailed turn counters and control actions.
@@ -371,9 +382,13 @@ When a `ROUTE_CHANGED` or `INITIALIZE_CHECKPOINT` event is received, the `Execut
 
 ### 3. Resolved State Machine Design Decisions
 
-- **Navigation during active graph execution**: Resolved using XState **parallel states** (separate `ViewState` and `ExecutionState` regions). Users can navigate away to edit presets, customize workflows, or adjust global settings while a LangGraph run continues executing in the background. If the user switches the active thread (via a route change), the state machine executes an action to pause/suspend the child actor running for the previous thread, preventing resource and API cost runaway.
+- **Navigation during active graph execution**: Resolved using XState **parallel states** (separate `ViewState` and `ExecutionState` regions). Users can navigate away to edit presets, customize workflows, or adjust global settings while a LangGraph run continues executing in the background.
+  - **Active-Only Execution Mode**: Switching away from a thread pauses the runner actor, and the thread state in the DB is saved as paused (resolving to `inactive` or `awaitingHumanInput` when queried again).
+  - **Background Multi-Thread Execution Mode**: The runner actor continues running in the background, resolving to `executing` when the user navigates back to it.
 - **React Router integration**: Resolved by making **React Router the single source of truth** for thread navigation. URL route changes emit a `ROUTE_CHANGED` event containing the route details (e.g. `threadId`), triggering the corresponding state machine transitions (e.g., loading the selected thread). Non-route navigation (such as opening settings modals or CRUD sub-views) is driven directly by XState events. Direct redirects initiated by XState (e.g., redirecting to settings on first-load key checking) are executed as side effects that call React Router's `navigate` function.
 - **LangGraph execution state storage**: Resolved by using the **XState Actor Model**. The state machine invokes or spawns a child actor (`graphRunnerActor`) whenever entering the `executing` state. This actor encapsulates the non-serializable LangGraph `CompiledStateGraph` instance and manages execution handles, streaming promises, and DB connections. The parent machine context only stores serializable metadata and handles state transitions by receiving events (`STEP`, `INTERRUPT`, `COMPLETE`, `ERROR`) from the child actor.
+- **View-Level Database Error Handling**: Errors occurring during CRUD operations (e.g., editing/deleting threads, presets, or workflows) do not trigger execution-level `ExecutionState.error` transitions. Instead, they write to the context's `errorMessage` property and render a transient Carbon inline notification (`InlineNotification`) in the active CRUD panel or sidebar, allowing the user to retry the action without interrupting any ongoing background execution.
+- **API Key Removal Behavior**: If API keys are removed or invalidated in settings, any active executions in `ExecutionState` must transition to `inactive` (or pause) to prevent immediate failures, and the `ViewState` transitions to `onboarding`.
 
 ## Open questions
 
@@ -466,6 +481,22 @@ If a debate loop reaches the maximum loop limit (e.g., 5 rounds) without the age
 #### Question: Custom Tool UI Customization
 
 If custom user-defined tools are supported, how should their outputs and execution states be rendered in the chat feed? Should they always fall back to a generic JSON viewer accordion under "Tool: [Name]", or should the schema allow defining a simple declarative UI form (e.g., with input, select, and checkbox fields) so the user can see/interact with a tailored card?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Support for Single-Select and Input Types in ask_questions
+
+The current `ask_questions` schema assumes multi-select options. Should we support a `type` field (e.g., `"single-select" | "multi-select" | "free-text"`) to allow radio buttons, dropdowns, or purely text-based forms, or is a simple checklist with optional comments sufficient?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Abort and Token Preservation on Thread Switch / App Pause
+
+When a thread execution is paused or the user switches threads, how should we handle the active streaming/HTTP requests? We proposed using an `AbortController` to abort the connection immediately. Should the app also discard any partially received tokens for that step, or should it save the partial message and allow resuming from the exact point of interruption?
 
 ##### Response
 
