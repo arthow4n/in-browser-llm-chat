@@ -24,7 +24,7 @@ This file will be collaboratively updated by the human user and the coding agent
 - Markdown & Math Rendering: `react-markdown`, `rehype-katex`, `remark-gfm`, and `remark-math` for rendering markdown messages and LaTeX equations.
 - Support using OpenRouter and Gemini API as LLM API provider, and potentially switching to another provider in the future.
   - Prefer using the official `@openrouter/sdk` and `@google/genai` client libraries within custom LangGraph nodes to execute direct browser API calls rather than a custom fetch wrapper, while retaining full control over streaming and reasoning configurations.
-  - API keys are stored in IndexedDB in plain text.
+  - API keys are stored in IndexedDB in plain text by default, with an option to encrypt them using a master password (utilizing the Web Crypto API, deriving an AES-GCM key from the master password via PBKDF2). If a CORS proxy is configured, the runner overrides the base URL of the client library (e.g. passing `baseUrl` to OpenRouter or `@google/genai` clients) to route requests through the proxy.
   - Direct API calls are made from the browser. CORS is handled by OpenRouter and Gemini API.
 - `AGENTS.md` should be kept up-to-date to run the tool chains e.g. formatting, typecheck, lint with autofix, test, build.
 
@@ -87,10 +87,11 @@ We propose using the following stores in the `in-browser-llm-chat-db` database:
 - **`threads`**: Chat sessions.
   - Key: `id` (UUID)
   - Fields: `title`, `workflowId`, `workflowSnapshot` (null or copy of workflow configuration JSON to ensure execution stability against schema modifications), `activePresetId`, `createdAt`, `updatedAt`, `parentThreadId` (null or parent UUID for branched threads), `parentMessageId` (null or parent message UUID at which branching occurred), `status` (`"inactive" | "executing" | "awaiting_input" | "error"`), `errorMessage` (null or string), `latestCheckpointId` (null or string), `latestCheckpointNs` (null or string), `tokenStats` (`{ promptTokens: number, completionTokens: number, totalTokens: number } | null`)
-  - _Branching Behavior_: When branching a thread, the messages from the parent thread up to and including the `parentMessageId` are copied (cloned) to the new thread in the `messages` store under the new thread's ID (with their `sequence` order preserved). The `workflowSnapshot` is also copied from the parent thread to the new thread's record in the `threads` store to preserve execution consistency. To ensure that the branched thread's history can be edited or rewound later, ALL checkpoints and `checkpoint_writes` associated with the copied messages (i.e. all checkpoints in the parent thread's history up to and including the checkpoint associated with the `parentMessageId`) must be copied/cloned to the `checkpoints` and `checkpoint_writes` stores under the `newThreadId`. Subsequent checkpoints are not copied.
+  - _Branching Behavior_: When branching a thread, the messages from the parent thread up to and including the `parentMessageId` are copied (cloned) to the new thread in the `messages` store under the new thread's ID (with their `sequence` order preserved). The `workflowSnapshot` is also copied from the parent thread to the new thread's record in the `threads` store to preserve execution consistency. To ensure that the branched thread's history can be edited or rewound later, ALL checkpoints and `checkpoint_writes` associated with the copied messages (i.e. all checkpoints in the parent thread's history up to and including the checkpoint associated with the `parentMessageId`) must be copied/cloned to the `checkpoints` and `checkpoint_writes` stores under the `newThreadId`. Subsequent checkpoints are not copied. Child threads remain fully functional even if their parent thread is later deleted (as they hold independent clones of historical messages and checkpoints); in such cases, their `parentThreadId` is retained for provenance but resolves to null/absent in reference checks.
 - **`messages`**: Individual messages in threads.
   - Key: `id` (UUID)
   - Fields: `threadId` (indexed for query performance), `sequence` (integer index within thread for deterministic sorting and truncation), `role` (`"system" | "user" | "assistant" | "tool"`), `content`, `type` (`"text" | "reasoning" | "tool_call" | "tool_result"`), `toolCallId` (optional), `name` (agent/tool name), `createdAt`, `metadata` (reasoning tokens, raw response, etc.), `checkpointId` (null or string), `checkpointNs` (null or string)
+  - _Message Compilation for LLM APIs_: To ensure compatibility with LLM API providers that require strictly alternating user/assistant message roles, consecutive assistant-role messages in the database (such as separate reasoning, text, or tool_call entries belonging to the same turn) must be merged into a single logical `AIMessage` with appropriate fields (combining text/reasoning contents and populating the `tool_calls` list) prior to sending the payload to the LLM API.
 - **`checkpoints`**: LangGraph checkpointer state to enable resuming active graph execution and supporting history rewinding/branching.
   - Key: `[threadId, checkpointNs, checkpointId]` (compound key)
   - Indices: `threadId` (indexed to support cascading cleanup on thread deletion)
@@ -159,10 +160,11 @@ Before a custom workflow is compiled or saved, the editor performs structural va
 4. **Loop Exit Paths**: Any loop/cycle in the graph must contain at least one conditional routing node (such as a `consensus_check` node or an `agent` node with tool capabilities) that can branch out of the loop, preventing compile-time or run-time infinite loop errors.
 5. **Topology Restrictions**: The workflow topology must be restricted to sequential and conditional execution DAGs. Parallel execution branches (where a node has multiple concurrent outgoing paths executing at once) are not supported.
 6. **No Ambiguous Routing**: To prevent non-deterministic routing, no node may have more than one unconditional outbound edge. Additionally, except for `tool` nodes with `on_tool_result` edges (which route dynamically based on `lastAgentId`), no node may have multiple outbound edges with the same `condition`.
+7. **Consensus Check Routing**: For `consensus_check` nodes, there must be edges defined for both `on_consensus` and `on_no_consensus` conditions, OR one conditional edge and one unconditional edge acting as the default fallback.
 
 #### Dynamic Prompt Placeholders
 
-To allow workflows to adapt to different user requests, system prompts in `WorkflowNode` definitions support dynamic placeholders (e.g. `{{user_input}}` or `{{topic}}`). The LangGraph runner compiles the workflow by replacing `{{user_input}}` with the content of the thread's first message, and `{{topic}}` with the debate topic or thread title. This enables creating re-usable, dynamic multi-agent workflows.
+To allow workflows to adapt to different user requests, system prompts in `WorkflowNode` definitions support dynamic placeholders (e.g. `{{user_input}}` or `{{topic}}`). The LangGraph runner resolves these placeholders dynamically during node execution (using the thread's first message or title/topic from the state) rather than once at compilation time, ensuring they are correctly populated even when execution starts on an empty thread. This enables creating re-usable, dynamic multi-agent workflows.
 
 ### 3. XState Application States
 
@@ -252,7 +254,10 @@ These tools allow LLM agents to interactively create or modify custom workflows 
           id: z.string().describe("A unique node identifier within the graph"),
           type: z.enum(["agent", "input", "tool", "consensus_check", "summary"]),
           name: z.string().describe("Human-readable name of the node"),
-          systemPrompt: z.string().optional().describe("System prompt for agent/summary nodes"),
+          systemPrompt: z
+            .string()
+            .optional()
+            .describe("System prompt for agent/summary/consensus_check nodes"),
           presetId: z.string().optional().describe("Preset ID to use for LLM execution"),
           tools: z.array(z.string()).optional().describe("List of bound tool names"),
           loopHeader: z.boolean().optional().describe("True if node represents a loop boundary"),
@@ -511,10 +516,10 @@ stateDiagram-v2
             error --> inactive : DISMISS_ERROR
 
             %% Route Change & Initial Checkpoint Loading
-            inactive --> checkingStatus : ROUTE_CHANGED / INITIALIZE_CHECKPOINT
-            executing --> checkingStatus : ROUTE_CHANGED [Pause current actor] / INITIALIZE_CHECKPOINT
-            awaitingHumanInput --> checkingStatus : ROUTE_CHANGED / INITIALIZE_CHECKPOINT
-            error --> checkingStatus : ROUTE_CHANGED / INITIALIZE_CHECKPOINT
+            inactive --> checkingStatus : ROUTE_CHANGED [apiKeysConfigured & unlocked] / INITIALIZE_CHECKPOINT [apiKeysConfigured & unlocked]
+            executing --> checkingStatus : ROUTE_CHANGED [apiKeysConfigured & unlocked, Pause current actor] / INITIALIZE_CHECKPOINT [apiKeysConfigured & unlocked]
+            awaitingHumanInput --> checkingStatus : ROUTE_CHANGED [apiKeysConfigured & unlocked] / INITIALIZE_CHECKPOINT [apiKeysConfigured & unlocked]
+            error --> checkingStatus : ROUTE_CHANGED [apiKeysConfigured & unlocked] / INITIALIZE_CHECKPOINT [apiKeysConfigured & unlocked]
 
             checkingStatus --> inactive : DB_CHECK_INACTIVE
             checkingStatus --> awaitingHumanInput : DB_CHECK_INTERRUPTED
@@ -562,12 +567,12 @@ The state machine context maintains the following variables:
 - **`error`**: Displays error information if an API request or state transition fails.
 
 _Transition on Route Changes and Initialization_:
-When a `ROUTE_CHANGED` or `INITIALIZE_CHECKPOINT` event is received, the machine first executes an `assign` action to update the `currentThreadId` in the context, and then the `ExecutionState` transitions to the transient `checkingStatus` state. This handles both switching threads and completing onboarding/initial page load:
+When a `ROUTE_CHANGED` or `INITIALIZE_CHECKPOINT` event is received, the machine first executes an `assign` action to update the `currentThreadId` in the context, and then the `ExecutionState` transitions to the transient `checkingStatus` state. This handles both switching threads and completing onboarding/initial page load. Note that these transitions in the `ExecutionState` region are guarded and only fire when the API keys are configured and the database is unlocked (i.e., `apiKeysConfigured` is true and the machine is not in `unlocking` or `initializing` states). If the database is locked or unconfigured, execution transitions are ignored until unlocking/onboarding completes:
 
 - The transient `checkingStatus` state invokes a promise actor to query IndexedDB asynchronously to load the selected thread's execution checkpoint and active background state. If no thread is selected (i.e. `currentThreadId` is null), the machine bypasses the database query and immediately raises the `DB_CHECK_INACTIVE` event.
 - Once the database query completes, it raises one of the resolution events:
   - If the database indicates the thread has a pending interrupt or approval, the machine receives `DB_CHECK_INTERRUPTED` and transitions to `awaitingHumanInput`.
-  - If background execution is supported and the thread has active background execution running, it receives `DB_CHECK_RUNNING` and transitions to `executing` (resuming/spawning the runner actor).
+  - If background execution is supported and the thread has active background execution running (e.g., after a page refresh where the thread status was saved as `executing`), it receives `DB_CHECK_RUNNING` and transitions to `executing` (resuming/spawning the runner actor).
   - Otherwise, it receives `DB_CHECK_INACTIVE` and transitions to `inactive`.
 - If the query fails, the machine receives `DB_CHECK_ERROR` and transitions to `error` (setting `errorMessage` in the context).
 - To prevent resource runaway, any active runner actor executing for a previous thread is paused/suspended as an exit action of the previous state or entry action of `checkingStatus` (the actor completes its current execution step, persists the checkpoint, and terminates).
@@ -614,7 +619,7 @@ Since the app is a static client-side only application deployed to GitHub Pages,
 
 ##### Response
 
-[UNRESOLVED]
+Standard browser caching is sufficient for the initial implementation. Service worker / PWA support is out of scope for the current phase, as the core features of the app (such as LLM API connections) require active internet connectivity anyway.
 
 #### Question: LLM Budget policy enforcement and runtime modification
 
@@ -622,11 +627,34 @@ When a thread run is paused because the budget policy (e.g., maximum tokens or s
 
 ##### Response
 
-[UNRESOLVED]
+Clicking "Increase Budget & Resume" applies a temporary override to the active execution run's state (stored in the running actor / thread execution context) rather than permanently updating the preset in the database. The temporary override is reset when the execution finishes or when a new user message is submitted.
 
 #### Question: LLM model and prompt config for the Consensus Evaluator
 
 In the built-in debate workflow, the `Consensus_Evaluator` nodes can run an LLM to determine if the debaters have reached consensus. Which preset should these nodes use (the same as the debaters, or the global default)? Also, what is the default evaluation prompt template used to guide the LLM in determining consensus?
+
+##### Response
+
+The `Consensus_Evaluator` nodes will use the thread's active preset (which defaults to the thread-level selected preset) to ensure API key compatibility. The default consensus evaluation prompt template will instruct the LLM to analyze the debate history, look for agreement on the core topic, and return a JSON object with `consensusReached` (boolean) and a brief `reasoning` (string) explanation. For example:
+
+```json
+{
+  "consensusReached": true,
+  "reasoning": "Brief explanation of why consensus was or was not reached."
+}
+```
+
+#### Question: Scope of Master Password Blocker
+
+When master-password encryption is enabled, the settings store API keys are encrypted. Currently, the `unlocking` state is a global blocker state that prompts the user to enter the master password before accessing any features. Should we allow users to read existing threads and message histories without entering the master password (only blocking LLM execution and preset/settings editing), or should we keep it as a global blocker that prevents access to the entire application until unlocked?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Soft Sync vs Full Reset on Workflow Update
+
+Currently, syncing a thread to the latest workflow definition resets the execution and purges all checkpoints and messages. Should we support a "Soft Sync" option that only updates system prompts or presets in the `workflowSnapshot` without deleting existing message history and checkpoints, since editing prompts/presets does not break LangGraph checkpoint compatibility, or should we keep the single destructive sync to ensure graph consistency?
 
 ##### Response
 
