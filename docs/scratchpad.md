@@ -30,51 +30,40 @@ This file will be collaboratively updated by the human user and the coding agent
 
 Fill in anything missing.
 
-## Global Layout and Navigation
-
-- A left sidebar (Carbon `SideNav`) for navigation containing:
-  - Top header with app branding, a manual Light/Dark mode theme toggle, and a hamburger icon button.
-  - A scrollable list of chat threads (with "New Chat" and "Branch" indicators).
-  - Quick-link tabs or accordion sections for switching the main content area (Chat, Workflows CRUD, Presets CRUD, Settings).
-  - **Mobile Adaptation:** On mobile viewports (< 672px), the sidebar collapses completely. Tapping the header's hamburger icon slides the navigation menu over the content as an overlay panel (with a maximum width of 280px to leave a tap-to-close backdrop area). Tapping any option or clicking the overlay background auto-collapses it.
-
 ## Features and use cases to support
 
 "Be yet another poweruser LLM chat app" so the LLM chat UI basics and some features need to be there, plus:
 
-- The user is always chatting with an workflow (an orchestration graph with 0-many LLM agents) directly instead of a single agent.
+- The user is always chatting with a workflow (an orchestration graph with 0-many LLM agents) directly instead of a single agent.
   - The normal chat feature for chatting to one single LLM agent like in an average LLM chat app still works, just that behind the scene it should go through the same code path as if chatting with an orchestration with many LLM agents.
   - The default selected workflow when creating a new chat is still the good old workflow where there's only 1 human user and 1 agent with a system prompt like "you are an helpful assistant".
   - The UI should also support running orchestration workflow without an user input (but still requires the user to manuall approve to start such a workflow).
-- Workflow management CRUD
+- Workflow management CRUD:
   - Workflow = agent orchestration graph like for LangGraph
     - Built-in workflow can be anything LangGraph supported.
     - User-defined workflow needs to be able to be serialised to/deserialised from persistance.
-    - The editing interface for custom workflows is a text-based JSON editor; no graphical/visual editor is required. On mobile, this remains a simple `TextArea` with word-wrap and horizontal/vertical scrolling, relying entirely on the native mobile keyboard (no helper keyboard bar or custom virtual buttons). The JSON is edited via a basic `TextArea` that only validates the schema when the user clicks "Save", displaying validation errors in a modal dialog.
+    - The editing interface for custom workflows is a text-based JSON editor (no graphical/visual editor required). See the [Workflow Management CRUD View](#3-workflow-management-crud-view) section in the UI Specification for details.
     - Here is where the user can define which are the agents involved in an orchestration and their system prompts.
   - Node execution sequence and underlying LLM threads should be visible in the chat feed, rendered as flatly as possible so they look like working within one single thread, including reasoning tokens.
   - To begin with, there should be a built-in debate workflow, where the user should be able to seed the debate with a topic, then let 2 agents debate infinitely in a loop until they come to consensus, the agents come to consensus by making tool call to suggest leaving the debate loop, then finally another agent summarise the debate for the user to review.
-- LLM provider preset management CRUD
-  - Presets are managed in a dedicated, persistent Settings page/sidebar tab.
+- LLM provider preset management CRUD:
   - Preset = combination of LLM API provider, API key, LLM model, and configs like reasoning/thinking level, API retry policy, budget policy (e.g. force asking for human approval after X steps in the workflow without human user sending an message).
   - When opening a new chat thread, the thread selects the default preset as the initial preset. The selected preset ID is saved per thread in the database.
   - When switching back to an old thread: if the saved preset is still available, it is used; otherwise, it falls back to the default preset.
-  - **Onboarding and First-Time User Experience:** If no presets or keys are found in IndexedDB on load, load the workspace normally but show a persistent, clickable warning banner at the top of the page ("No API keys configured. Click here to configure settings.") and disable the chat input field until a preset is set up.
+  - Onboarding and First-Time User Experience: Guides users on first load if no presets or API keys exist. See the [Global Settings View](#5-global-settings-view) in the UI Specification for warning banner details.
 - Thread management CRUD
   - Current thread ID is sync with URL so refreshing should lead to the same thread
 - System message management CRUD for automatically inserting system message to agents upon API request, but these automatically inserted messages shouldn't be persisted in the chat history.
-  - Provide a global UI list in settings for system messages that apply to all workflows (ignoring the preset/workflow details for now).
-  - Should suport insertion depth (similar to SillyTavern, should be able to specify to attach system message at the Nth message from the beginning/end of the chat messages thread)
-- Render agent and user messages with rich markdown formatting, GitHub Flavored Markdown (e.g. tables, checkboxes), and LaTeX math support (both inline and block equations) using the specified rendering packages.
-- Render reasoning tokens (collapsed by default). Both reasoning tokens and text content are streamed in real-time. The "Reasoning Process" accordion must remain collapsed by default during streaming and after response completion. Use a fallback renderer or debounced updates to handle malformed partial markdown or math blocks during generation.
-- Render tool call message and tool result message (collapsed by default)
-  - There should be a built-in "ask_questions" tool which LLM can invoke to render a specific UI along with the tool call message, which the user can use to answer questions by mostly clicking instead of always having to type manually. The tool accepts an array of questions, and for each question an array of suggested answers for multi-select. Next to the suggested answers, there's a freetext input field which the user can use to enter freetext answer or leave an optional comment next to the answer they selected. The user should also be able to chooe to refuse answer a certain question or all the questions, when refusing, the user can leave an optional comment to explain the refusal.
-  - There should be a set of built-in tools for creating and updating user-defined workflows, so the user can chat with the LLM agent to create another workflow interactively. Any database-modifying tools (such as creating/updating a workflow) require explicit user confirmation. The tool call is rendered as a "Proposed Action" card showing a diff or description, and execution pauses until the user clicks "Approve" or "Deny". Other standard, read-only tools (like `ask_questions`) execute automatically.
-- Manual history edit:
-  - Each message includes a small, low-profile options button (three-dots icon) with a minimum 44x44px target. This button is permanently visible (with a light opacity like 0.6) on both desktop and mobile viewports. There should be no hover-only requirements; this no-hover, permanently visible approach is globally applied for all UI elements. Clicking/tapping it opens a menu (or slide-up bottom sheet on mobile) containing "Edit", "Delete", and "Branch Thread" options. This avoids tap-interception issues on the message bubble itself, allowing normal text selection and link clicks. Clicking "Edit" transforms the message bubble inline into a text area to save edits.
-  - Remove/delete a message in the middle of history via the same message options menu.
-  - Message Insertion (Prefill): Add a small role selector dropdown button next to the main chat text input (defaulting to "User"). Changing it allows selecting "Assistant" or "System", letting the user type a message and press Send to insert it directly as that role at the end of history.
-- API Payload Preview: Add a "Preview API Payload" button in the active chat header. Clicking it opens a Modal showing the exact JSON structure of messages (including the injected system messages) that would be sent to the LLM API next. Injected messages are highlighted with a distinct background/border and marked with an `[INJECTED]` badge to assist debugging.
+  - Should support insertion depth (similar to SillyTavern, should be able to specify to attach system message at the Nth message from the beginning/end of the chat messages thread).
+  - Configured via a global settings list. See the [Global Settings View](#5-global-settings-view) in the UI Specification for details.
+- Render agent and user messages with rich markdown formatting, GitHub Flavored Markdown, and LaTeX math support using the specified rendering packages.
+- Render reasoning tokens (collapsed by default).
+- Render tool call message and tool result message (collapsed by default).
+  - There should be a built-in "ask_questions" tool which LLM can invoke to render a specific form directly in the chat feed to let users answer questions with check-boxes and comments.
+  - There should be built-in tools for creating/updating custom workflows interactively via LLM chat. Any database-modifying tools (like custom workflow creation) require explicit user confirmation via an inline approval card.
+- Manual history edit and branching: Allow editing/deleting any message in history, inserting new messages with selectable roles (prefill), and branching threads.
+- API Payload Preview: Allow inspecting the exact payload sent to the LLM API (including injected system messages).
+- _Note_: See the [Main Chat Interface](#2-main-chat-interface) section in the UI Specification for the exact layout and component details for all the above elements.
 
 ## Technical Architecture Proposals
 
@@ -179,6 +168,80 @@ The `ask_questions` tool is defined as:
   - Depth `N` (positive): Insert after the N-th message.
   - Depth `-N` (negative): Insert N messages from the end of the history.
 - When sending context to the LLM API, these messages are inserted on-the-fly but are **never** persisted to the IndexedDB `messages` store for that thread. They are invisible in the main chat feed, and can only be viewed/previewed within a "Preview API Payload" overlay or in the workflow settings panel.
+
+## User Interface (UI) Specification
+
+The application layout is built using the Carbon Design System (`@carbon/react`) out-of-the-box. There are no custom styling overrides (no custom glassmorphism, HSL custom palettes, or custom animations). The UI is structured into a persistent navigation layout with a primary content area that switches depending on the active view.
+
+### 1. Global Navigation and Layout
+
+- **Left Sidebar Navigation (Carbon `SideNav`)**:
+  - **Header Area**: App branding, manual theme toggle selector (Light / Dark / Auto-sync with System), and a hamburger menu button.
+  - **Thread List**: A scrollable list of chat threads, showing thread titles, active workflow/preset indicators, and a branch indicator if a thread was cloned.
+  - **Quick Links / Accordion**: Dedicated tabs or accordion navigation options to switch the main content area between:
+    - **Chat Interface** (Active Thread)
+    - **Workflow Management**
+    - **LLM Preset Settings**
+    - **Global Settings**
+  - **Mobile Adaptation**: On viewports `< 672px`, the sidebar collapses completely. Tapping the header's hamburger icon slides the sidebar in from the left as an overlay (max-width `280px` to leave a tap-to-close backdrop area). Tapping any menu item or the backdrop backdrop auto-collapses it.
+
+### 2. Main Chat Interface
+
+- **Chat Header**:
+  - Displays the active thread's title.
+  - Displays the active preset and active workflow.
+  - **Preview API Payload Button**: Clicking it opens a Modal showing the exact JSON structure of messages (including injected system messages) that would be sent to the LLM API next. Injected messages are highlighted with a distinct background/border and marked with an `[INJECTED]` badge to assist debugging.
+- **Loop Control Panel (Sticky)**:
+  - **Desktop**: Sticky control bar at the top of the chat area.
+  - **Mobile**: Collapses into a compact, sticky bottom status bar or overlay displaying just the round count and estimated cost. Tapping this collapses/expands a full-screen control overlay.
+  - **Controls**: Displays the current loop round, turn count, and estimated cost. Contains buttons to Pause, Resume, or Force Consensus / Summarize early.
+  - _Unresolved UI/UX Details_:
+    - **Loop Control Card Placement**: [UNRESOLVED] (Where exactly should the Loop Control Panel be positioned in the UI?)
+    - **Loop Cost Estimation Details**: [UNRESOLVED] (How should estimated cost be calculated and displayed to the user?)
+- **Chat Feed**:
+  - **Message Bubbles**: Render user and assistant/agent messages with rich markdown formatting, GitHub Flavored Markdown (e.g. tables, checkboxes), and LaTeX math support (both inline and block equations).
+  - **Message Options Menu**: Each message bubble includes a small, low-profile overflow button (three-dots icon) with a minimum `44x44px` target. This button is permanently visible (with a light opacity like `0.6`) on both desktop and mobile viewports (no hover-only requirements; this no-hover, permanently visible approach is globally applied for all UI elements). Clicking/tapping it opens a menu (or slide-up bottom sheet on mobile) containing "Edit", "Delete", and "Branch Thread" options.
+  - **Inline Message Editing**: Clicking "Edit" transforms the message bubble inline into a text area to save changes.
+  - **Reasoning Process Accordion**: Collapsed by default under a "Reasoning Process" header inside the assistant's message. Capped at `max-height: 250px` with vertical scrollbars. Both reasoning tokens and text content are streamed in real-time. The accordion must remain collapsed by default during streaming and after response completion. Use a fallback renderer or debounced updates to handle malformed partial markdown or math blocks.
+  - **Tool Call / Result Accordion**: Collapsed by default under a "Tool: [Name]" header. Expanding reveals a formatted JSON block of arguments or return outputs.
+  - **`ask_questions` Tool Card Form**: Rendered inline directly in the chat feed when execution is interrupted. Sized with a minimum of `44x44px` touch targets. Includes checkboxes for multi-select, freetext comment fields, and a "Refuse to Answer" button. The form controls become read-only once submitted.
+  - **Proposed Action Card**: Rendered inline for database-modifying tools (e.g., creating/updating a workflow). Shows a diff or description of the changes, with "Approve" or "Deny" buttons.
+  - _Unresolved UI/UX Details_:
+    - **Chat Feed message styling for reasoning and tool tokens**: [UNRESOLVED] (How should reasoning tokens, tool calls, and tool results be styled in the chat feed?)
+    - **Input Blocking for `ask_questions` Tool Interrupts**: [UNRESOLVED] (Should it disable the main chat message input box?)
+    - **Answering Completeness for `ask_questions` Tool Interrupts**: [UNRESOLVED] (Must the user answer all questions in the card, or can they submit answers to a subset and leave others blank?)
+- **Chat Input Area**:
+  - A main auto-resizing text input area.
+  - **Role Selector Dropdown**: Next to the text input (defaulting to "User"), allowing the user to select "Assistant" or "System" to manually insert/prefill messages at the end of the history.
+  - Send button.
+  - _Unresolved UI/UX Details_:
+    - **Message Insertion (Prefill) UI**: [UNRESOLVED] (How should users insert messages at the end of the history as any role?)
+
+### 3. Workflow Management CRUD View
+
+- **Workflow List**: Scrollable list of built-in and user-defined workflows, each with active edit/delete buttons.
+- **Workflow JSON Editor Pane**:
+  - Text-based JSON editor containing a `TextArea` displaying the JSON content.
+  - **Mobile**: Rendered as a simple `TextArea` with word-wrap and scrolling, relying on the native mobile keyboard (no helper keyboard bar or custom virtual buttons).
+  - Validation error helper text displayed directly under the text area when the JSON is invalid.
+  - _Unresolved UI/UX Details_:
+    - **Custom Workflow JSON Editor UI & Validation**: [UNRESOLVED] (How should JSON formatting and validation errors be displayed to the user?)
+
+### 4. LLM Preset CRUD View
+
+- **Preset List**: List of configured LLM presets with options to edit or delete.
+- **Preset Configuration Panel**:
+  - Fields for configuring Name, Provider (`"openrouter" | "gemini"`), Model ID (string), API Key (optional override), Temperature, Max Tokens, Reasoning/Thinking Level, and Budget Policy (e.g. max steps without user message).
+
+### 5. Global Settings View
+
+- **Global Config Form**:
+  - **API Keys Section**: plain text input fields for OpenRouter and Gemini API keys (stored in IndexedDB).
+  - **Theme Override Selector**: Selector for manually forcing Light/Dark mode.
+  - **Injected System Messages Section**: Global UI list configuration for system messages that apply to all workflows.
+- **Onboarding / Warning Banner**:
+  - Displays a persistent, clickable warning banner at the very top of the workspace: `"No API keys configured. Click here to configure settings."`.
+  - Disables the main chat input field until a preset/API key is successfully configured in Settings.
 
 ## Open questions
 
