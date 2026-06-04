@@ -47,6 +47,8 @@ Fill in anything missing.
     - Here is where the user can define which are the agents involved in an orchestration and their system prompts.
     - _Safety Rules_: The user cannot delete built-in workflows. Deleting a custom workflow that is currently in use by any threads is blocked, and an inline notification is displayed showing the active threads referencing it.
   - Node execution sequence and underlying LLM threads should be visible in the chat feed, rendered as flatly as possible so they look like working within one single thread, including reasoning tokens.
+    - Multi-agent rendering MUST make it clearly understandable which agent is speaking. Each message bubble from an agent MUST display the agent's name (and optionally an auto-generated avatar based on the name) at the top of the bubble.
+    - Tool calls made by a specific agent should be nested or visibly linked to that agent's message block, so users know which agent initiated the tool call.
   - To begin with, there should be a built-in debate workflow, where the user should be able to seed the debate with a topic, then let 2 agents debate infinitely in a loop until they come to consensus, the agents come to consensus by making tool call to suggest leaving the debate loop, then finally another agent summarize the debate for the user to review.
 - LLM provider preset management CRUD:
   - Preset = combination of LLM API provider, API key, LLM model, and configs like reasoning/thinking level, API retry policy, budget policy (e.g. force asking for human approval after X steps or Y tokens in the workflow execution cycle without human user sending a message).
@@ -716,11 +718,12 @@ The application layout is built using the Carbon Design System (`@carbon/react`)
   - **Controls**: Displays the current execution stats. For workflows with loops, it shows the current loop round, turn count, and token usage. For sequential workflows, it shows the current node/step, turn count, and token usage (prompt and completion tokens tracked separately, without currency calculation). Contains buttons to Pause, Resume, or Abort execution, plus "Force Consensus" / "Summarize early" buttons specifically visible during loop workflows.
 - **Chat Feed**:
   - **Message Bubbles**: Render user and assistant/agent messages with rich markdown formatting, GitHub Flavored Markdown (e.g. tables, checkboxes), and LaTeX math support (both inline and block equations).
+    - **Multi-Agent Distinction**: To ensure multi-agent orchestrations are readable, assistant messages MUST clearly display the name of the agent (e.g. "Debater A", "Summarizer") in a header above the message text. If multiple agents participate, assign a subtle, distinct background tint or left-border color to each agent's message bubble, making the conversation easy to follow even on small mobile screens.
   - **Performance & Virtualization**: The message feed uses standard browser rendering. Virtualization (only rendering messages in the viewport) is deferred unless performance benchmarks degrade for threads exceeding 200+ messages.
   - **Message Options Menu**: Each message bubble includes a small, low-profile overflow button (three-dots icon) with a minimum `44x44px` target. This button is permanently visible (with a light opacity like `0.6`) on both desktop and mobile viewports (no hover-only requirements; this no-hover, permanently visible approach is globally applied for all UI elements). Clicking/tapping it opens a Carbon `OverflowMenu` (or a native Carbon `Modal` on mobile viewports for easier touch interaction) containing "Edit", "Delete", and "Branch Thread" options.
   - **Inline Message Editing**: Clicking "Edit" transforms the message bubble inline into a text area to save changes.
   - **Reasoning Process Accordion**: Collapsed by default under a "Reasoning Process" header inside the assistant's message. Capped at `max-height: 250px` with vertical scrollbars. Both reasoning tokens and text content are streamed in real-time. The accordion must remain collapsed by default during streaming and after response completion. Use a fallback renderer or debounced updates to handle malformed partial markdown or math blocks.
-  - **Tool Call / Result Accordion**: Collapsed by default under a "Tool: [Name]" header. Expanding reveals a formatted JSON block of arguments or return outputs. Note: the `ask_questions` tool card form is rendered inline directly in the chat feed and must render/remain visible even when the tool call message itself is collapsed.
+  - **Tool Call / Result Accordion**: Collapsed by default under a "Tool: [Name]" header. Expanding reveals a formatted JSON block of arguments or return outputs. The accordion MUST also clearly indicate which agent triggered the tool (e.g. "Agent A called Tool X"). Note: the `ask_questions` tool card form is rendered inline directly in the chat feed and must render/remain visible even when the tool call message itself is collapsed.
   - **Scroll Anchoring**: Expanding accordions preserves chat scroll anchoring so the user does not lose their viewing position.
   - **`ask_questions` Tool Card Form**: Rendered inline directly in the chat feed (using a Carbon `Tile` component to structure the form contents) when execution is interrupted. Sized with a minimum of `44x44px` touch targets. The form displays options using Carbon `RadioButtonGroup`/`RadioButton` for `single-select` questions, `Checkbox` for `multi-select` questions, and `TextArea`/`TextInput` fields for `free-text` comments and inputs. Includes a "Refuse to Answer" button. The user must either answer all questions in the card or explicitly click "Refuse to Answer" to submit the form. The form controls become read-only once submitted.
   - **Budget Exceeded Card**: Rendered inline directly in the chat feed if the cumulative execution token limit is exceeded. Shows token usage and options to "Increase Budget & Resume" (temporarily raising the token threshold for the active execution run) or "Abort".
@@ -1808,7 +1811,41 @@ Governs the pagination, sorting, searching, loading, and deletion states in the 
   - **Writes**: Opens transaction on `presets` store to delete the target record if it satisfies deletion validation checks.
 - **API Request/Response Sequence**: None.
 
-#### Q. Custom Workflow List View State Machine
+#### Q. Chat Input Area State Machine
+
+Governs the state of the main text area, role selector, and send button, coordinating with the parent execution state.
+
+- **Context**:
+  - `inputText`: `string`
+  - `selectedRole`: `"user" | "assistant" | "system"`
+- **States**:
+  - `disabled`: The input area cannot be used (e.g., no active thread, onboarding, or execution in progress).
+    - _Text Area Field_: Disabled, shows placeholder "Please wait...".
+    - _Role Selector_: Disabled.
+    - _Send Button_: Disabled.
+  - `ready`: Ready for user input.
+    - `ready.empty`:
+      - _Text Area Field_: Enabled, empty.
+      - _Role Selector_: Enabled.
+      - _Send Button_: Disabled.
+    - `ready.hasText`:
+      - _Text Area Field_: Enabled.
+      - _Role Selector_: Enabled.
+      - _Send Button_: Enabled.
+  - `submitting`: Dispatches the message to the parent coordinator.
+    - _Controls_: Disabled, Send button shows spinner.
+- **Transitions / Events**:
+  - `ENABLE`: Transitions `disabled` to `ready.empty` (or `ready.hasText` if text exists).
+  - `DISABLE`: Transitions from any `ready` state to `disabled`.
+  - `INPUT_CHANGED` (contains text): Transitions between `ready.empty` and `ready.hasText` based on whether text is empty. Updates `inputText`.
+  - `ROLE_CHANGED` (contains role): Updates `selectedRole`.
+  - `SUBMIT`: (from `ready.hasText`) Transitions to `submitting`. Dispatches `SUBMIT_MESSAGE` to parent coordinator.
+  - `SUBMIT_SUCCESS`: Clears `inputText`, transitions to `disabled` (as execution starts).
+  - `SUBMIT_FAILURE`: Transitions back to `ready.hasText`.
+- **Database Reads/Writes**: None (handled by parent coordinator).
+- **API Request/Response Sequence**: None.
+
+#### R. Custom Workflow List View State Machine
 
 Governs the pagination, sorting, searching, loading, and deletion states in the custom Workflow list view.
 
