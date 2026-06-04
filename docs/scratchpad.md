@@ -72,6 +72,7 @@ Fill in anything missing.
   3. Delete all checkpoints and checkpoint writes whose creation timestamp is greater than the preceding checkpoint's creation timestamp, or that descend from it in parent-child lineage traversal.
   4. Truncate the message history by deleting all messages in that thread where `sequence >= idx` (for deletion) or `sequence > idx` (for inline editing).
      Following any truncation, edit, or branching, the cumulative token statistics for the affected thread(s) are recalculated by summing the usage metadata of their remaining messages, and the thread record is updated in IndexedDB.
+     _Note on Message Role Behaviors_: For inline editing of a user message, the message content is updated, and when the user clicks "Resubmit", execution is triggered from the preceding checkpoint with the updated user message. For inline editing of an assistant message, the message is updated in the database, but resuming execution directly would cause the agent to rerun and overwrite it; to avoid this, the user can insert a user message after the edited assistant message before resuming.
 - API Payload Preview: Allow inspecting the exact payload sent to the LLM API (including injected system messages).
 - _Note_: See the [Main Chat Interface](#2-main-chat-interface) section in the UI Specification for the exact layout and component details for all the above elements.
 
@@ -620,6 +621,200 @@ In parallel, in `ViewState`, to prevent the UI from becoming stuck in configurat
 - **View-Level Database Error Handling**: Errors occurring during CRUD operations (e.g., editing/deleting threads, presets, or workflows) do not trigger execution-level `ExecutionState.error` transitions. Instead, they write to the context's `errorMessage` property and render a transient Carbon inline notification (`InlineNotification`) in the active CRUD panel or sidebar, allowing the user to retry the action without interrupting any ongoing background execution.
 - **API Key Removal Behavior**: If API keys are removed or invalidated in settings, a global event `API_KEYS_REMOVED` is dispatched. This triggers the `ViewState` to transition to `onboarding` from any other state, and the `ExecutionState` to transition to `inactive` (pausing/terminating the current runner actor).
 
+### 4. UI Component State Machines
+
+To support rich user interactions and manage complex local UI lifecycle, several key UI components are governed by their own structured state machines:
+
+#### A. Master Password Unlock Modal State Machine
+
+Manages the modal overlay displayed when the user attempts to run a workflow or view/edit keys while the database keys are encrypted and locked.
+
+- **Context**:
+  - `passwordInput`: `string`
+  - `errorMessage`: `string | null`
+- **States**:
+  - `closed`: The modal is completely hidden.
+  - `opened`: The modal is visible.
+    - `opened.idle`: Waiting for the user to input the master password.
+    - `opened.deriving`: Deriving the AES-GCM key from the password using PBKDF2 in the Web Crypto API.
+    - `opened.decrypting`: Attempting to decrypt the static verification token using the derived key.
+    - `opened.success`: Verification succeeded. The derived key is stored in memory, the modal transitions to `closed`, and the parent machine is notified via `UNLOCK_SUCCESS`.
+    - `opened.error`: Verification failed (incorrect password). Displays an error message inline and remains in the modal.
+- **Transitions / Events**:
+  - `TRIGGER_UNLOCK`: Transitions `closed` to `opened.idle`.
+  - `SUBMIT`: Transitions `opened.idle` or `opened.error` to `opened.deriving`.
+  - `DERIVE_SUCCESS`: Transitions `opened.deriving` to `opened.decrypting`.
+  - `DECRYPT_SUCCESS`: Transitions `opened.decrypting` to `opened.success`.
+  - `DECRYPT_FAILURE`: Transitions `opened.decrypting` to `opened.error` (updates `errorMessage`).
+  - `CANCEL_UNLOCK`: Transitions any `opened` state to `closed` (sends `CANCEL_UNLOCK` to parent machine, halting execution).
+
+#### B. Preset Connection Tester State Machine
+
+Governs the "Test Connection" button lifecycle within the LLM Preset Configuration panel.
+
+- **Context**:
+  - `latency`: `number | null`
+  - `errorMessage`: `string | null`
+  - `details`: `any`
+- **States**:
+  - `idle`: Initial state. Displays the "Test Connection" button.
+  - `testing`: Asynchronously executing a lightweight dummy request (e.g. model listing or 1-token request) using the configured API Key, Endpoint, and CORS proxy.
+  - `success`: Test succeeded. Displays a green badge showing the latency and model info.
+  - `failure`: Test failed. Displays a red banner detailing status codes, CORS block warnings, or network errors.
+- **Transitions / Events**:
+  - `TEST_CONNECTION`: Transitions `idle`, `success`, or `failure` to `testing`.
+  - `TEST_SUCCESS` (contains latency and metadata): Transitions `testing` to `success` (updates context).
+  - `TEST_FAILURE` (contains error details): Transitions `testing` to `failure` (updates context).
+  - `INPUT_CHANGED` (when preset fields are modified): Transitions `success` or `failure` back to `idle`.
+
+#### C. `ask_questions` Tool Form State Machine
+
+Governs the lifecycle of the inline form rendered in the chat feed when execution is interrupted by the `ask_questions` tool.
+
+- **Context**:
+  - `questions`: `Array<Question>`
+  - `answers`: `Record<QuestionId, { selected?: string[]; text?: string }>`
+  - `isValid`: `boolean`
+  - `refusalReason`: `string`
+- **States**:
+  - `active`: The form card is rendered and editable.
+    - `active.editing`: User is interacting with form controls.
+    - `active.validating`: Auto-checking if all required/non-optional questions have been answered.
+  - `submitting`: Sending responses back to the LangGraph runner actor.
+  - `submitted`: Response successfully submitted. Form controls become disabled/read-only.
+  - `refused`: User clicked "Refuse to Answer". Form controls become disabled/read-only, showing the refusal reason.
+- **Transitions / Events**:
+  - `LOAD_QUESTIONS`: Transitions to `active.editing` (populates `questions` context).
+  - `UPDATE_ANSWER`: Transitions to `active.validating` (updates the `answers` record).
+  - `VALIDATION_RESULT` (contains isValid): Transitions back to `active.editing` (updates `isValid` context).
+  - `SUBMIT` (guard: `isValid` is true): Transitions to `submitting` (sends `SUBMIT_TOOL_RESPONSE` to runner actor).
+  - `SUBMIT_SUCCESS`: Transitions to `submitted`.
+  - `REFUSE` (contains refusalReason): Transitions to `refused` (sends `REFUSE_TOOL_RESPONSE` with reason to runner actor).
+
+#### D. Proposed Action Card (Approval Form) State Machine
+
+Governs database-modifying tool calls (like creating or updating a workflow) that require explicit user approval before execution.
+
+- **Context**:
+  - `toolCallId`: `string`
+  - `actionDetails`: `any` (diff or description)
+  - `errorMessage`: `string | null`
+- **States**:
+  - `pending`: Active card with "Approve" and "Deny" buttons.
+  - `approving`: Asynchronously executing the database modification transaction.
+  - `approved`: Successfully completed. Buttons disabled, status badge shown.
+  - `denied`: User denied the action. Runner actor receives denial message.
+  - `error`: Database write failed. Shows retry button and error details.
+- **Transitions / Events**:
+  - `APPROVE`: Transitions `pending` or `error` to `approving`.
+  - `DENY`: Transitions `pending` to `denied` (sends denial response to runner actor).
+  - `APPROVE_SUCCESS`: Transitions `approving` to `approved` (sends success response to runner actor).
+  - `APPROVE_FAILURE` (contains error): Transitions `approving` to `error` (updates `errorMessage`).
+  - `RETRY_APPROVE`: Transitions `error` to `approving`.
+
+#### E. Budget Exceeded Card State Machine
+
+Rendered inline when a running thread exceeds its cumulative token budget or steps.
+
+- **Context**:
+  - `currentTokens`: `number`
+  - `maxTokens`: `number`
+  - `stepCount`: `number`
+- **States**:
+  - `prompting`: Displays warning card with "Increase Budget & Resume" and "Abort" buttons active.
+  - `resuming`: Sending temporary override budget settings and resuming execution.
+  - `aborted`: Aborting and clearing active execution.
+- **Transitions / Events**:
+  - `INCREASE_BUDGET`: Transitions `prompting` to `resuming` (sends `RESUME` with override context to main machine).
+  - `ABORT`: Transitions `prompting` to `aborted` (sends `CANCEL_EXECUTION` to main machine).
+
+#### F. Workflow Syncing (Soft/Hard Sync) State Machine
+
+Triggered from Thread Settings to synchronize a thread's workflow snapshot with the latest definition in the database.
+
+- **Context**:
+  - `threadId`: `string`
+  - `isDestructive`: `boolean` (true if graph topology node/edge structure changed, false if only system prompts/presets changed)
+  - `diffDetails`: `any`
+- **States**:
+  - `idle`: Initial state. Button visible in thread settings.
+  - `analyzing`: Diffing `workflowSnapshot` against the latest database workflow.
+  - `promptingSoftSync`: Prompts confirmation to update prompts/presets without clearing messages/checkpoints.
+  - `promptingHardSync`: Displays destructive update warning, confirming messages/checkpoints will be purged.
+  - `syncing`: Updating thread record and optionally purging checkpoints/messages in DB.
+  - `success`: Sync complete. Displays success inline message.
+  - `failure`: Sync failed, showing error.
+- **Transitions / Events**:
+  - `START_SYNC`: Transitions `idle` to `analyzing`.
+  - `ANALYSIS_COMPLETE` (contains `isDestructive` and diff details):
+    - If `isDestructive` is true, transitions to `promptingHardSync`.
+    - If `isDestructive` is false, transitions to `promptingSoftSync`.
+  - `CONFIRM_SYNC` (from prompting states): Transitions to `syncing`.
+  - `CANCEL_SYNC`: Transitions prompting/analyzing states back to `idle`.
+  - `SYNC_SUCCESS`: Transitions `syncing` to `success`.
+  - `SYNC_FAILURE` (contains error): Transitions `syncing` to `failure`.
+
+#### G. API Payload Preview Modal State Machine
+
+Governs the modal displaying compiled messages and injected system messages for LLM API calls.
+
+- **Context**:
+  - `selectedAgentId`: `string | null`
+  - `payload`: `any | null`
+- **States**:
+  - `closed`: Hidden.
+  - `opened`: Visible.
+    - `opened.loading`: Compiling payload, fetching messages, resolving injected system messages for the selected agent.
+    - `opened.displaying`: Displaying compiled JSON payload.
+- **Transitions / Events**:
+  - `OPEN`: Transitions `closed` to `opened.loading` (sets default `selectedAgentId`).
+  - `LOADED` (contains compiled payload): Transitions `opened.loading` to `opened.displaying`.
+  - `CHANGE_AGENT` (contains agentId): Transitions `opened.displaying` to `opened.loading` (updates `selectedAgentId`).
+  - `CLOSE`: Transitions any `opened` state to `closed` (clears context).
+
+#### H. Checkpoint Compaction Dialog State Machine
+
+Triggered in Global Settings to purge old checkpoints of a thread.
+
+- **Context**:
+  - `threadId`: `string`
+  - `errorMessage`: `string | null`
+- **States**:
+  - `idle`: Button visible.
+  - `confirming`: Displaying warning dialog.
+  - `compacting`: Executing database deletion of historical checkpoints.
+  - `success`: Compaction complete. Displays confirmation.
+  - `failure`: Compaction failed. Displays error details.
+- **Transitions / Events**:
+  - `START_COMPACT`: Transitions `idle` to `confirming`.
+  - `CONFIRM_COMPACT`: Transitions `confirming` to `compacting`.
+  - `CANCEL_COMPACT`: Transitions `confirming` to `idle`.
+  - `COMPACT_SUCCESS`: Transitions `compacting` to `success`.
+  - `COMPACT_FAILURE` (contains error): Transitions `compacting` to `failure`.
+  - `DISMISS`: Transitions `success` or `failure` back to `idle`.
+
+#### I. Inline Message Editor State Machine
+
+Governs editing a single message in the chat history.
+
+- **Context**:
+  - `messageId`: `string`
+  - `originalContent`: `string`
+  - `editContent`: `string`
+  - `role`: `string`
+- **States**:
+  - `viewing`: Standard rendering mode.
+  - `editing`: Textarea input is active.
+  - `saving`: Truncating history/checkpoints and writing new message content in the database.
+  - `error`: Saving failed, showing retry/error inline.
+- **Transitions / Events**:
+  - `EDIT`: Transitions `viewing` to `editing` (clones `originalContent` to `editContent`).
+  - `UPDATE_CONTENT` (contains content): Updates `editContent`.
+  - `SAVE`: Transitions `editing` or `error` to `saving`.
+  - `SAVE_SUCCESS`: Transitions `saving` to `viewing` (updates thread cumulative token stats).
+  - `SAVE_FAILURE` (contains error): Transitions `saving` to `error`.
+  - `CANCEL_EDIT`: Transitions `editing` or `error` to `viewing`.
+
 ## Open questions
 
 ### Process of handling open questions
@@ -690,7 +885,7 @@ Should we save partial responses to the database `messages` store when a user pa
 
 ##### Response
 
-[UNRESOLVED]
+To maintain graph state consistency, prevent database corruption, and avoid duplicate/fragmented messages in the UI, any partially streamed text or reasoning tokens from an interrupted LLM step will be discarded upon pause, thread switch, or abort. The database `messages` store will not be updated with these partial tokens, and no checkpoint will be written for the interrupted step. When execution is resumed, the graph runner will restart the node execution fresh using the state from the last completed checkpoint.
 
 #### Question: Missing or Invalid Preset IDs in Custom Workflows
 
@@ -698,4 +893,9 @@ If a custom workflow is imported or saved with a `presetId` that does not exist 
 
 ##### Response
 
-[UNRESOLVED]
+To ensure execution robustness, if a custom workflow contains a `presetId` that is missing or has been deleted, compilation and execution will not fail. Instead:
+
+1. The custom workflow compiler will automatically fall back to the active preset selected for the thread.
+2. If the thread's active preset is also missing or invalid, the execution will fall back to the global default preset.
+3. The UI will display a non-blocking warning notification within the execution control panel to alert the user that a fallback preset is being used due to a missing preset ID.
+   Additionally, the workflow editor's import and save validation checks will scan for missing `presetId`s and display a warning helper text, though saving will not be hard-blocked.
