@@ -24,7 +24,7 @@ This file will be collaboratively updated by the human user and the coding agent
 - Markdown & Math Rendering: `react-markdown`, `rehype-katex`, `remark-gfm`, and `remark-math` for rendering markdown messages and LaTeX equations.
 - Support using OpenRouter and Gemini API as LLM API provider, and potentially switching to another provider in the future.
   - Prefer using the official `@openrouter/sdk` and `@google/genai` client libraries within custom LangGraph nodes to execute direct browser API calls rather than a custom fetch wrapper, while retaining full control over streaming and reasoning configurations.
-  - API keys are stored in IndexedDB in plain text by default, with an option to encrypt them using a master password (utilizing the Web Crypto API, deriving an AES-GCM key from the master password via PBKDF2 with a random salt stored in settings). To verify the master password on input, the app encrypts a static verification constant (e.g., `"verification_token"`) using the derived key and stores it in settings under `"encryption_settings"`. When the user enters a password, the app derives the key, attempts to decrypt this constant, and if it succeeds, the password is confirmed correct. Since threads, messages, and custom workflows are not encrypted in the database, the master password only protects the API keys. The user can view settings and read/navigate chat histories while the keys are locked. The UI displays an unlock modal prompting for the master password only when the user attempts to run a workflow (e.g., sending a message or resuming execution) or view/edit the locked API keys. If a CORS proxy is configured, the runner overrides the base URL of the client library (e.g. passing `baseUrl` to OpenRouter or `@google/genai` clients) to route requests through the proxy.
+  - API keys are stored in IndexedDB in plain text by default, with an option to encrypt them using a master password (utilizing the Web Crypto API, deriving an AES-GCM key from the master password via PBKDF2 with a random salt stored in settings). To verify the master password on input, the app encrypts a static verification constant (e.g., `"verification_token"`) using the derived key and stores it in settings under `"encryption_settings"`. When the user enters a password, the app derives the key, attempts to decrypt this constant, and if it succeeds, the password is confirmed correct. Since threads, messages, and custom workflows are not encrypted in the database, the master password only protects the API keys. The derived encryption key is stored in-memory as a non-serializable variable in a secure singleton service (e.g., a KeyStore or EncryptionService) and is never written to IndexedDB, localStorage, or XState context. Reloading the page clears the in-memory key, requiring the user to re-enter the master password upon the next execution attempt or settings access. The user can view settings and read/navigate chat histories while the keys are locked. The UI displays an unlock modal prompting for the master password only when the user attempts to run a workflow (e.g., sending a message or resuming execution) or view/edit the locked API keys. If the user enters an incorrect master password in the unlock modal, the decryption check fails. The UI displays an error message inline within the modal, keeping the state machine in the `awaitingUnlock` state so the user can retry. The state machine only transitions when `UNLOCK_SUCCESS` or `CANCEL_UNLOCK` is dispatched. If a CORS proxy is configured, the runner overrides the base URL of the client library (e.g. passing `baseUrl` to OpenRouter or `@google/genai` clients) to route requests through the proxy.
   - Direct API calls are made from the browser. CORS is handled by OpenRouter and Gemini API.
 - `AGENTS.md` should be kept up-to-date to run the tool chains e.g. formatting, typecheck, lint with autofix, test, build.
 
@@ -57,7 +57,7 @@ Fill in anything missing.
   - Current thread ID is synced with the URL so refreshing leads to the same thread.
   - Thread-level presets are strictly inherited from the selected preset. The active preset is displayed as a dropdown trigger in the Chat Header, allowing quick switching. A configure icon next to it allows editing the preset in a modal panel. If a built-in preset is edited, the UI prompts the user to "Clone and Customize" to create a new custom preset copy.
   - Cascading deletes for thread checkpoints and messages are performed in batched transactions (deleting up to 500 records per chunk) scheduled asynchronously via microtasks or `requestIdleCallback` to keep the UI responsive.
-  - Active thread workflows use a snapshot (`workflowSnapshot`) stored in the thread record. If the custom workflow definition is modified in the Workflow Manager, it does not affect already active/paused threads. Users can manually sync the thread to the latest workflow definition via a "Sync to Latest Workflow" button in the thread settings. The sync feature automatically detects if the update is a simple update to system prompts or presets (i.e. identical node IDs and edges). If so, it performs a "Soft Sync" that updates the `workflowSnapshot` inline without clearing the message history or checkpoints, allowing execution to resume with the new prompts/presets. If the graph topology has changed (nodes or edges added, removed, or renamed), it performs a "Hard Sync" (destructive) which prompts the user for confirmation, updates the snapshot, and purges all checkpoints/messages for the thread.
+  - Active thread workflows use a snapshot (`workflowSnapshot`) stored in the thread record. If the custom workflow definition is modified in the Workflow Manager, it does not affect already active/paused threads. Users can manually sync the thread to the latest workflow definition via a "Sync to Latest Workflow" button in the thread settings. The sync feature automatically detects if the update is a simple update to system prompts or presets (i.e. identical node IDs and edges). If so, it performs a "Soft Sync" that updates the `workflowSnapshot` inline without clearing the message history or checkpoints, allowing execution to resume with the new prompts/presets. If the graph topology has changed (nodes or edges added, removed, or renamed), it performs a "Hard Sync" (destructive) which prompts the user for confirmation, updates the snapshot, and purges all checkpoints/messages for the thread. A Hard Sync purges all checkpoints and message history, resetting the thread's chat feed to an empty state, while preserving the thread's metadata (such as its title, creation date, and selected preset ID).
 - System message management CRUD for automatically inserting system message to agents upon API request, but these automatically inserted messages shouldn't be persisted in the chat history.
   - Should support insertion depth (similar to SillyTavern, should be able to specify to attach system message at the Nth message from the beginning/end of the chat messages thread).
   - Configured via a global settings list. See the [Global Settings View](#5-global-settings-view) in the UI Specification for details.
@@ -154,7 +154,7 @@ During runtime, a factory function converts this JSON schema into a compiled `@l
 - **`agent`**: Invokes the LLM specified by `presetId` (or the default preset) using the `systemPrompt`, passing the thread's message history. It binds the tools specified in the `tools` array. During execution, the agent node also updates the `lastAgentId` state property in the `GraphState` to its own node ID, ensuring that subsequent tool nodes can route results back to it.
 - **`input`**: Execution is interrupted/paused, waiting for a user message (uses a LangGraph interrupt).
 - **`tool`**: Executes tool calls returned by agent nodes (e.g. `ask_questions`, `declare_consensus`, or other custom database tools) and generates the corresponding `tool` messages.
-- **`consensus_check`**: Runs an LLM node or rule-based evaluator to analyze the message history and determine if consensus is reached, routing the graph outcome to the next state based on the consensus evaluation.
+- **`consensus_check`**: Runs an LLM node or rule-based evaluator to analyze the message history and determine if consensus is reached, routing the graph outcome to the next state based on the consensus evaluation. If a `consensus_check` node has a configured `systemPrompt`, it runs as an LLM-based evaluator that analyzes the message history and updates the state's `consensusReached` flag. If `systemPrompt` is omitted or empty, the node operates as a pure rule-based evaluator that only checks if the `consensusReached` state flag has been set to `true` (e.g. by a previous tool call such as `declare_consensus`), bypassing any LLM API call to conserve tokens. The system prompt for LLM-based `consensus_check` nodes is defined in the workflow's node configuration (`systemPrompt` field) and uses standard evaluation guidelines, instructing the LLM to output a JSON structure containing `consensusReached` and `reasoning`.
 - **`summary`**: Runs a specialized LLM node to summarize the chat history up to the current point.
 
 #### Conditional Routing and Edge Compilation Rules
@@ -666,7 +666,7 @@ When `maxHistoryMessages` is reached, how should the message history be pruned? 
 
 ##### Response
 
-[UNRESOLVED]
+To maintain database integrity, UI chat feed completeness, and LangGraph checkpoint consistency, messages will not be deleted from the database or the `GraphState`. Instead, the `maxHistoryMessages` pruning logic will be applied on-the-fly inside the message compiler when preparing the prompt payload for the LLM API call. The compiler will traverse backward from the latest message, keeping up to `maxHistoryMessages` messages (while ensuring system prompts, injected messages, and necessary context boundaries are preserved). This keeps the database and checkpoint history complete, allowing the user to view the full chat history and perform rewinding/branching without data loss, while successfully limiting API request costs.
 
 #### Question: Handling of Active Preset Deletion
 
@@ -674,11 +674,27 @@ When a user deletes a custom LLM preset, how should we handle threads and workfl
 
 ##### Response
 
-[UNRESOLVED]
+As specified in the 'Safety Rules' of the LLM provider preset management section, deleting a custom preset that is currently active in any thread or referenced in any workflow node definitions is strictly blocked. The UI must display an inline notification listing the referencing threads or workflows. The user cannot delete the default LLM preset.
 
 #### Question: Multi-Select Tool Output Formatting
 
 When the `ask_questions` tool returns multi-select answers, how should the answers be formatted for subsequent LLM consumption? Should they be passed as a raw JSON array, or should they be formatted as a human-readable list (e.g. 'Question: X, Selected: Y, Z') to make it easier for subsequent agent nodes to reason about them without parsing JSON?
+
+##### Response
+
+The tool output returned to the LLM will be serialized as a stringified JSON object matching the `AskQuestionsResponse` interface. This ensures programmatic consistency for any graph nodes or custom logic that needs to inspect the state. To optimize LLM reasoning and readability, the JSON will be compact, and the system prompt or agent instructions for subsequent nodes will be instructed on how to interpret this standard JSON schema.
+
+#### Question: Saving Partial Responses on Abrupt Interruption/Pause
+
+Should we save partial responses to the database `messages` store when a user pauses or aborts an active LLM streaming step, or is it acceptable to discard the partial message and start the step fresh upon resuming?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Missing or Invalid Preset IDs in Custom Workflows
+
+If a custom workflow is imported or saved with a `presetId` that does not exist in the database, how should the compilation and execution behave? Should compilation fail immediately, or should we automatically fall back to the thread's selected preset (or the global default preset) at runtime?
 
 ##### Response
 
