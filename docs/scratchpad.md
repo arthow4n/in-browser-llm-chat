@@ -10,7 +10,7 @@ This file will be collaboratively updated by the human user and the coding agent
 - LangGraph.js `@langchain/langgraph/web` for LLM agent orchestraion in-browser.
 - React frontend.
 - XState and `@xstate/react`, all the application and UI states should be fully driven by state machine(s).
-- Carbon Design System `@carbon/react` as is without custom design/styling overrides (no custom glassmorphism, HSL custom palettes, or custom animations). Support switching between dark and light mode, defaulting to the same as system settings.
+- Carbon Design System `@carbon/react` as is without custom design/styling overrides (no custom glassmorphism, HSL custom palettes, or custom animations). Support switching between dark and light mode, defaulting to the same as system settings. Auto-detect and sync with system color scheme by default. Provide a selector in the header/settings to manually override it to "Light" (Carbon `g10` / `white`) or "Dark" (Carbon `g100` / `g90`), saving this preference as a global setting in IndexedDB.
 - TypeScript: Install package `@typescript/native-preview` instead of package `typescript`.
 - Lint: `oxlint-tsgolint@latest` instead of ESLint
   - Turn on type awared linting https://oxc.rs/docs/guide/usage/linter/type-aware.html
@@ -23,6 +23,7 @@ This file will be collaboratively updated by the human user and the coding agent
 - Persistance with IndexedDB via `idb` (and `fake-indexeddb` in test) instead of localStorage/sessionStorage. This is to ensure the storage has higher quota.
 - Markdown & Math Rendering: `react-markdown`, `rehype-katex`, `remark-gfm`, and `remark-math` for rendering markdown messages and LaTeX equations.
 - Support using OpenRouter and Gemini API as LLM API provider, and potentially switching to another provider in the future.
+  - Prefer using the official `@openrouter/sdk` and `@google/genai` client libraries within custom LangGraph nodes to execute direct browser API calls rather than a custom fetch wrapper, while retaining full control over streaming and reasoning configurations.
   - API keys are stored in IndexedDB in plain text.
   - Direct API calls are made from the browser. CORS is handled by OpenRouter and Gemini API.
 - `AGENTS.md` should be kept up-to-date to run the tool chains e.g. formatting, typecheck, lint with autofix, test, build.
@@ -41,7 +42,7 @@ Fill in anything missing.
   - Workflow = agent orchestration graph like for LangGraph
     - Built-in workflow can be anything LangGraph supported.
     - User-defined workflow needs to be able to be serialised to/deserialised from persistance.
-    - The editing interface for custom workflows is a text-based JSON editor; no graphical/visual editor is required.
+    - The editing interface for custom workflows is a text-based JSON editor; no graphical/visual editor is required. On mobile, this remains a simple `TextArea` with word-wrap and horizontal/vertical scrolling, relying entirely on the native mobile keyboard (no helper keyboard bar or custom virtual buttons).
     - Here is where the user can define which are the agents involved in an orchestration and their system prompts.
   - Node execution sequence and underlying LLM threads should be visible in the chat feed, rendered as flatly as possible so they look like working within one single thread, including reasoning tokens.
   - To begin with, there should be a built-in debate workflow, where the user should be able to seed the debate with a topic, then let 2 agents debate infinitely in a loop until they come to consensus, the agents come to consensus by making tool call to suggest leaving the debate loop, then finally another agent summarise the debate for the user to review.
@@ -55,15 +56,15 @@ Fill in anything missing.
 - System message management CRUD for automatically inserting system message to agents upon API request, but these automatically inserted messages shouldn't be persisted in the chat history.
   - Should suport insertion depth (similar to SillyTavern, should be able to specify to attach system message at the Nth message from the beginning/end of the chat messages thread)
 - Render agent and user messages with rich markdown formatting, GitHub Flavored Markdown (e.g. tables, checkboxes), and LaTeX math support (both inline and block equations) using the specified rendering packages.
-- Render reasoning tokens (collapsed by default)
+- Render reasoning tokens (collapsed by default). Both reasoning tokens and text content are streamed in real-time. The "Reasoning Process" accordion must remain collapsed by default during streaming and after response completion. Use a fallback renderer or debounced updates to handle malformed partial markdown or math blocks during generation.
 - Render tool call message and tool result message (collapsed by default)
   - There should be a built-in "ask_questions" tool which LLM can invoke to render a specific UI along with the tool call message, which the user can use to answer questions by mostly clicking instead of always having to type manually. The tool accepts an array of questions, and for each question an array of suggested answers for multi-select. Next to the suggested answers, there's a freetext input field which the user can use to enter freetext answer or leave an optional comment next to the answer they selected. The user should also be able to chooe to refuse answer a certain question or all the questions, when refusing, the user can leave an optional comment to explain the refusal.
-  - There should be a set of built-in tools for creating and updating user-defined workflows, so the user can chat with the LLM agent to create another workflow interactively.
+  - There should be a set of built-in tools for creating and updating user-defined workflows, so the user can chat with the LLM agent to create another workflow interactively. Any database-modifying tools (such as creating/updating a workflow) require explicit user confirmation. The tool call is rendered as a "Proposed Action" card showing a diff or description, and execution pauses until the user clicks "Approve" or "Deny". Other standard, read-only tools (like `ask_questions`) execute automatically.
 - Manual history edit
   - Edit a message in the middle of history
   - Remove a message in the middle of history
   - Manually insert a message to the end of history as any roles (e.g. for assistant prefill)
-- Branching from a certain message in the chat thread: Each message includes a low-profile options menu (revealed on hover on desktop, or permanently visible as a small menu icon next to the message on mobile). Clicking/tapping it allows branching (cloning/duplicating) the thread up until that message, creating a new thread, updating the URL, and listing it in the sidebar.
+- Branching from a certain message in the chat thread: Each message includes a low-profile options menu. To prevent accidental triggers and ease mobile usability, a dedicated, low-profile overflow button (three-dots icon) with a 44x44px touch/click target is permanently visible next to each message bubble (on both desktop and mobile viewports, with a light opacity like 0.6). Clicking/tapping it opens a menu (or slide-up bottom sheet on mobile) containing "Edit", "Delete", and "Branch Thread" options, allowing text selection and link clicks on the message bubble itself.
 
 ## Technical Architecture Proposals
 
@@ -158,7 +159,7 @@ The `ask_questions` tool is defined as:
   - Max loop limit (default: 5 rounds of debate / 10 turns) to prevent infinite loops and runaway API costs.
   - The debaters themselves must call a `declare_consensus` tool when they agree, which terminates the loop.
   - The workflow configuration must support forcing a minimum of X rounds of loop before the `declare_consensus` tool is given to the debaters (X can be set to 0 to disable this forced loop).
-  - General Loop Control Panel: Any workflow with loops (including the debate workflow) should render a control card in the UI showing the current round, number of turns, and estimated cost, with buttons to Pause, Resume, or Force Consensus / Summarize early.
+  - General Loop Control Panel: Any workflow with loops (including the debate workflow) should render a control card in the UI showing the current round, number of turns, and estimated cost, with buttons to Pause, Resume, or Force Consensus / Summarize early. On mobile viewports, the panel collapses into a compact, sticky bottom bar (or overlay) showing the round count and estimated cost, where a single tap opens a full-screen control overlay detailing all stats and controls.
 
 ### 6. System Message Injection Details
 
@@ -310,69 +311,6 @@ _Suggested Options:_
 
 [UNRESOLVED]
 
-#### Question: Theme Switching Behavior
-
-How should light/dark theme switching be handled?
-
-_Suggested Options:_
-
-- **Option A (Recommended):** Auto-detect and sync with system color scheme by default. Provide a selector in the header/settings to manually override it to "Light" (Carbon `g10` / `white`) or "Dark" (Carbon `g100` / `g90`).
-- **Option B:** Auto-detect and sync with system color scheme only, with no manual override.
-- **Option C:** Manual override only (defaults to Dark).
-
-##### Response
-
-[UNRESOLVED]
-
-#### Question: Mobile Responsiveness and Touch Target Adaptations
-
-Since this application must be fully usable on mobile browsers, how should we adapt complex desktop-centric interactions (such as hover menus, JSON editors, and dense control dashboards) for touch screens and smaller viewports?
-
-_Suggested Options:_
-
-- **Hover Actions (Edit / Delete / Branch) on Mobile:**
-  - **Option A (Recommended):** Use a dedicated, low-profile overflow button (three-dots icon) next to each message bubble. On touch devices, this button is permanently visible (opacity 0.6) with a 44x44px touch target. Tapping it opens a bottom sheet drawer containing the actions. This ensures that users can still copy message text, click markdown links, or select text on mobile without accidentally triggering a menu.
-  - **Option B:** Render a permanent, low-profile row of action icons (Edit, Delete, Branch) under/next to each message card on mobile (opacity 0.6) so they are directly tappable. This takes up more vertical/horizontal space but is faster.
-  - **Option C:** Use a long-press gesture to trigger a context menu over the selected message. (Note: long-press is less discoverable and often conflicts with native browser text-selection menus on iOS/Android).
-- **Text-based JSON Workflow Editor on Mobile:**
-  - **Option A (Recommended):** Render the JSON editor as a full-screen-width text area with word-wrap enabled, and show a helper bar above the software keyboard containing quick-tap insertion buttons for structural characters (`{`, `}`, `[`, `]`, `"`, `:`).
-  - **Option B:** Keep the simple `TextArea` but with horizontal and vertical scrolling, relying entirely on the native mobile keyboard.
-- **Loop Control Card on Mobile:**
-  - **Option A (Recommended):** Collapse the Loop Control Panel on small screens into a compact, sticky bottom bar (or overlay) displaying just the round count and estimated cost, with a single tap triggering a full-screen control overlay.
-  - **Option B:** Keep the same layout as desktop but scaled down, which might require horizontal scrolling or very small font sizes.
-
-##### Response
-
-[UNRESOLVED]
-
-#### Question: Token Streaming and Live Message Rendering
-
-During active workflow execution, how should the UI render streaming text and reasoning tokens in real-time?
-
-_Suggested Options:_
-
-- **Option A (Recommended):** Stream both reasoning tokens and text content in real-time. While reasoning tokens stream, the "Reasoning Process" accordion is expanded by default to display the thought process. Once final text content starts streaming, the reasoning accordion collapses (or remains open) and the text streams inline. Use a fallback renderer or debounced updates to handle malformed partial markdown or math blocks during generation.
-- **Option B:** Stream the text content token-by-token, but display a loading spinner for the reasoning process phase, revealing the reasoning block in full only after the generation completes.
-- **Option C:** Do not stream either field. Show a typing/loading indicator during execution and append the full message block only after the corresponding LangGraph node completes execution.
-
-##### Response
-
-[UNRESOLVED]
-
-#### Question: Tool Call Approval Policy
-
-For built-in tools (specifically database-modifying workflow tools, or global configuration edits), should the workflow execute them automatically, or require explicit user approval?
-
-_Suggested Options:_
-
-- **Option A (Recommended):** Require user confirmation for database-modifying tools (e.g. creating/updating a workflow). The tool call is rendered as a "Proposed Action" card showing a diff or description, and execution pauses until the user clicks "Approve" or "Deny". Other standard, read-only tools execute automatically.
-- **Option B:** All tools run automatically without explicit confirmation, relying on the user's trust in the agent or manual backups/history.
-- **Option C:** Every tool call (including read-only search/query tools) requires explicit confirmation by the user before the graph is allowed to proceed.
-
-##### Response
-
-[UNRESOLVED]
-
 #### Question: Onboarding and First-Time User Experience
 
 Since this is a client-side-only app hosted on GitHub Pages, it does not have a backend to supply default API keys. How should the application guide a first-time user who has no presets or API keys configured?
@@ -398,19 +336,6 @@ _Suggested Options:_
   - `"lint:fix": "oxlint --tsconfig tsconfig.json --react-plugin --vitest-plugin --fix"`
     This ensures that both CLI runs and developer commands benefit from type-aware rules (like checking for unawaited promises).
 - **Option B:** Keep the standard fast lint command as is, and add a separate `"lint:type-aware"` script for deep checks before committing/building.
-
-##### Response
-
-[UNRESOLVED]
-
-#### Question: LLM Client Library Integration
-
-When invoking Gemini and OpenRouter API providers within LangGraph.js, should we use LangChain's official integrations (`@langchain/openai`, `@langchain/google-genai`) or implement a custom, direct HTTP `fetch` client?
-
-_Suggested Options:_
-
-- **Option A (Recommended):** Implement direct REST API client wrappers using browser `fetch`. They can be integrated into custom LangGraph nodes, giving us absolute control over headers, payloads (especially for thinking/reasoning config), and token-by-token streaming, while avoiding bundler compatibility issues.
-- **Option B:** Use the standard `@langchain/openai` package for OpenRouter and `@langchain/google-genai` for Gemini, and configure Vite to polyfill any Node modules they require.
 
 ##### Response
 
