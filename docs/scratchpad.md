@@ -2060,6 +2060,68 @@ Governs the expansion and collapse behavior of accordions for Reasoning Processe
 - **Database Reads/Writes**: None.
 - **API Request/Response Sequence**: None.
 
+#### X. Chat Header Quick Preset Switcher State Machine
+
+Governs the dropdown selector in the Chat Header used for quickly switching the active preset of the current thread.
+
+- **Context**:
+  - `threadId`: `string`
+  - `selectedPresetId`: `string`
+  - `presets`: `Array<Preset>`
+  - `errorMessage`: `string | null`
+- **States**:
+  - `idle`: Dropdown is visible and interactive.
+    - _Dropdown Trigger_: Enabled when parent coordinator `ExecutionState` is not `executing` or `checkingStatus`. Focused when clicked.
+    - _Dropdown Menu_: Hidden.
+  - `open`: Dropdown menu is expanded.
+    - _Dropdown Trigger_: Enabled.
+    - _Dropdown Menu_: Visible, listing available presets.
+  - `saving`: Asynchronously updating the thread record in IndexedDB with the new preset.
+    - _Dropdown Trigger_: Disabled, shows loading spinner.
+    - _Dropdown Menu_: Hidden.
+  - `error`: Failed to update the preset in the database.
+    - _Dropdown Trigger_: Enabled.
+    - _Error Tooltip/Badge_: Visible, displaying `errorMessage`.
+- **Transitions / Events**:
+  - `OPEN_MENU`: Transitions `idle` to `open`.
+  - `CLOSE_MENU`: Transitions `open` to `idle`.
+  - `SELECT_PRESET` (contains `presetId`):
+    - If `presetId` equals `selectedPresetId`, transitions to `idle`.
+    - If different, updates `selectedPresetId` and transitions to `saving`.
+  - `SAVE_SUCCESS`: Transitions `saving` to `idle` (dispatches setting update to parent coordinator).
+  - `SAVE_FAILURE` (contains error): Transitions `saving` to `error` (updates `errorMessage`).
+  - `DISMISS_ERROR`: Transitions `error` to `idle`.
+- **Database Reads/Writes**:
+  - **Reads**: None (presets list provided via props/context).
+  - **Writes**: Opens read-write transaction on `threads` to update `activePresetId` for `threadId`.
+- **API Request/Response Sequence**: None.
+
+#### Y. API Key Visual Status Indicator State Machine
+
+Governs the lightweight asynchronous validation indicator displayed next to the API Key input fields in the Global Settings.
+
+- **Context**:
+  - `provider`: `"openrouter" | "gemini"`
+  - `apiKey`: `string`
+  - `abortController`: `AbortController | null`
+- **States**:
+  - `idle`: No validation active.
+    - _Status Icon_: Hidden.
+  - `validating`: Executing a lightweight dummy API request to verify the key.
+    - _Status Icon_: Visible, displaying a loading spinner.
+  - `valid`: API key successfully validated.
+    - _Status Icon_: Visible, displaying a green checkmark.
+  - `invalid`: API key validation failed (e.g., unauthorized or network error).
+    - _Status Icon_: Visible, displaying a red cross (with tooltip showing error details).
+- **Transitions / Events**:
+  - `START_VALIDATION` (contains `apiKey`): Aborts any in-flight request via `abortController`, initializes a new one, updates context, and transitions to `validating`.
+  - `VALIDATION_SUCCESS`: Transitions `validating` to `valid`.
+  - `VALIDATION_FAILURE`: Transitions `validating` to `invalid`.
+  - `INPUT_CHANGED`: Transitions `valid` or `invalid` to `idle`.
+- **Database Reads/Writes**: None.
+- **API Request/Response Sequence**:
+  - Same dummy API request implementation as the Preset Connection Tester State Machine (using the provider's /models endpoint or a 1-token dummy prompt).
+
 ## Open questions
 
 ### Process of handling open questions
