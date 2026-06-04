@@ -174,41 +174,23 @@ The `ask_questions` tool is defined as:
 
 ### Process of handling open questions
 
-When updating this file with open questions, please only add to the current open questions list below. If a question covers multiple distinct decisions or sub-questions, clearly segment the options under labeled sub-headings, and provide a corresponding numbered/segmented placeholder in the Response section so the user can easily answer each part independently.
+When updating this file with open questions, please only add to the current open questions list below.
 
-Use the following format for single questions:
+Each distinct decision or sub-question must be structured as its own separate `#### Question: <title>` section with its own suggested options and response placeholder. Do not group multiple distinct questions or decisions under a single question header, as this makes it difficult to respond to them one by one.
+
+Always use the following format:
 
 ```md
 #### Question: <short title of question here>
 
-<Description of the question and options>
+<Description of the question and the suggested options>
 
 ##### Response
 
 [UNRESOLVED]
 ```
 
-Use the following format for questions with multiple sub-questions:
-
-```md
-#### Question: <short title of question here>
-
-<Description of the question>
-
-- **Sub-question 1:**
-  - Option A
-  - Option B
-- **Sub-question 2:**
-  - Option A
-  - Option B
-
-##### Response
-
-1. Sub-question 1: [UNRESOLVED]
-2. Sub-question 2: [UNRESOLVED]
-```
-
-The human user will replace the `[UNRESOLVED]` tag(s) with their response. The human user will then prompt the coding agent to incorporate the responses into this scratchpad file, and remove those already incorporated open questions, along with any questions that are no longer relevant.
+The human user will replace the `[UNRESOLVED]` tag with their response. The human user will then prompt the coding agent to incorporate the responses into this scratchpad file, and remove those already incorporated open questions, along with any questions that are no longer relevant.
 
 ### Current open questions:
 
@@ -244,25 +226,33 @@ _Suggested Options:_
 
 [UNRESOLVED]
 
-#### Question: General Loop Control Panel UI & Cost Estimation
+#### Question: Loop Control Card Placement
 
-For workflows containing loops (such as the Debate workflow), where should the Loop Control Panel be positioned, and how should "estimated cost" be calculated?
+For workflows containing loops (such as the Debate workflow), where should the Loop Control Panel be positioned in the UI?
 
 _Suggested Options:_
 
-- **1. Loop Control Card Placement:**
-  - **Option A (Recommended):** Rendered as a sticky control bar at the top of the chat area on desktop. On mobile, it collapses into a compact floating action button (FAB) or thin top status bar to save vertical space; tapping it opens a modal overlay with the detailed turn counters and control actions.
-  - **Option B:** Rendered inline as a special card directly in the chat feed (moving up as new messages are added).
-  - **Option C:** Placed as a floating card in a corner of the chat viewport.
-- **2. Cost Estimation Details:**
-  - **Option A (Recommended):** Display a simple counter of steps/turns and a running count of estimated input/output tokens (without currency calculation).
-  - **Option B:** Use a hardcoded price-per-token map for Gemini/OpenRouter models to display estimated costs in USD.
-  - **Option C:** Only display step/turn counter and execution duration.
+- **Option A (Recommended):** Rendered as a sticky control bar at the top of the chat area on desktop. On mobile, it collapses into a compact floating action button (FAB) or thin top status bar to save vertical space; tapping it opens a modal overlay with the detailed turn counters and control actions.
+- **Option B:** Rendered inline as a special card directly in the chat feed (moving up as new messages are added).
+- **Option C:** Placed as a floating card in a corner of the chat viewport.
 
 ##### Response
 
-1. Loop Control Card Placement: [UNRESOLVED]
-2. Cost Estimation Details: [UNRESOLVED]
+[UNRESOLVED]
+
+#### Question: Loop Cost Estimation Details
+
+For workflows containing loops (such as the Debate workflow), how should "estimated cost" be calculated and displayed to the user?
+
+_Suggested Options:_
+
+- **Option A (Recommended):** Display a simple counter of steps/turns and a running count of estimated input/output tokens (without currency calculation).
+- **Option B:** Use a hardcoded price-per-token map for Gemini/OpenRouter models to display estimated costs in USD.
+- **Option C:** Only display step/turn counter and execution duration.
+
+##### Response
+
+[UNRESOLVED]
 
 #### Question: Chat Feed message styling for reasoning and tool tokens
 
@@ -280,62 +270,83 @@ _Suggested Options:_
 
 [UNRESOLVED]
 
-#### Question: Interaction Flow for `ask_questions` Tool Interrupts
+#### Question: Input Blocking for `ask_questions` Tool Interrupts
 
-When the `ask_questions` tool interrupts execution to ask for human input:
-
-1. Should it disable the main chat message input box?
-2. Must the user answer all questions in the card, or can they submit answers to a subset and leave others blank?
+When the `ask_questions` tool interrupts execution to ask for human input, should it disable the main chat message input box?
 
 _Suggested Options:_
 
-- **1. Input blocking:**
-  - **Option A (Recommended):** Yes, block/disable the main chat input field while the workflow is waiting for the tool answers, since typing a normal chat message would violate the graph execution state. All form controls are sized with a minimum of 44x44px touch targets.
-  - **Option B:** No, allow the user to type a normal message, which automatically "refuses" the tool questions and sends the typed text as the refusal reason.
-- **2. Answering completeness:**
-  - **Option A (Recommended):** The user can fill out any subset, click checkboxes for multi-select, and submit. Any unanswered questions are treated as skipped. If the user clicks "Refuse to Answer", it clears answers and submits a refusal payload with their optional comment.
-  - **Option B:** The user must either answer all questions or explicitly click "Refuse to Answer".
+- **Option A (Recommended):** Yes, block/disable the main chat input field while the workflow is waiting for the tool answers, since typing a normal chat message would violate the graph execution state. All form controls are sized with a minimum of 44x44px touch targets.
+- **Option B:** No, allow the user to type a normal message, which automatically "refuses" the tool questions and sends the typed text as the refusal reason.
 
 ##### Response
 
-1. Input Blocking: [UNRESOLVED]
-2. Answering Completeness: [UNRESOLVED]
+[UNRESOLVED]
 
-#### Question: History Edit & Message Insertion UI
+#### Question: Answering Completeness for `ask_questions` Tool Interrupts
 
-How should users trigger edits/deletions of existing messages, and how should they insert messages at the end of the history?
+When the `ask_questions` tool interrupts execution, must the user answer all questions in the card, or can they submit answers to a subset and leave others blank?
 
 _Suggested Options:_
 
-- **1. Editing / Deleting:**
-  - **Option A (Recommended):** Each message includes a small, low-profile options button (three-dots icon) with a minimum 44x44px touch target. On desktop, this button appears on hover; on mobile, it remains permanently visible (with a light opacity like 0.6). Clicking/tapping it opens a menu (or slide-up bottom sheet on mobile) containing "Edit", "Delete", and "Branch Thread" options. This avoids tap-interception issues on the message bubble itself, allowing normal text selection and link clicks. Clicking "Edit" transforms the message bubble inline into a text area.
-  - **Option B:** Tapping/clicking anywhere on the message bubble itself selects the message and opens the actions menu/modal. (Note: this makes selecting text or clicking links inside the message very difficult on touch devices).
-- **2. Message Insertion (Prefill):**
-  - **Option A (Recommended):** Add a small role selector dropdown button next to the main chat text input (defaulting to "User"). Changing it allows selecting "Assistant" or "System", letting the user type a message and press Send to insert it directly as that role.
-  - **Option B:** Provide a dedicated "Prefill" button above the chat input that inserts an editable message block at the end of the thread.
+- **Option A (Recommended):** The user can fill out any subset, click checkboxes for multi-select, and submit. Any unanswered questions are treated as skipped. If the user clicks "Refuse to Answer", it clears answers and submits a refusal payload with their optional comment.
+- **Option B:** The user must either answer all questions or explicitly click "Refuse to Answer".
 
 ##### Response
 
-1. Editing / Deleting: [UNRESOLVED]
-2. Message Insertion (Prefill): [UNRESOLVED]
+[UNRESOLVED]
 
-#### Question: System Message Injection Configuration & Payload Preview
+#### Question: Message Editing and Deletion UI
 
-How should users configure system message injection, and where should they trigger the "Preview API Payload" overlay?
+How should users trigger edits/deletions of existing messages?
 
 _Suggested Options:_
 
-- **1. Injection Configuration:**
-  - **Option A (Recommended):** Add an "Injected System Messages" list configuration inside the Workflow JSON editor (so it is saved per workflow).
-  - **Option B:** Provide a global UI list in settings for system messages that apply to all workflows.
-- **2. API Payload Preview:**
-  - **Option A (Recommended):** Add a "Preview API Payload" button in the active chat header. Clicking it opens a Modal showing the exact JSON structure of messages (including the injected system messages) that would be sent to the LLM API next. Injected messages are highlighted with a distinct background/border and marked with an `[INJECTED]` badge to assist debugging.
-  - **Option B:** Show it as a collapsible drawer/panel on the right side of the chat view.
+- **Option A (Recommended):** Each message includes a small, low-profile options button (three-dots icon) with a minimum 44x44px touch target. On desktop, this button appears on hover; on mobile, it remains permanently visible (with a light opacity like 0.6). Clicking/tapping it opens a menu (or slide-up bottom sheet on mobile) containing "Edit", "Delete", and "Branch Thread" options. This avoids tap-interception issues on the message bubble itself, allowing normal text selection and link clicks. Clicking "Edit" transforms the message bubble inline into a text area.
+- **Option B:** Tapping/clicking anywhere on the message bubble itself selects the message and opens the actions menu/modal. (Note: this makes selecting text or clicking links inside the message very difficult on touch devices).
 
 ##### Response
 
-1. Injection Configuration: [UNRESOLVED]
-2. API Payload Preview: [UNRESOLVED]
+[UNRESOLVED]
+
+#### Question: Message Insertion (Prefill) UI
+
+How should users insert messages at the end of the history as any role (e.g., for assistant prefill)?
+
+_Suggested Options:_
+
+- **Option A (Recommended):** Add a small role selector dropdown button next to the main chat text input (defaulting to "User"). Changing it allows selecting "Assistant" or "System", letting the user type a message and press Send to insert it directly as that role.
+- **Option B:** Provide a dedicated "Prefill" button above the chat input that inserts an editable message block at the end of the thread.
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: System Message Injection Configuration
+
+How should users configure system message injection?
+
+_Suggested Options:_
+
+- **Option A (Recommended):** Add an "Injected System Messages" list configuration inside the Workflow JSON editor (so it is saved per workflow).
+- **Option B:** Provide a global UI list in settings for system messages that apply to all workflows.
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: API Payload Preview UI
+
+Where should users trigger the "Preview API Payload" overlay?
+
+_Suggested Options:_
+
+- **Option A (Recommended):** Add a "Preview API Payload" button in the active chat header. Clicking it opens a Modal showing the exact JSON structure of messages (including the injected system messages) that would be sent to the LLM API next. Injected messages are highlighted with a distinct background/border and marked with an `[INJECTED]` badge to assist debugging.
+- **Option B:** Show it as a collapsible drawer/panel on the right side of the chat view.
+
+##### Response
+
+[UNRESOLVED]
 
 #### Question: Onboarding and First-Time User Experience
 
