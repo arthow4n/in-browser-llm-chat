@@ -237,51 +237,58 @@ The application layout is built using the Carbon Design System (`@carbon/react`)
 
 ## State Machine Specification
 
-The application state is managed by a central XState machine. It handles transitions between views, manages the active thread and workflow, and controls the LangGraph execution flow.
+The application state is managed by a central XState machine configured with parallel state regions. This design decouples UI view navigation from LangGraph background execution, allowing background workflows to run concurrently while the user navigates settings or configurations.
 
 ### State Transition Graph
 
 ```mermaid
 stateDiagram-v2
-    [*] --> initializing
-    initializing --> onboarding : [No API Keys]
-    initializing --> idle : [Has API Keys & No Active Thread]
-    initializing --> chatting : [Has API Keys & Active Thread]
+    state ApplicationMachine {
+        state ViewState {
+            [*] --> initializing
+            initializing --> onboarding : [No API Keys]
+            initializing --> idle : [Has API Keys & No Active Thread]
+            initializing --> chatting : [Has API Keys & Active Thread]
 
-    onboarding --> globalSettings : OPEN_SETTINGS
-    globalSettings --> onboarding : CANCEL / SAVE [Still No Keys]
-    globalSettings --> idle : SAVE [Keys Configured, No Thread]
-    globalSettings --> chatting : SAVE [Keys Configured, Active Thread]
+            onboarding --> globalSettings : OPEN_SETTINGS
+            globalSettings --> onboarding : CLOSE_SETTINGS [Still No Keys]
+            globalSettings --> idle : CLOSE_SETTINGS [Keys Configured, No Active Thread]
+            globalSettings --> chatting : CLOSE_SETTINGS [Keys Configured, Active Thread]
 
-    idle --> chatting : SELECT_THREAD
-    idle --> presetConfig : EDIT_PRESET / CREATE_PRESET
-    idle --> workflowConfig : EDIT_WORKFLOW / CREATE_WORKFLOW
-    idle --> globalSettings : OPEN_SETTINGS
+            idle --> chatting : ROUTE_CHANGED [Thread Selected]
+            idle --> presetConfig : OPEN_PRESET_EDIT
+            idle --> workflowConfig : OPEN_WORKFLOW_EDIT
+            idle --> globalSettings : OPEN_SETTINGS
 
-    chatting --> presetConfig : EDIT_PRESET / CREATE_PRESET
-    chatting --> workflowConfig : EDIT_WORKFLOW / CREATE_WORKFLOW
-    chatting --> globalSettings : OPEN_SETTINGS
-    chatting --> graphExecuting : SUBMIT_MESSAGE / START_WORKFLOW
-    chatting --> idle : DELETE_ACTIVE_THREAD
+            chatting --> idle : ROUTE_CHANGED [No Thread Selected]
+            chatting --> chatting : ROUTE_CHANGED [Different Thread Selected]
+            chatting --> presetConfig : OPEN_PRESET_EDIT
+            chatting --> workflowConfig : OPEN_WORKFLOW_EDIT
+            chatting --> globalSettings : OPEN_SETTINGS
 
-    presetConfig --> chatting : SAVE_PRESET / CANCEL_PRESET [If thread active]
-    presetConfig --> idle : SAVE_PRESET / CANCEL_PRESET [If no thread active]
+            presetConfig --> chatting : CLOSE_PRESET_EDIT [If thread active]
+            presetConfig --> idle : CLOSE_PRESET_EDIT [If no thread active]
 
-    workflowConfig --> chatting : SAVE_WORKFLOW / CANCEL_WORKFLOW [If thread active]
-    workflowConfig --> idle : SAVE_WORKFLOW / CANCEL_WORKFLOW [If no thread active]
+            workflowConfig --> chatting : CLOSE_WORKFLOW_EDIT [If thread active]
+            workflowConfig --> idle : CLOSE_WORKFLOW_EDIT [If no thread active]
 
-    globalSettings --> chatting : SAVE_SETTINGS / CANCEL_SETTINGS [If thread active]
-    globalSettings --> idle : SAVE_SETTINGS / CANCEL_SETTINGS [If no thread active]
+            globalSettings --> chatting : CLOSE_SETTINGS [If thread active]
+            globalSettings --> idle : CLOSE_SETTINGS [If no thread active]
+        }
+        --
+        state ExecutionState {
+            [*] --> inactive
+            inactive --> executing : START_EXECUTION / SUBMIT_MESSAGE
+            executing --> awaitingHumanInput : INTERRUPT / ASK_QUESTIONS_TRIGGER / PAUSE
+            executing --> inactive : EXECUTION_COMPLETE
+            executing --> error : EXECUTION_ERROR
 
-    graphExecuting --> awaitingHumanInput : INTERRUPT / PAUSE / ASK_QUESTIONS_TRIGGER
-    graphExecuting --> chatting : FINISH
-    graphExecuting --> error : GRAPH_ERROR
+            awaitingHumanInput --> executing : RESUME / SUBMIT_TOOL_RESPONSE / SUBMIT_APPROVAL
+            awaitingHumanInput --> inactive : CANCEL_EXECUTION
 
-    awaitingHumanInput --> graphExecuting : RESUME / SUBMIT_TOOL_RESPONSE / SUBMIT_APPROVAL
-    awaitingHumanInput --> chatting : CANCEL_EXECUTION
-
-    error --> chatting : DISMISS_ERROR [If thread active]
-    error --> idle : DISMISS_ERROR [If no thread active]
+            error --> inactive : DISMISS_ERROR
+        }
+    }
 ```
 
 ### 1. Machine Context (State Schema)
@@ -299,27 +306,32 @@ The state machine context maintains the following variables:
   - `estimatedCost`: `number` - Cumulative steps/tokens count.
 - `errorMessage`: `string | null` - Details of the most recent execution or validation error.
 - `apiKeysConfigured`: `boolean` - Indicates whether required API keys are available in IndexedDB.
+- `graphRunnerActor`: `any` - A reference to the active spawned child actor managing LangGraph execution.
 
 ### 2. State Descriptions
 
+#### ViewState (Navigation Region)
+
 - **`initializing`**: Reads the configuration settings, API keys, presets, custom workflows, and active thread ID from the database.
-- **`onboarding`**: A blocker state when API keys are not yet configured. The main chat input is disabled, prompting the user to click the warning banner.
+- **`onboarding`**: A blocker state when API keys are not yet configured. The main chat input is disabled, prompting the user to click the warning banner to add API keys.
 - **`idle`**: Ready for user interactions, with no thread loaded.
 - **`chatting`**: Viewing an active thread. The main input is enabled and ready to accept user messages.
 - **`presetConfig`**: Modifying or creating an LLM preset.
 - **`workflowConfig`**: Modifying or creating custom workflows in the JSON `TextArea` editor.
 - **`globalSettings`**: Modifying API keys, manual theme override, and injected system messages.
-- **`graphExecuting`**: running `@langchain/langgraph/web` steps in the browser (input disabled).
+
+#### ExecutionState (Execution Region)
+
+- **`inactive`**: No background workflow execution is running for the active thread.
+- **`executing`**: Running `@langchain/langgraph/web` steps in the browser (input disabled).
 - **`awaitingHumanInput`**: Graph execution is suspended (either due to a manual approval card or an `ask_questions` tool interrupt).
 - **`error`**: Displays error information if an API request or state transition fails.
 
-### 3. Unresolved State Machine Design Decisions
+### 3. Resolved State Machine Design Decisions
 
-The following architectural and design decisions are currently marked as unresolved:
-
-- **Navigation during active graph execution**: Whether the machine should permit navigating to presets, custom workflows, or global settings while a LangGraph run continues in the background. `[UNRESOLVED]`
-- **React Router integration**: Defining whether XState or the router acts as the primary source of truth for URL thread route changes. `[UNRESOLVED]`
-- **LangGraph execution state storage**: Whether XState context maintains direct references to the active graph instance/execution controller. `[UNRESOLVED]`
+- **Navigation during active graph execution**: Resolved using XState **parallel states** (separate `ViewState` and `ExecutionState` regions). Users can navigate away to edit presets, customize workflows, or adjust global settings while a LangGraph run continues executing in the background. If the user switches the active thread (via a route change), the state machine executes an action to pause/suspend the child actor running for the previous thread, preventing resource and API cost runaway.
+- **React Router integration**: Resolved by making **React Router the single source of truth** for thread navigation. URL route changes emit a `ROUTE_CHANGED` event containing the route details (e.g. `threadId`), triggering the corresponding state machine transitions (e.g., loading the selected thread). Non-route navigation (such as opening settings modals or CRUD sub-views) is driven directly by XState events. Direct redirects initiated by XState (e.g., redirecting to settings on first-load key checking) are executed as side effects that call React Router's `navigate` function.
+- **LangGraph execution state storage**: Resolved by using the **XState Actor Model**. The state machine invokes or spawns a child actor (`graphRunnerActor`) whenever entering the `executing` state. This actor encapsulates the non-serializable LangGraph `CompiledStateGraph` instance and manages execution handles, streaming promises, and DB connections. The parent machine context only stores serializable metadata and handles state transitions by receiving events (`STEP`, `INTERRUPT`, `COMPLETE`, `ERROR`) from the child actor.
 
 ## Open questions
 
@@ -345,36 +357,4 @@ The human user will replace the `[UNRESOLVED]` tag with their response. The huma
 
 ### Current open questions:
 
-#### Question: Navigation during active graph execution
-
-Should the state machine allow users to navigate away from the active chat thread (e.g. to edit presets, custom workflows, or global settings) while a LangGraph execution is actively running in the background?
-
-- Option A: Yes, support parallel states in XState so that the graph execution can run concurrently in the background while the user navigates other views.
-- Option B: No, keep the state machine flat and mutually exclusive. Navigating away from the active thread will pause or cancel the active execution.
-
-##### Response
-
-[UNRESOLVED]
-
-#### Question: React Router integration with XState
-
-How should URL thread ID path routing synchronize with the XState application state machine?
-
-- Option A: Router is the source of truth. URL changes trigger XState transition events (e.g., `SELECT_THREAD`).
-- Option B: XState is the source of truth. The state machine actions perform programmatic history pushes to update the URL.
-- Option C: Two-way synchronization using a custom React hook/context wrapper.
-
-##### Response
-
-[UNRESOLVED]
-
-#### Question: LangGraph execution state storage
-
-Where should the active LangGraph execution state, thread run info, and checkpoint data be stored?
-
-- Option A: Directly inside the XState machine context as non-serializable references/objects.
-- Option B: In a separate React Context or state hook, with XState only holding state metadata/status flags.
-
-##### Response
-
-[UNRESOLVED]
+No open questions currently.
