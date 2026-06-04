@@ -69,7 +69,7 @@ Fill in anything missing.
   - There should be a built-in "ask_questions" tool which LLM can invoke to render a specific form directly in the chat feed to let users answer questions with check-boxes and comments.
   - There should be built-in tools for creating/updating custom workflows interactively via LLM chat. Any database-modifying tools (like custom workflow creation) require explicit user confirmation via an inline approval card.
 - Manual history edit and branching: Allow editing/deleting any message in history, inserting new messages with selectable roles (prefill), and branching threads. Editing or deleting a message (say, message M at sequence `idx`) in-place in a thread's history truncates the history and rolls back the LangGraph state using these steps:
-  1. Identify the preceding checkpoint by traversing backward starting from the message immediately preceding the edited/deleted message (i.e. from sequence index `idx - 1`) until a message with a non-null `checkpointId` and `checkpointNs` is found. If no such message exists (e.g. we reach the beginning of the thread), the target checkpoint is set to `null` (resets the thread to the beginning).
+  1. Identify the preceding checkpoint by traversing backward starting from the message immediately preceding the edited/deleted message (i.e. from sequence index `idx - 1`) until a message is found whose `checkpointId` is both non-null AND different from the `checkpointId` of the edited/deleted message itself. If no such message exists (e.g., we reach a message with a null checkpoint or the beginning of the thread), the target checkpoint is set to `null` (resets the thread to the beginning). This ensures that if a single execution step produced multiple messages sharing the same checkpoint ID, the rollback reverts to the checkpoint created at the end of the _previous_ execution step (before the current step started).
   2. Set the thread's `latestCheckpointId` and `latestCheckpointNs` to those of the preceding checkpoint.
   3. Delete all checkpoints and checkpoint writes whose creation timestamp is greater than the preceding checkpoint's creation timestamp, or that descend from it in parent-child lineage traversal.
   4. Truncate the message history by deleting all messages in that thread where `sequence >= idx` (for deletion) or `sequence > idx` (for inline editing).
@@ -85,18 +85,23 @@ Fill in anything missing.
 We propose using the following stores in the `in-browser-llm-chat-db` database:
 
 - **`settings`**: For global configs (API keys stored in plain text, active theme, default presets).
-  - Key: `key` (string, e.g., `"api_keys"`, `"ui_config"`, `"default_preset_id"`)
-  - Value: `{ value: any }`
+  - Key: `key` (string, e.g., `"api_keys"`, `"ui_config"`, `"default_preset_id"`, `"injected_system_messages"`)
+  - Value: `{ value: any }` where the shape per key is:
+    - `"api_keys"`: `{ value: { openRouter?: string, gemini?: string } }`
+    - `"ui_config"`: `{ value: { theme: "light" | "dark" | "system" } }`
+    - `"default_preset_id"`: `{ value: string }` (UUID of the default preset)
+    - `"injected_system_messages"`: `{ value: Array<{ content: string, depth: number }> }`
 - **`presets`**: LLM configurations.
   - Key: `id` (UUID)
-  - Fields: `name`, `provider` (`"openrouter" | "gemini"`), `model` (string), `apiKey` (stored as a plain string), `temperature`, `maxTokens`, `reasoningLevel`, `budgetPolicy` (`{ maxStepsWithoutUser: number, maxTokensPerRun: number | null }`)
+  - Fields: `name`, `provider` (`"openrouter" | "gemini"`), `model` (string), `apiKey` (stored as a plain string; optional, defaults to empty), `temperature`, `maxTokens`, `reasoningLevel`, `budgetPolicy` (`{ maxStepsWithoutUser: number, maxTokensPerRun: number | null }`)
+  - _API Key Fallback Behavior_: A preset can optionally specify an `apiKey`. If the preset's `apiKey` is empty or omitted, the graph runner falls back to using the corresponding provider's global API key stored in the `settings` store. If both are empty, the preset is considered unconfigured/invalid for API execution.
   - _Model Selection Behavior_: Popular models are hardcoded as static lists in a preset schema definition to ensure they are instantly available offline or when API keys are not yet configured, with a manual text field option to input custom model identifiers in the UI.
 - **`workflows`**: Serialized LangGraph definitions.
   - Key: `id` (string/UUID)
   - Fields: `name`, `description`, `isBuiltIn` (boolean), `nodes` (Array of node definitions), `edges` (Array of transition definitions), `injectedSystemMessages` (optional Array of `{ content: string, depth: number }`)
 - **`threads`**: Chat sessions.
   - Key: `id` (UUID)
-  - Fields: `title`, `workflowId`, `workflowSnapshot` (a copy of workflow configuration JSON, copied from the workflow definition upon thread creation for both built-in and custom workflows to ensure execution stability against schema modifications), `activePresetId`, `createdAt`, `updatedAt`, `parentThreadId` (null or parent UUID for branched threads), `parentMessageId` (null or parent message UUID at which branching occurred), `status` (`"inactive" | "executing" | "awaiting_input" | "error"`), `activeInterrupt` (null or object specifying active interrupt details e.g., `{ type: "ask_questions" | "approval" | "budget_exceeded", toolCallId?: string, budgetDetails?: { currentTokens: number, maxTokens: number | null, stepCount: number } }`), `draftAnswers` (optional Record<string, any> keyed by toolCallId mapping to draft/partial answers), `errorMessage` (null or string), `latestCheckpointId` (null or string), `latestCheckpointNs` (null or string), `tokenStats` (`{ promptTokens: number, completionTokens: number, totalTokens: number } | null`)
+  - Fields: `title`, `workflowId`, `workflowSnapshot` (a copy of workflow configuration JSON, copied from the workflow definition upon thread creation for both built-in and custom workflows to ensure execution stability against schema modifications), `activePresetId`, `createdAt`, `updatedAt`, `parentThreadId` (null or parent UUID for branched threads), `parentMessageId` (null or parent message UUID at which branching occurred), `status` (`"inactive" | "executing" | "awaiting_input" | "error" | "deleting"`), `activeInterrupt` (null or object specifying active interrupt details e.g., `{ type: "ask_questions" | "approval" | "budget_exceeded", toolCallId?: string, budgetDetails?: { currentTokens: number, maxTokens: number | null, stepCount: number } }`), `draftAnswers` (optional Record<string, any> keyed by toolCallId mapping to draft/partial answers), `errorMessage` (null or string), `latestCheckpointId` (null or string), `latestCheckpointNs` (null or string), `tokenStats` (`{ promptTokens: number, completionTokens: number, totalTokens: number } | null`)
   - _Branching Behavior_: When branching a thread, the messages from the parent thread up to and including the `parentMessageId` are copied (cloned) to the new thread in the `messages` store under the new thread's ID (with their `sequence` order preserved). The `workflowSnapshot` is also copied from the parent thread to the new thread's record in the `threads` store to preserve execution consistency. The new thread's `latestCheckpointId` and `latestCheckpointNs` are set to the `checkpointId` and `checkpointNs` of the highest-sequence copied message that contains a non-null checkpoint reference, or `null` if no copied messages contain checkpoints. To ensure that the branched thread's history can be edited or rewound later, ALL checkpoints and `checkpoint_writes` associated with the copied messages must be copied/cloned to the `checkpoints` and `checkpoint_writes` stores under the `newThreadId`. Subsequent checkpoints are not copied. To identify the checkpoints and writes associated with the copied messages, the cloning process gathers the set of all unique non-null `[checkpointNs, checkpointId]` pairs stored in the `checkpointNs` and `checkpointId` fields of the copied messages (messages with sequence <= parent message's sequence). It then queries the `checkpoints` and `checkpoint_writes` stores for records matching the parent `threadId` and these gathered namespace/ID pairs, and clones them to the new `threadId` in IndexedDB. Child threads remain fully functional even if their parent thread is later deleted (as they hold independent clones of historical messages and checkpoints); in such cases, their `parentThreadId` is retained for provenance but resolves to null/absent in reference checks.
 - **`messages`**: Individual messages in threads.
   - Key: `id` (UUID)
@@ -174,6 +179,7 @@ interface WorkflowNode {
   loopHeader?: boolean; // designates a node where a new loop round starts
   maxHistoryMessages?: number; // optional message pruning/trimming threshold to control API cost
   excludeToolsBeforeRound?: { [toolName: string]: number }; // optional mapping of tool name to the 1-indexed loop round number before which the tool is excluded from LLM bindings (e.g. {"declare_consensus": 3} forces 2 rounds of loop before the tool becomes available in round 3)
+  maxLoopLimit?: number; // optional max loop iterations limit for consensus check nodes (defaults to 5 if omitted)
 }
 
 interface WorkflowEdge {
@@ -197,7 +203,7 @@ During runtime, a factory function converts this JSON schema into a compiled `@l
 - **`agent`**: Invokes the LLM specified by `presetId` (or the default preset) using the `systemPrompt`, passing the thread's message history. It binds the tools specified in the `tools` array. During execution, the agent node also updates the `lastAgentId` state property in the `GraphState` to its own node ID, ensuring that subsequent tool nodes can route results back to it. If the `presetId` is missing or has been deleted from the database, compilation and execution will not fail; instead, the compiler automatically falls back to the thread's active preset, and if that is also invalid, it falls back to the global default preset, displaying a non-blocking warning notification in the execution control panel.
 - **`input`**: Execution is interrupted/paused, waiting for a user message (uses a LangGraph interrupt).
 - **`tool`**: Executes tool calls returned by agent nodes (e.g. `ask_questions`, `declare_consensus`, or other custom database tools) and generates the corresponding `tool` messages.
-- **`consensus_check`**: Runs an LLM node or rule-based evaluator to analyze the message history and determine if consensus is reached, routing the graph outcome to the next state based on the consensus evaluation. If a `consensus_check` node has a configured `systemPrompt`, it runs as an LLM-based evaluator that analyzes the message history and updates the state's `consensusReached` flag. If `systemPrompt` is omitted or empty, the node operates as a pure rule-based evaluator that only checks if the `consensusReached` state flag has been set to `true` (e.g. by a previous tool call such as `declare_consensus`), bypassing any LLM API call to conserve tokens. The system prompt for LLM-based `consensus_check` nodes is defined in the workflow's node configuration (`systemPrompt` field) and uses standard evaluation guidelines, instructing the LLM to output a JSON structure containing `consensusReached` and `reasoning`.
+- **`consensus_check`**: Runs an LLM node or rule-based evaluator to analyze the message history and determine if consensus is reached, routing the graph outcome to the next state based on the consensus evaluation. If a `consensus_check` node has a configured `systemPrompt`, it runs as an LLM-based evaluator that analyzes the message history and updates the state's `consensusReached` flag. If `systemPrompt` is omitted or empty, the node operates as a pure rule-based evaluator that only checks if the `consensusReached` state flag has been set to `true` (e.g. by a previous tool call such as `declare_consensus`), bypassing any LLM API call to conserve tokens. The system prompt for LLM-based `consensus_check` nodes is defined in the workflow's node configuration (`systemPrompt` field) and uses standard evaluation guidelines, instructing the LLM to output a JSON structure containing `{"consensusReached": boolean, "reasoning": string}`. If LLM JSON parsing fails, the evaluator logs a warning and defaults `consensusReached` to `false` to avoid false positives and allow the loop to continue. The node also enforces loop termination at `maxLoopLimit` iterations (loaded from the node's `maxLoopLimit` property, defaulting to 5).
 - **`summary`**: Runs a specialized LLM node to summarize the chat history up to the current point.
 
 #### Conditional Routing and Edge Compilation Rules
@@ -426,15 +432,17 @@ These tools allow LLM agents to interactively create or modify custom workflows 
     - Appends the response to the history, sets `lastAgentId` to `"Debater_B"`, and increments `turnCount` by 1.
     - Routes unconditionally (default fallback edge) to `Consensus_Evaluator_B`.
   - `Consensus_Evaluator_A` & `Consensus_Evaluator_B` (Consensus Check Nodes):
-    - Check if the maximum loop limit (`maxLoopLimit`, default 5 rounds) has been reached. If `currentRound >= maxLoopLimit`:
+    - Check if the maximum loop limit (`maxLoopLimit`, loaded from node config, defaulting to 5 rounds) has been reached. If `currentRound >= maxLoopLimit`:
       - Set `consensusReached` in the graph state to `false`.
       - Bypasses LLM evaluation to conserve tokens, and routes directly to the `Summarizer` node along the `on_consensus` edge (acting as a loop termination override, where the router function returns `"on_consensus"` to exit the loop, while leaving `consensusReached` as `false` in the state).
     - Check if `consensusReached` is already `true` (set by a preceding `declare_consensus` tool call). If so:
       - Bypasses LLM evaluation and routes to the `Summarizer` node along the `on_consensus` edge.
     - Check if `forceSummarize` is `true` (set by a preceding manual override `FORCE_SUMMARIZE` action). If so:
       - Bypasses LLM evaluation and routes to the `Summarizer` node along the `on_consensus` edge (acting as a manual early exit override, where the router function returns `"on_consensus"` to exit the loop, while leaving `consensusReached` as `false` unless actual consensus was already declared).
-    - Otherwise, runs an LLM evaluation call (using the active preset and its custom evaluation prompt) to analyze the debate history. If the evaluator LLM returns `{"consensusReached": true}`:
-      - Sets the state's `consensusReached` to `true` and routes to `Summarizer` along the `on_consensus` edge.
+    - Otherwise, runs an LLM evaluation call (using the active preset and its custom evaluation prompt) to analyze the debate history. The evaluator LLM is instructed to return a JSON object `{"consensusReached": boolean, "reasoning": string}`.
+      - If parsing succeeds and the result is `{"consensusReached": true}`: Sets the state's `consensusReached` to `true` and routes to `Summarizer` along the `on_consensus` edge.
+      - If parsing succeeds and the result is `{"consensusReached": false}`: Routes to the opposing debater along the `on_no_consensus` edge.
+      - If JSON parsing fails, logs the error, defaults `consensusReached` to `false`, and routes to the opposing debater along the `on_no_consensus` edge.
     - If the evaluator LLM returns `{"consensusReached": false}`:
       - Routes to the opposing debater (`Consensus_Evaluator_A` routes to `Debater_B`, and `Consensus_Evaluator_B` routes to `Debater_A`) along the `on_no_consensus` edge.
   - `Summarizer`:
@@ -550,9 +558,9 @@ The checkpointer implements the following core API mapping:
 
 #### Rollback and Resubmission Sequence
 
-When a user deletes or edits a message at sequence index `idx`, or branches a thread, the thread's execution checkpoint is rolled back:
+When a user deletes or edits a message at sequence index `idx` (message M), or branches a thread, the thread's execution checkpoint is rolled back:
 
-1. **Find Target Checkpoint**: Find the preceding checkpoint by traversing backward starting from the message immediately preceding the edited/deleted message (i.e. from sequence index `idx - 1`) until a message with a non-null `checkpointId` and `checkpointNs` is found. If no such message exists (e.g. we reach the beginning of the thread), the target checkpoint is set to `null` (resets the thread to the beginning).
+1. **Find Target Checkpoint**: Identify the preceding checkpoint by traversing backward starting from the message immediately preceding the edited/deleted message (i.e. from sequence index `idx - 1`) until a message is found whose `checkpointId` is both non-null AND different from the `checkpointId` of M. If no such message exists (e.g. we reach a message with a null checkpoint or the beginning of the thread), the target checkpoint is set to `null` (resets the thread to the beginning). This ensures we roll back to the checkpoint saved at the end of the _previous_ execution step.
 2. **Truncate Messages Store**: Perform a transaction on the `messages` store to delete all records for the active thread where `sequence >= idx` (for deletions) or `sequence > idx` (for inline editing).
 3. **Purge Descendant Checkpoints**: Query the `checkpoints` store using the `threadId` index. Delete all checkpoints (and matching writes in `checkpoint_writes`) where `createdAt` is strictly greater than the target checkpoint's `createdAt` timestamp.
 4. **Update Thread Reference**: Update the active thread record in the `threads` store:
@@ -1260,11 +1268,18 @@ Triggered in Global Settings or Thread Settings to purge old checkpoints of a th
   - **Writes**: Opens a transaction on the `checkpoints`, `checkpoint_writes`, and `messages` stores. Deletes all checkpoints and checkpoint writes for the thread except the latest active IDs. Sets all compacted messages' `checkpointId` and `checkpointNs` references to `null` to disable branching/editing from them.
 - **API Request/Response Sequence**: None (coordinated locally).
 
-_Note on Compaction Consequences_: Once compaction deletes historical checkpoints, the message options to Edit, Delete, or Branch from those historical messages (whose associated checkpoints were purged) are disabled in the UI, and a descriptive tooltip is shown explaining that historical checkpoints have been compacted.
+_Note on Compaction Consequences_: Once compaction deletes historical checkpoints, the message options to Edit, Delete, or Branch from those historical messages (whose associated checkpoints were purged) are disabled in the UI, and a descriptive tooltip is shown explaining that historical checkpoints have been compacted. Specifically, these options are enabled if:
+
+1. The parent coordinator execution state is `inactive` or `error` (no active run).
+2. AND either:
+   a. The message has a non-null `checkpointId` and `checkpointNs` in the database.
+   b. OR the message is the initial user message (sequence 0) and we can roll back the thread to the very beginning (setting the checkpoint references to `null`).
+   c. OR traversing backward from the message to the beginning of the thread finds only messages with `checkpointId == null` (indicating that no checkpoints have been established yet).
+   If the thread has active checkpoints but the target message's checkpoint references are `null`, it indicates the checkpoint has been compacted, and the options are disabled.
 
 #### H. Inline Message Editor & Action State Machine
 
-Governs the lifecycle of editing, deleting, and branching a single message in the chat history. Note: The Edit, Delete, and Branch options are disabled if the message's corresponding checkpoint was removed (e.g., due to compaction).
+Governs the lifecycle of editing, deleting, and branching a single message in the chat history. Note: The Edit, Delete, and Branch options are disabled if the message's corresponding checkpoint was removed (e.g., due to compaction) as per the enabling rules above.
 
 - **Context**:
   - `messageId`: `string`
@@ -1280,7 +1295,7 @@ Governs the lifecycle of editing, deleting, and branching a single message in th
       - _Message Content_: Rendered as markdown.
       - _Overflow Menu Trigger Button_: Enabled. Focused.
     - `viewing.menuOpen`: Message overflow options menu is open, displaying action choices.
-      - _Edit / Delete / Branch options in OverflowMenu_: Enabled (subject to checkpoint availability, and only when the parent coordinator `ExecutionState` is `inactive` or `error`). Focused.
+      - _Edit / Delete / Branch options in OverflowMenu_: Enabled subject to the compaction enabling rules (parent coordinator `ExecutionState` is `inactive` or `error`, and either the checkpoint references are non-null OR it is an initial/pre-checkpoint sequence message). Focused.
   - `editing`: Textarea input is active.
     - `editing.idle`: User is editing the content.
       - _Text Area Field_: Enabled, focused.
@@ -1341,15 +1356,15 @@ Governs the lifecycle of editing, deleting, and branching a single message in th
   - `BRANCH_FAILURE` (contains error): Transitions `branching` to `error` (updates `errorMessage`).
 - **Database Reads/Writes**:
   - **Inline Editing (Saving)**: Opens a read-write transaction on the `messages`, `checkpoints`, `checkpoint_writes`, and `threads` stores. It:
-    1. Traverses the thread's message history backward starting from the message immediately preceding the edited message (sequence index `idx - 1`) until a message with a non-null `checkpointId` and `checkpointNs` is found (or `null` if none found).
-    2. Deletes all checkpoints and checkpoint writes with `createdAt` strictly greater than this target checkpoint's `createdAt`.
+    1. Traverses the thread's message history backward starting from the message immediately preceding the edited message (sequence index `idx - 1`) until a message is found whose `checkpointId` is both non-null AND different from the `checkpointId` of the edited message itself (or sets to `null` if none found).
+    2. Deletes all checkpoints and checkpoint writes with `createdAt` strictly greater than this target checkpoint's `createdAt`, or that descend from it in parent-child lineage traversal. To implement this lineage traversal in IndexedDB without recursive queries, the transaction loads all checkpoints for the thread, builds a parent-child adjacency tree, runs a depth-first search (DFS) starting from the preceding checkpoint to collect all descendant checkpoint IDs, and deletes them along with their associated checkpoint writes.
     3. Deletes all messages in the thread with `sequence > idx`.
     4. Updates the message at `sequence = idx` in the `messages` store with `content = editContent` and sets its `checkpointId` and `checkpointNs` to `null` (since its old checkpoint was invalidated by the edit).
     5. Updates the active thread record in `threads`, setting `latestCheckpointId` and `latestCheckpointNs` to point to the target preceding checkpoint (or `null`), and sets the thread's `status` to `"inactive"`.
     6. Recalculates cumulative `tokenStats` from the remaining messages and updates the thread record.
   - **Deleting a Message**: Opens a read-write transaction on the `messages`, `checkpoints`, `checkpoint_writes`, and `threads` stores. It:
-    1. Traverses backward starting from sequence index `idx - 1` to find the target preceding checkpoint.
-    2. Deletes all checkpoints and checkpoint writes with `createdAt` strictly greater than this preceding checkpoint's `createdAt`.
+    1. Traverses backward starting from sequence index `idx - 1` until a message is found whose `checkpointId` is both non-null AND different from the `checkpointId` of the deleted message itself (or sets to `null` if none found).
+    2. Deletes all checkpoints and checkpoint writes with `createdAt` strictly greater than this preceding checkpoint's `createdAt`, or that descend from it in parent-child lineage traversal (using the same in-memory DFS lineage traversal implementation).
     3. Deletes all messages in the thread with `sequence >= idx`.
     4. Updates the active thread record, setting `latestCheckpointId` and `latestCheckpointNs` to point to the preceding checkpoint (or `null`), and sets the thread's `status` to `"inactive"`.
     5. Recalculates cumulative `tokenStats` and updates the thread record.
