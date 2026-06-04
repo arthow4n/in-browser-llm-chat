@@ -65,7 +65,7 @@ Fill in anything missing.
 - Render tool call message and tool result message (collapsed by default).
   - There should be a built-in "ask_questions" tool which LLM can invoke to render a specific form directly in the chat feed to let users answer questions with check-boxes and comments.
   - There should be built-in tools for creating/updating custom workflows interactively via LLM chat. Any database-modifying tools (like custom workflow creation) require explicit user confirmation via an inline approval card.
-- Manual history edit and branching: Allow editing/deleting any message in history, inserting new messages with selectable roles (prefill), and branching threads. Editing or deleting a message in-place in a thread's history truncates the message history at that point (deleting all subsequent messages in the database for that thread) and deletes all subsequent checkpoints, to keep LangGraph's internal state synchronized with the message feed.
+- Manual history edit and branching: Allow editing/deleting any message in history, inserting new messages with selectable roles (prefill), and branching threads. Editing or deleting a message in-place in a thread's history truncates the message history at that point (deleting all messages in that thread where `sequence > editedMessage.sequence`). It also deletes all subsequent checkpoints (specifically, checkpoints in the `checkpoints` and `checkpoint_writes` stores for that thread that were created after the checkpoint associated with the edited message, based on checkpoint creation timestamps or parent-child lineage traversal), to keep LangGraph's internal state synchronized with the message feed.
 - API Payload Preview: Allow inspecting the exact payload sent to the LLM API (including injected system messages).
 - _Note_: See the [Main Chat Interface](#2-main-chat-interface) section in the UI Specification for the exact layout and component details for all the above elements.
 
@@ -76,7 +76,7 @@ Fill in anything missing.
 We propose using the following stores in the `in-browser-llm-chat-db` database:
 
 - **`settings`**: For global configs (API keys stored in plain text or optionally encrypted, active theme, default presets, global CORS proxy URL).
-  - Key: `key` (string, e.g., `"api_keys"`, `"ui_config"`, `"encryption_settings"`)
+  - Key: `key` (string, e.g., `"api_keys"`, `"ui_config"`, `"encryption_settings"`, `"default_preset_id"`)
   - Value: `{ value: any }`
 - **`presets`**: LLM configurations.
   - Key: `id` (UUID)
@@ -87,10 +87,10 @@ We propose using the following stores in the `in-browser-llm-chat-db` database:
 - **`threads`**: Chat sessions.
   - Key: `id` (UUID)
   - Fields: `title`, `workflowId`, `workflowSnapshot` (null or copy of workflow configuration JSON to ensure execution stability against schema modifications), `activePresetId`, `createdAt`, `updatedAt`, `parentThreadId` (null or parent UUID for branched threads), `parentMessageId` (null or parent message UUID at which branching occurred), `status` (`"inactive" | "executing" | "awaiting_input" | "error"`), `errorMessage` (null or string), `latestCheckpointId` (null or string), `latestCheckpointNs` (null or string), `tokenStats` (`{ promptTokens: number, completionTokens: number, totalTokens: number } | null`)
-  - _Branching Behavior_: When branching a thread, the messages from the parent thread up to and including the `parentMessageId` are copied (cloned) to the new thread in the `messages` store under the new thread's ID. The `workflowSnapshot` is also copied from the parent thread to the new thread's record in the `threads` store to preserve execution consistency. The checkpoint associated with the `parentMessageId` (specifically, the parent checkpoint matching `[parentThreadId, checkpointNs, checkpointId]`) must also be copied to the `checkpoints` store under the new thread's ID (`[newThreadId, checkpointNs, checkpointId]`) to serve as the initial state of the branched thread. Additionally, any corresponding `checkpoint_writes` entries matching `[parentThreadId, checkpointNs, checkpointId]` must be copied/cloned to the `checkpoint_writes` store under the `newThreadId` key: `[newThreadId, checkpointNs, checkpointId, taskId, idx]`. Subsequent checkpoints are not copied.
+  - _Branching Behavior_: When branching a thread, the messages from the parent thread up to and including the `parentMessageId` are copied (cloned) to the new thread in the `messages` store under the new thread's ID (with their `sequence` order preserved). The `workflowSnapshot` is also copied from the parent thread to the new thread's record in the `threads` store to preserve execution consistency. To ensure that the branched thread's history can be edited or rewound later, ALL checkpoints and `checkpoint_writes` associated with the copied messages (i.e. all checkpoints in the parent thread's history up to and including the checkpoint associated with the `parentMessageId`) must be copied/cloned to the `checkpoints` and `checkpoint_writes` stores under the `newThreadId`. Subsequent checkpoints are not copied.
 - **`messages`**: Individual messages in threads.
   - Key: `id` (UUID)
-  - Fields: `threadId` (indexed for query performance), `role` (`"system" | "user" | "assistant" | "tool"`), `content`, `type` (`"text" | "reasoning" | "tool_call" | "tool_result"`), `toolCallId` (optional), `name` (agent/tool name), `createdAt`, `metadata` (reasoning tokens, raw response, etc.), `checkpointId` (null or string), `checkpointNs` (null or string)
+  - Fields: `threadId` (indexed for query performance), `sequence` (integer index within thread for deterministic sorting and truncation), `role` (`"system" | "user" | "assistant" | "tool"`), `content`, `type` (`"text" | "reasoning" | "tool_call" | "tool_result"`), `toolCallId` (optional), `name` (agent/tool name), `createdAt`, `metadata` (reasoning tokens, raw response, etc.), `checkpointId` (null or string), `checkpointNs` (null or string)
 - **`checkpoints`**: LangGraph checkpointer state to enable resuming active graph execution and supporting history rewinding/branching.
   - Key: `[threadId, checkpointNs, checkpointId]` (compound key)
   - Indices: `threadId` (indexed to support cascading cleanup on thread deletion)
@@ -144,7 +144,8 @@ During runtime, a factory function converts this JSON schema into a compiled `@l
 
 During graph compilation, the factory function maps conditional routes by creating custom router functions passed to `StateGraph.addConditionalEdges`:
 
-- **Agent Routing**: If an `agent` node has tools, the graph needs to check if the agent produced a tool call. The compiled graph evaluates whether the state's last message is a tool call request. If yes, it routes along the edge with `condition: "on_tool_call"` (typically to a `tool` node). If no, it routes along the direct/unconditional edge (typically to a user input or another agent node). Note that `condition: "on_tool_result"` is only applicable to edges originating from `tool` nodes routing back to their parent agents.
+- **Agent Routing**: If an `agent` node has tools, the graph needs to check if the agent produced a tool call. The compiled graph evaluates whether the state's last message is a tool call request. If yes, it routes along the edge with `condition: "on_tool_call"` (typically to a `tool` node). If no, it routes along the direct/unconditional edge (typically to a user input or another agent node).
+- **Tool Node Routing**: A `tool` node routes back to the agent node that triggered the tool call. The routing logic inspects `lastAgentId` in the `GraphState` and routes along the outgoing edge whose destination (`to`) matches `lastAgentId` with `condition: "on_tool_result"`.
 - **Consensus Routing**: A `consensus_check` node returns a state flag (e.g. `consensusReached: boolean`). The routing function evaluates this flag: if `true`, it routes to the destination defined in the edge with `condition: "on_consensus"`; if `false`, it routes to the edge with `condition: "on_no_consensus"`.
 - **Default Fallback**: If a node has multiple outbound edges and none of the specific conditions match the node execution outcome, the compiler uses the unconditional edge (i.e. where `condition` is omitted) as the default fallback target. If no fallback is defined, execution throws an error.
 
@@ -157,6 +158,7 @@ Before a custom workflow is compiled or saved, the editor performs structural va
 3. **Graph Entry Point**: There must be exactly one entry point node (defined either as an `input` node or a node with no incoming edges). If multiple entry nodes or none are found, compilation fails.
 4. **Loop Exit Paths**: Any loop/cycle in the graph must contain at least one conditional routing node (such as a `consensus_check` node or an `agent` node with tool capabilities) that can branch out of the loop, preventing compile-time or run-time infinite loop errors.
 5. **Topology Restrictions**: The workflow topology must be restricted to sequential and conditional execution DAGs. Parallel execution branches (where a node has multiple concurrent outgoing paths executing at once) are not supported.
+6. **No Ambiguous Routing**: To prevent non-deterministic routing, no node may have more than one unconditional outbound edge. Additionally, except for `tool` nodes with `on_tool_result` edges (which route dynamically based on `lastAgentId`), no node may have multiple outbound edges with the same `condition`.
 
 #### Dynamic Prompt Placeholders
 
@@ -234,12 +236,106 @@ The `declare_consensus` tool is used by debating agents to signal agreement and 
   });
   ```
 
-### 6. Debate Workflow Execution Details
+### 6. Workflow Creation and Modification Tools Schema
+
+These tools allow LLM agents to interactively create or modify custom workflows in the database, subject to user approval via an inline approval card.
+
+- **`create_workflow` Input Parameters (Zod)**:
+
+  ```typescript
+  const CreateWorkflowSchema = z.object({
+    name: z.string().describe("The name of the new custom workflow"),
+    description: z.string().describe("A short description of what the workflow does"),
+    nodes: z
+      .array(
+        z.object({
+          id: z.string().describe("A unique node identifier within the graph"),
+          type: z.enum(["agent", "input", "tool", "consensus_check", "summary"]),
+          name: z.string().describe("Human-readable name of the node"),
+          systemPrompt: z.string().optional().describe("System prompt for agent/summary nodes"),
+          presetId: z.string().optional().describe("Preset ID to use for LLM execution"),
+          tools: z.array(z.string()).optional().describe("List of bound tool names"),
+          loopHeader: z.boolean().optional().describe("True if node represents a loop boundary"),
+          maxHistoryMessages: z.number().optional(),
+          excludeToolsBeforeRound: z.record(z.number()).optional(),
+        }),
+      )
+      .describe("The nodes comprising the workflow graph"),
+    edges: z
+      .array(
+        z.object({
+          from: z.string().describe("Source node ID"),
+          to: z.string().describe("Destination node ID"),
+          condition: z
+            .enum(["on_tool_call", "on_tool_result", "on_consensus", "on_no_consensus"])
+            .optional(),
+        }),
+      )
+      .describe("The transition edges connecting the nodes"),
+    injectedSystemMessages: z
+      .array(
+        z.object({
+          content: z.string().describe("System message text to inject"),
+          depth: z.number().describe("Insertion depth (0 for start, N/ -N for relative position)"),
+        }),
+      )
+      .optional()
+      .describe("Workflow-specific system messages to inject at runtime"),
+  });
+  ```
+
+- **`update_workflow` Input Parameters (Zod)**:
+  ```typescript
+  const UpdateWorkflowSchema = z.object({
+    id: z.string().uuid().describe("The UUID of the workflow to update"),
+    name: z.string().optional(),
+    description: z.string().optional(),
+    nodes: z
+      .array(
+        z.object({
+          id: z.string(),
+          type: z.enum(["agent", "input", "tool", "consensus_check", "summary"]),
+          name: z.string(),
+          systemPrompt: z.string().optional(),
+          presetId: z.string().optional(),
+          tools: z.array(z.string()).optional(),
+          loopHeader: z.boolean().optional(),
+          maxHistoryMessages: z.number().optional(),
+          excludeToolsBeforeRound: z.record(z.number()).optional(),
+        }),
+      )
+      .optional(),
+    edges: z
+      .array(
+        z.object({
+          from: z.string(),
+          to: z.string(),
+          condition: z
+            .enum(["on_tool_call", "on_tool_result", "on_consensus", "on_no_consensus"])
+            .optional(),
+        }),
+      )
+      .optional(),
+    injectedSystemMessages: z
+      .array(
+        z.object({
+          content: z.string(),
+          depth: z.number(),
+        }),
+      )
+      .optional(),
+  });
+  ```
+
+### 7. Debate Workflow Execution Details
 
 - **Nodes**:
   - `Initiator`: Sets the debate topic and seeds the conversation.
   - `Debater_A` & `Debater_B`: Two agent nodes with conflicting stances or system messages (e.g., Pro vs. Con).
-  - `Consensus_Evaluator`: Checks if consensus is reached or if maximum loops are exceeded. If yes, routes to `Summarizer`; if no, loops back to the next debater. The node reads the `consensusReached` state flag (which is set to `true` when a debater successfully calls the `declare_consensus` tool). Additionally, if the debaters fail to call the tool but the evaluator's LLM determines that consensus has been reached, the evaluator can set `consensusReached` to `true` to terminate the loop. If the maximum loop limit is reached without consensus, the Consensus_Evaluator node sets `consensusReached` to `false` and routes the graph to the Summarizer node, which compiles a summary explicitly noting that consensus was not achieved.
+  - `Consensus_Evaluator`: To ensure deterministic loop routing without ambiguous edges, the compiled debate workflow utilizes two evaluator nodes:
+    - `Consensus_Evaluator_A`: Evaluates consensus after `Debater_A` executes. If consensus is reached (either via tool call or LLM evaluator decision), routes to `Summarizer`. Otherwise (on no consensus), routes to `Debater_B`.
+    - `Consensus_Evaluator_B`: Evaluates consensus after `Debater_B` executes. If consensus is reached, routes to `Summarizer`. Otherwise (on no consensus), routes to `Debater_A`.
+      The node reads the `consensusReached` state flag (which is set to `true` when a debater successfully calls the `declare_consensus` tool). Additionally, if the debaters fail to call the tool but the evaluator's LLM determines that consensus has been reached, the evaluator can set `consensusReached` to `true` to terminate the loop. If the maximum loop limit is reached without consensus, the Consensus_Evaluator node sets `consensusReached` to `false` and routes the graph to the Summarizer node, which compiles a summary explicitly noting that consensus was not achieved.
 - **Safety / Cost Control & Loop Controls**:
   - Max loop limit (default: 5 rounds of debate / 10 turns) to prevent infinite loops and runaway API costs.
   - The debaters themselves must call a `declare_consensus` tool when they agree, which terminates the loop.
@@ -257,7 +353,7 @@ The `declare_consensus` tool is used by debating agents to signal agreement and 
   - **Cost and Token Tracking Details**: Each LLM request response stores usage statistics (e.g., `prompt_tokens`, `completion_tokens`) inside the message's `metadata` field under `metadata.usage`. The LangGraph runner updates the `loopControl.tokenStats` context property in real-time by summing up the usage statistics from new messages generated during the current execution run, tracking both `promptTokens` and `completionTokens` separately, and persists these updated stats to the active thread's record in IndexedDB at the completion of each execution step. The token statistics in `loopControl.tokenStats` are cumulative for the entire thread. When loading a thread, the stats are populated from the thread's persisted `tokenStats` in IndexedDB. During execution, the runner actor updates these stats by adding the tokens consumed in each new step, and the updated cumulative stats are written back to the thread record in IndexedDB.
   - **Streaming Buffer & Performance**: To prevent performance bottlenecks during real-time streaming, text tokens and reasoning tokens are buffered within the `graphRunnerActor`'s local state and sent to the parent machine's context via throttled events (e.g., every 100ms) for UI display. The cumulative stream content is only written to the IndexedDB `messages` store upon completion of the active node execution step, rather than on every individual token received. This prevents excessive database write transactions and UI re-renders.
 
-### 7. System Message Injection Details
+### 8. System Message Injection Details
 
 - System messages to automatically inject are configured per workflow or globally.
 - **Insertion Depth**:
@@ -352,8 +448,13 @@ stateDiagram-v2
         state ViewState {
             [*] --> initializing
             initializing --> onboarding : [No API Keys]
-            initializing --> idle : [Has API Keys & No Active Thread]
-            initializing --> chatting : [Has API Keys & Active Thread]
+            initializing --> unlocking : [Keys Encrypted & Locked]
+            initializing --> idle : [Has API Keys & Decrypted & No Active Thread]
+            initializing --> chatting : [Has API Keys & Decrypted & Active Thread]
+
+            unlocking --> idle : UNLOCK_SUCCESS [No Active Thread]
+            unlocking --> chatting : UNLOCK_SUCCESS [Active Thread]
+            unlocking --> onboarding : RESET_DB [If user clears DB/keys]
 
             onboarding --> globalSettings : OPEN_SETTINGS
             globalSettings --> onboarding : CLOSE_SETTINGS [Still No Keys]
@@ -391,6 +492,7 @@ stateDiagram-v2
             idle --> onboarding : API_KEYS_REMOVED
             presetConfig --> onboarding : API_KEYS_REMOVED
             workflowConfig --> onboarding : API_KEYS_REMOVED
+            unlocking --> onboarding : API_KEYS_REMOVED
         }
         --
         state ExecutionState {
@@ -444,6 +546,7 @@ The state machine context maintains the following variables:
 #### ViewState (Navigation Region)
 
 - **`initializing`**: Reads the configuration settings, API keys, presets, custom workflows, and active thread ID from the database.
+- **`unlocking`**: A blocker state active when API keys are encrypted with a master password, and the password has not yet been provided in the current session. Prompts the user with a modal or card to enter the master password to unlock features.
 - **`onboarding`**: A blocker state when API keys are not yet configured. The main chat input is disabled, prompting the user to click the warning banner to add API keys.
 - **`idle`**: Ready for user interactions, with no thread loaded.
 - **`chatting`**: Viewing an active thread. The main input is enabled and ready to accept user messages.
@@ -505,4 +608,26 @@ The human user will replace the `[UNRESOLVED]` tag with their response. The huma
 
 ### Current open questions:
 
-There are no unresolved open questions. All design decisions have been resolved and incorporated into the specification.
+#### Question: Offline Support and Service Worker
+
+Since the app is a static client-side only application deployed to GitHub Pages, should we implement a Service Worker to support offline loading and caching of assets, or is standard browser caching sufficient?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: LLM Budget policy enforcement and runtime modification
+
+When a thread run is paused because the budget policy (e.g., maximum tokens or steps) is exceeded, the user can click "Increase Budget & Resume". Should this action permanently update the preset's budget policy in the database, or should it apply a temporary override to the active execution run's state?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: LLM model and prompt config for the Consensus Evaluator
+
+In the built-in debate workflow, the `Consensus_Evaluator` nodes can run an LLM to determine if the debaters have reached consensus. Which preset should these nodes use (the same as the debaters, or the global default)? Also, what is the default evaluation prompt template used to guide the LLM in determining consensus?
+
+##### Response
+
+[UNRESOLVED]
