@@ -829,7 +829,7 @@ The parent coordinator state machine context maintains the following variables:
     - Main Chat Input / Send Button: Disabled.
     - Preset switcher dropdown: Disabled.
     - API Payload Preview button: Disabled.
-- **`awaitingHumanInput`**: Graph execution is suspended (either due to a manual approval card, an `ask_questions` tool interrupt, or a step/token budget limit being exceeded).
+- **`awaitingHumanInput`**: Graph execution is suspended (either due to a manual approval card, an `ask_questions` tool interrupt, a step/token budget limit being exceeded, or a CORS proxy request failure).
   - Substates:
     - `idle`: Paused at an interactive tool/approval card.
       - _Interactive Controls_:
@@ -848,6 +848,13 @@ The parent coordinator state machine context maintains the following variables:
           - Pause / Resume: Disabled.
           - Force Consensus / Summarize Early: Enabled.
           - Abort: Enabled, triggers `CANCEL_EXECUTION`.
+    - `proxyFallback`: Paused because a request routed through the CORS proxy has failed, and is awaiting user fallback selection.
+      - _Interactive Controls_:
+        - Main Chat Input / Send Button: Disabled.
+        - Inline/Modal Proxy Fallback Dialog buttons ("Retry with Proxy", "Try Direct Request", "Cancel"): Enabled.
+        - Execution Control Panel:
+          - Pause / Resume / Force Consensus / Force Summarize: Disabled.
+          - Abort: Enabled, triggers `CANCEL_EXECUTION`.
 - **`error`**: Displays error information if an API request or state transition fails.
   - _Interactive Controls_:
     - Error Banner Retry Button: Enabled, triggers `RETRY_STEP` or `RESUME`.
@@ -863,6 +870,17 @@ The parent coordinator state machine context maintains the following variables:
 - **IndexedDB Checkpointer Integration**: A custom checkpointer class extending `@langchain/langgraph`'s `BaseCheckpointSaver` is implemented. When compilation of a workflow happens, this checkpointer is passed to the LangGraph compilation routine. It interfaces directly with the `checkpoints` and `checkpoint_writes` stores in IndexedDB, automatically loading and saving state transitions keyed by `threadId`, `checkpointNs`, and `checkpointId` during graph execution steps.
 - **View-Level Database Error Handling**: Errors occurring during CRUD operations (e.g., editing/deleting threads, presets, or workflows) do not trigger execution-level `ExecutionState.error` transitions. Instead, they write to the context's `errorMessage` property and render a transient Carbon inline notification (`InlineNotification`) in the active CRUD panel or sidebar, allowing the user to retry the action without interrupting any ongoing background execution.
 - **API Key Removal Behavior**: If API keys are removed or invalidated in settings, a global event `API_KEYS_REMOVED` is dispatched. This triggers the `ViewState` to transition to `onboarding` from any other state, and the `ExecutionState` to transition to `inactive` (pausing/terminating the current runner actor).
+
+- **Thread Status and Checkpoint Mapping to Database**: To maintain strict consistency between the in-memory XState coordinator states, the active LangGraph execution checkpoint state, and the persistent IndexedDB records:
+  - **Thread `status` DB Mapping**: The `status` field of the active thread record in the `threads` store is updated in IndexedDB whenever the `ExecutionState` transitions:
+    - `ExecutionState.inactive` -> `status: "inactive"`
+    - `ExecutionState.checkingStatus` / `checkingKeys` -> No DB update (transient states).
+    - `ExecutionState.awaitingUnlock` -> `status: "inactive"` (keys are locked, execution hasn't resumed).
+    - `ExecutionState.executing` -> `status: "executing"`
+    - `ExecutionState.awaitingHumanInput` (all substates: `idle`, `budgetExceeded`, `proxyFallback`) -> `status: "awaiting_input"`
+    - `ExecutionState.error` -> `status: "error"`
+  - **Checkpoint Consistency and Thread Truncation**: Every successful execution step completes by persisting a new checkpoint to the `checkpoints` and `checkpoint_writes` stores. The thread record's `latestCheckpointId` and `latestCheckpointNs` are updated in the same write transaction. When the user edits or deletes a message in history, the rollback procedure (deleting downstream checkpoints/messages and updating `latestCheckpointId`/`latestCheckpointNs`) must be completed in a single batched database transaction before the parent coordinator is notified via `SAVE_SUCCESS` / `DELETE_SUCCESS`. Upon receiving this success event, the parent coordinator dispatches `INITIALIZE_CHECKPOINT` to query the updated checkpoint references from IndexedDB and reset the active execution state to `inactive` (with a clean, rolled-back state ready to resume).
+  - **Active-Only Execution on Route Switch**: Switching threads in the UI triggers `ROUTE_CHANGED`. If the parent coordinator is in `ExecutionState.executing`, the router event triggers an automatic pause: the parent coordinator dispatches `STOP` to the child `graphRunnerActor` (which calls `AbortController.abort()` to terminate active fetch requests), updates the active thread's `status` to `"inactive"` / `"paused"` in the database, and transitions `ExecutionState` to `inactive`. The new thread is then initialized via `checkingStatus`. This prevents multi-thread run conflicts and database write race conditions.
 
 ### 4. UI Component State Machines
 
@@ -1466,6 +1484,7 @@ Governs the lifecycle of the LangGraph background execution runner, which runs a
     - `interrupted.awaitingToolInput`: Paused at a tool call interrupt (such as the `ask_questions` tool).
     - `interrupted.awaitingApproval`: Paused at a database-modifying action tool requiring user approval.
     - `interrupted.budgetExceeded`: Paused because step or token execution limits have been exceeded.
+    - `interrupted.awaitingProxyFallback`: Paused because a request routed through the CORS proxy has failed, and is awaiting user fallback selection.
   - `completed`: Workflow has finished execution successfully.
   - `failed`: An unhandled execution or connection error occurred.
 - **Transitions / Events**:
@@ -1478,10 +1497,95 @@ Governs the lifecycle of the LangGraph background execution runner, which runs a
   - `STOP` (triggered during thread switches or unspawning): Aborts any active request, cleans up listeners, and terminates.
   - `TIMEOUT`: Triggered if the active step API call exceeds the timeout (e.g. 30 seconds without response/token activity). Aborts request and transitions to `failed` (updates thread status to `"error"`, notifies parent machine).
   - `INTERRUPT` (contains interrupt details/form schema): Persists checkpoint, transitions to `interrupted.awaitingToolInput` (for interactive form tool calls) or `interrupted.awaitingApproval` (for DB modification tool calls) and notifies parent machine.
-  - `SUBMIT_TOOL_RESPONSE` (contains tool response): Transition from `interrupted.awaitingToolInput` or `interrupted.awaitingApproval` back to `running.requesting` (passes tool response to graph state, and resets `stepsInCurrentRun` and `tokensInCurrentRun` to `0` and `budgetOverride` to `null` due to human intervention/new execution cycle).
+  - `SUBMIT_TOOL_RESPONSE` (contains tool response): Transition from `interrupted.awaitingToolInput`, `interrupted.awaitingApproval`, or `interrupted.awaitingProxyFallback` back to `running.requesting` (passes tool response to graph state, and resets `stepsInCurrentRun` and `tokensInCurrentRun` to `0` and `budgetOverride` to `null` due to human intervention/new execution cycle).
   - `RESUME_WITH_BUDGET_OVERRIDE` (contains stepOverride and tokenOverride): Transition from `interrupted.budgetExceeded` back to `running.requesting` (stores overrides in `budgetOverride` and resumes).
+  - `PROXY_ERROR` (contains error details and proxy URL): Transitions from `running.requesting` to `interrupted.awaitingProxyFallback` and notifies the parent coordinator (rendering the proxy fallback dialog).
+  - `RETRY_WITH_PROXY`: Transition from `interrupted.awaitingProxyFallback` back to `running.requesting` (attempts requesting again using proxy).
+  - `TRY_DIRECT_REQUEST`: Transition from `interrupted.awaitingProxyFallback` back to `running.requesting` (attempts requesting directly, bypassing proxy for the current step).
   - `COMPLETE`: Persists final state, updates thread status to `"inactive"`, transitions to `completed`.
   - `ERROR` (contains error details): Transitions to `failed` (updates thread status to `"error"`, notifies parent machine).
+
+#### P. Execution & Loop Control Panel State Machine
+
+Governs the state, buttons, counters, and mobile overlay visibility of the execution control panel. All execution events are dispatched to the parent coordinator machine, which handles routing/forwarding to the active `graphRunnerActor`.
+
+- **Context**:
+  - `threadId`: `string`
+  - `workflowType`: `"loop" | "sequential"`
+  - `currentRound`: `number` (only applicable for loop workflows)
+  - `turnCount`: `number`
+  - `tokenStats`: `{ promptTokens: number; completionTokens: number; totalTokens: number }`
+  - `isMobileOverlayOpen`: `boolean`
+  - `errorMessage`: `string | null`
+- **States**:
+  - `hidden`: Hidden if the active thread is empty and has no loaded workflow snapshot or message history.
+  - `visible`: Rendered in the UI.
+    - **Mobile Overlay Region**:
+      - `overlayClosed`: The full-screen mobile control overlay is closed. The compact sticky bottom status bar (or header bar) is visible on mobile viewports.
+      - `overlayOpened`: The full-screen mobile control overlay is open, displaying all counters and control actions.
+    - **Action Region**:
+      - `idle`: No user action is currently in progress.
+      - `requestingPause`: User clicked "Pause"; dispatches `PAUSE` to parent coordinator and disables control actions.
+      - `requestingResume`: User clicked "Resume"; dispatches `RESUME` to parent coordinator and disables control actions.
+      - `requestingAbort`: User clicked "Abort"; dispatches `CANCEL_EXECUTION` to parent coordinator and disables control actions.
+      - `requestingForceConsensus`: User clicked "Force Consensus"; dispatches `FORCE_CONSENSUS` to parent coordinator and disables control actions.
+      - `requestingForceSummarize`: User clicked "Force Summarize"; dispatches `FORCE_SUMMARIZE` to parent coordinator and disables control actions.
+      - `actionError`: Action failed (e.g. database write or command dispatch failed). Displays an inline error notification within the panel.
+- **Transitions / Events**:
+  - `SHOW_PANEL` (contains workflowType and initial stats): Transition from `hidden` to `visible.overlayClosed`.
+  - `HIDE_PANEL`: Transition from `visible` to `hidden`.
+  - `TOGGLE_MOBILE_OVERLAY`: Transition between `overlayClosed` and `overlayOpened` (only on mobile viewports).
+  - `CLOSE_MOBILE_OVERLAY`: Transition `overlayOpened` to `overlayClosed`.
+  - `CLICK_PAUSE`: Transitions `idle` or `actionError` to `requestingPause`.
+  - `CLICK_RESUME`: Transitions `idle` or `actionError` to `requestingResume`.
+  - `CLICK_ABORT`: Transitions `idle` or `actionError` to `requestingAbort`.
+  - `CLICK_FORCE_CONSENSUS`: Transitions `idle` or `actionError` to `requestingForceConsensus`.
+  - `CLICK_FORCE_SUMMARIZE`: Transitions `idle` or `actionError` to `requestingForceSummarize`.
+  - `ACTION_SUCCESS` / `PARENT_STATE_CHANGED`: Transition from any `requesting*` state back to `idle`.
+  - `ACTION_FAILURE` (contains error): Transition from any `requesting*` state to `actionError` (updates `errorMessage`).
+  - `UPDATE_STATS` (contains round, turns, tokenStats): Updates the context stats in real-time.
+  - `DISMISS_ERROR`: Transition `actionError` to `idle` (clears `errorMessage`).
+
+- **Button State Rules driven by Parent ExecutionState**:
+  - **Pause Button**:
+    - Visible: Always.
+    - Enabled: When parent coordinator `ExecutionState` is `executing` and `Action Region` is `idle`.
+    - Disabled: Otherwise.
+  - **Resume Button**:
+    - Visible: Always.
+    - Enabled: When parent coordinator `ExecutionState` is `inactive` (and thread has a saved checkpoint) or `error`, and `Action Region` is `idle`.
+    - Disabled: Otherwise.
+  - **Abort/Cancel Button**:
+    - Visible: Always.
+    - Enabled: When parent coordinator `ExecutionState` is `executing` or `awaitingHumanInput`, and `Action Region` is `idle`.
+    - Disabled: Otherwise.
+  - **Force Consensus / Force Summarize Buttons**:
+    - Visible: Only when `workflowType === "loop"`.
+    - Enabled: When parent coordinator `ExecutionState` is `executing` or `awaitingHumanInput` (specifically during the debate or other loop phases), and `Action Region` is `idle`.
+    - Disabled: Otherwise.
+
+#### Q. CORS Proxy Fallback Prompt State Machine
+
+Governs the fallback dialog rendered inline or as a modal overlay when a CORS proxy API request fails during execution. All selected actions are dispatched to the parent coordinator machine to be forwarded to the active `graphRunnerActor`.
+
+- **Context**:
+  - `failedUrl`: `string`
+  - `proxyUrl`: `string`
+  - `errorMessage`: `string`
+- **States**:
+  - `prompting`: Displays the warning details and options.
+    - _Retry with Proxy Button_: Enabled, triggers `RETRY_WITH_PROXY`.
+    - _Try Direct Request Button_: Enabled, triggers `TRY_DIRECT_REQUEST`.
+    - _Cancel Button_: Enabled, triggers `CANCEL_EXECUTION`.
+  - `submitting`: Dispatches the selected action to the parent coordinator machine and awaits transition.
+    - _All Buttons_: Disabled, shows loading spinner next to selected option.
+  - `completed`: The prompt has been answered and is removed/hidden.
+- **Transitions / Events**:
+  - `LOAD_ERROR` (contains failedUrl, proxyUrl, errorMessage): Initializer, enters `prompting`.
+  - `RETRY_WITH_PROXY`: Transitions `prompting` to `submitting` (dispatches `RETRY_WITH_PROXY` to the parent coordinator).
+  - `TRY_DIRECT_REQUEST`: Transitions `prompting` to `submitting` (dispatches `TRY_DIRECT_REQUEST` to the parent coordinator).
+  - `CANCEL_EXECUTION`: Transitions `prompting` to `submitting` (dispatches `CANCEL_EXECUTION` to the parent coordinator).
+  - `ACTION_DISPATCHED`: Transitions `submitting` to `completed`.
 
 ## Open questions
 
@@ -1507,20 +1611,23 @@ The human user will replace the `[UNRESOLVED]` tag with their response. The huma
 
 ### Current open questions:
 
+None.
+
+### Resolved open questions:
+
 #### Question: CORS proxy error handling and fallback behavior
 
 If a custom CORS proxy is configured for a preset or globally in settings, but requests routed through it fail (e.g., due to proxy timeout, proxy 502/504 errors, or SSL issues on the proxy host), how should the runner behave?
 
-##### Options:
-
-1. **Option A (Strict fail)**: Treat proxy failures as hard execution errors. Transition thread state to `error` and display the proxy error details, requiring the user to disable or adjust the proxy settings to retry.
-2. **Option B (Automatic fallback)**: If a proxy request fails, log a warning notification and automatically attempt a direct fallback API request to the provider (OpenRouter or Gemini) from the browser.
-
 ##### Response
 
-[UNRESOLVED]
+[RESOLVED] Option C (User Prompt Retry/Fallback Dialog) is selected.
+If a CORS proxy request fails (due to network error, timeout, or proxy server errors), the runner pauses execution and the UI displays a prompt dialog offering three choices:
 
-### Resolved open questions:
+1. **Retry with Proxy**: Re-attempts the request using the same CORS proxy configuration.
+2. **Try Direct Request**: Attempts to bypass the CORS proxy for the current step and send the request directly to the API provider.
+3. **Cancel / Abort**: Halts the execution run and returns the runner to the `inactive` state, allowing the user to modify settings.
+   This balances usability and safety without assuming a direct connection will always succeed or silently bypassing proxy privacy/routing configurations.
 
 #### Question: Handle concurrent background execution of multiple threads
 
