@@ -64,6 +64,7 @@ Fill in anything missing.
 - Render agent and user messages with rich markdown formatting, GitHub Flavored Markdown, and LaTeX math support using the specified rendering packages.
 - Render reasoning tokens (collapsed by default).
 - Render tool call message and tool result message (collapsed by default).
+  - Custom tools will remain strictly built-in for the initial release to keep execution simple, secure, and performant. Users can configure custom workflows by composing existing built-in tools within their graph definitions.
   - There should be a built-in "ask_questions" tool which LLM can invoke to render a specific form directly in the chat feed to let users answer questions with check-boxes and comments.
   - There should be built-in tools for creating/updating custom workflows interactively via LLM chat. Any database-modifying tools (like custom workflow creation) require explicit user confirmation via an inline approval card.
 - Manual history edit and branching: Allow editing/deleting any message in history, inserting new messages with selectable roles (prefill), and branching threads. Editing or deleting a message (say, message M at sequence `idx`) in-place in a thread's history truncates the history and rolls back the LangGraph state using these steps:
@@ -84,16 +85,16 @@ We propose using the following stores in the `in-browser-llm-chat-db` database:
 
 - **`settings`**: For global configs (API keys stored in plain text or optionally encrypted, active theme, default presets, global CORS proxy URL).
   - Key: `key` (string, e.g., `"api_keys"`, `"ui_config"`, `"encryption_settings"`, `"default_preset_id"`)
-  - Value: `{ value: any }`
+  - Value: `{ value: any }` or `{ encrypted: true, ciphertext: string, iv: string, salt: string }` when encryption is enabled (e.g. for `"api_keys"`).
 - **`presets`**: LLM configurations.
   - Key: `id` (UUID)
-  - Fields: `name`, `provider` (`"openrouter" | "gemini"`), `model` (string), `apiKey` (if not global), `temperature`, `maxTokens`, `reasoningLevel`, `budgetPolicy` (`{ maxStepsWithoutUser: number, maxTokensPerRun: number | null }`), `corsProxy` (null or string)
+  - Fields: `name`, `provider` (`"openrouter" | "gemini"`), `model` (string), `apiKey` (if not global, stored as a plain string or an encrypted object `{ encrypted: true, ciphertext: string, iv: string, salt: string }`), `temperature`, `maxTokens`, `reasoningLevel`, `budgetPolicy` (`{ maxStepsWithoutUser: number, maxTokensPerRun: number | null }`), `corsProxy` (null or string)
 - **`workflows`**: Serialized LangGraph definitions.
   - Key: `id` (string/UUID)
   - Fields: `name`, `description`, `isBuiltIn` (boolean), `nodes` (Array of node definitions), `edges` (Array of transition definitions), `injectedSystemMessages` (optional Array of `{ content: string, depth: number }`)
 - **`threads`**: Chat sessions.
   - Key: `id` (UUID)
-  - Fields: `title`, `workflowId`, `workflowSnapshot` (null or copy of workflow configuration JSON to ensure execution stability against schema modifications), `activePresetId`, `createdAt`, `updatedAt`, `parentThreadId` (null or parent UUID for branched threads), `parentMessageId` (null or parent message UUID at which branching occurred), `status` (`"inactive" | "executing" | "awaiting_input" | "error"`), `errorMessage` (null or string), `latestCheckpointId` (null or string), `latestCheckpointNs` (null or string), `tokenStats` (`{ promptTokens: number, completionTokens: number, totalTokens: number } | null`)
+  - Fields: `title`, `workflowId`, `workflowSnapshot` (a copy of workflow configuration JSON, copied from the workflow definition upon thread creation for both built-in and custom workflows to ensure execution stability against schema modifications), `activePresetId`, `createdAt`, `updatedAt`, `parentThreadId` (null or parent UUID for branched threads), `parentMessageId` (null or parent message UUID at which branching occurred), `status` (`"inactive" | "executing" | "awaiting_input" | "error"`), `errorMessage` (null or string), `latestCheckpointId` (null or string), `latestCheckpointNs` (null or string), `tokenStats` (`{ promptTokens: number, completionTokens: number, totalTokens: number } | null`)
   - _Branching Behavior_: When branching a thread, the messages from the parent thread up to and including the `parentMessageId` are copied (cloned) to the new thread in the `messages` store under the new thread's ID (with their `sequence` order preserved). The `workflowSnapshot` is also copied from the parent thread to the new thread's record in the `threads` store to preserve execution consistency. To ensure that the branched thread's history can be edited or rewound later, ALL checkpoints and `checkpoint_writes` associated with the copied messages (i.e. all checkpoints in the parent thread's history up to and including the checkpoint associated with the `parentMessageId`) must be copied/cloned to the `checkpoints` and `checkpoint_writes` stores under the `newThreadId`. Subsequent checkpoints are not copied. Child threads remain fully functional even if their parent thread is later deleted (as they hold independent clones of historical messages and checkpoints); in such cases, their `parentThreadId` is retained for provenance but resolves to null/absent in reference checks.
 - **`messages`**: Individual messages in threads.
   - Key: `id` (UUID)
@@ -109,6 +110,8 @@ We propose using the following stores in the `in-browser-llm-chat-db` database:
        - Consecutive `user` messages (including actual user messages and mapped-to-user messages) are merged into a single logical `user` message, concatenating their content with double newlines.
        - Consecutive `assistant` messages from the active agent (e.g. separate reasoning, text, or tool_call entries) are merged into a single logical `assistant` message, combining text/reasoning contents and populating the `tool_calls` array.
          This maintains strictly alternating user/assistant roles (or user/assistant/user/assistant) and ensures compatibility with strict API providers without losing the distinct identities of the debating agents.
+    5. **On-the-fly Context Pruning**: If the agent node specifies `maxHistoryMessages`, the compiler truncates history on-the-fly before preparing the API payload. It traverses compiled messages backward from the latest message, keeping up to `maxHistoryMessages` messages (system prompts and injected system messages are always preserved at their designated positions and do not count towards this limit).
+    6. **Pruning Boundary Adjustment**: If the cutoff point falls within a tool call/response transaction (i.e. a tool result is kept but its preceding tool call is excluded, or vice versa), the compiler adjusts the cutoff boundary backward to include the complete tool transaction. The compiler must never split a tool call and its corresponding tool result to avoid formatting validation errors with strict API providers.
 - **`checkpoints`**: LangGraph checkpointer state to enable resuming active graph execution and supporting history rewinding/branching.
   - Key: `[threadId, checkpointNs, checkpointId]` (compound key)
   - Indices: `threadId` (indexed to support cascading cleanup on thread deletion)
@@ -152,7 +155,7 @@ interface GraphState {
 
 During runtime, a factory function converts this JSON schema into a compiled `@langchain/langgraph` `StateGraph`. The factory maps each `WorkflowNode` type to its concrete execution behavior:
 
-- **`agent`**: Invokes the LLM specified by `presetId` (or the default preset) using the `systemPrompt`, passing the thread's message history. It binds the tools specified in the `tools` array. During execution, the agent node also updates the `lastAgentId` state property in the `GraphState` to its own node ID, ensuring that subsequent tool nodes can route results back to it.
+- **`agent`**: Invokes the LLM specified by `presetId` (or the default preset) using the `systemPrompt`, passing the thread's message history. It binds the tools specified in the `tools` array. During execution, the agent node also updates the `lastAgentId` state property in the `GraphState` to its own node ID, ensuring that subsequent tool nodes can route results back to it. If the `presetId` is missing or has been deleted from the database, compilation and execution will not fail; instead, the compiler automatically falls back to the thread's active preset, and if that is also invalid, it falls back to the global default preset, displaying a non-blocking warning notification in the execution control panel.
 - **`input`**: Execution is interrupted/paused, waiting for a user message (uses a LangGraph interrupt).
 - **`tool`**: Executes tool calls returned by agent nodes (e.g. `ask_questions`, `declare_consensus`, or other custom database tools) and generates the corresponding `tool` messages.
 - **`consensus_check`**: Runs an LLM node or rule-based evaluator to analyze the message history and determine if consensus is reached, routing the graph outcome to the next state based on the consensus evaluation. If a `consensus_check` node has a configured `systemPrompt`, it runs as an LLM-based evaluator that analyzes the message history and updates the state's `consensusReached` flag. If `systemPrompt` is omitted or empty, the node operates as a pure rule-based evaluator that only checks if the `consensusReached` state flag has been set to `true` (e.g. by a previous tool call such as `declare_consensus`), bypassing any LLM API call to conserve tokens. The system prompt for LLM-based `consensus_check` nodes is defined in the workflow's node configuration (`systemPrompt` field) and uses standard evaluation guidelines, instructing the LLM to output a JSON structure containing `consensusReached` and `reasoning`.
@@ -178,6 +181,7 @@ Before a custom workflow is compiled or saved, the editor performs structural va
 5. **Topology Restrictions**: The workflow topology must be restricted to sequential and conditional execution DAGs. Parallel execution branches (where a node has multiple concurrent outgoing paths executing at once) are not supported.
 6. **No Ambiguous Routing**: To prevent non-deterministic routing, no node may have more than one unconditional outbound edge. Additionally, except for `tool` nodes with `on_tool_result` edges (which route dynamically based on `lastAgentId`), no node may have multiple outbound edges with the same `condition`.
 7. **Consensus Check Routing**: For `consensus_check` nodes, there must be edges defined for both `on_consensus` and `on_no_consensus` conditions, OR one conditional edge and one unconditional edge acting as the default fallback.
+8. **Routing Completeness**: To prevent runtime routing failures, any node with conditional outgoing edges must have outgoing paths covering all possible outcomes (e.g. both `on_consensus` and `on_no_consensus` for `consensus_check` nodes; both `on_tool_call` and an unconditional default fallback edge for `agent` nodes), or a single default fallback unconditional edge.
 
 #### Dynamic Prompt Placeholders
 
@@ -526,7 +530,7 @@ stateDiagram-v2
         state ExecutionState {
             [*] --> inactive
 
-            inactive --> checkingKeys : START_EXECUTION / SUBMIT_MESSAGE
+            inactive --> checkingKeys : START_EXECUTION / SUBMIT_MESSAGE / FORCE_CONSENSUS / FORCE_SUMMARIZE
             checkingKeys --> executing : [Keys Unlocked]
             checkingKeys --> awaitingUnlock : [Keys Locked]
 
@@ -538,12 +542,14 @@ stateDiagram-v2
             executing --> error : EXECUTION_ERROR
 
             awaitingHumanInput --> executing : RESUME / SUBMIT_TOOL_RESPONSE / SUBMIT_APPROVAL
+            awaitingHumanInput --> checkingKeys : FORCE_CONSENSUS / FORCE_SUMMARIZE
             awaitingHumanInput --> inactive : CANCEL_EXECUTION
 
             executing --> inactive : API_KEYS_REMOVED
             awaitingHumanInput --> inactive : API_KEYS_REMOVED
 
             error --> inactive : DISMISS_ERROR
+            error --> checkingKeys : RETRY_STEP / RESUME
 
             %% Route Change & Initial Checkpoint Loading
             inactive --> checkingStatus : ROUTE_CHANGED [apiKeysConfigured] / INITIALIZE_CHECKPOINT [apiKeysConfigured] / API_KEYS_CONFIGURED
@@ -595,7 +601,8 @@ The state machine context maintains the following variables:
 - **`awaitingUnlock`**: Active when API keys are encrypted and locked, and the user has initiated or resumed a workflow run. Displays a modal dialog requesting the master password. If the user enters the correct password (`UNLOCK_SUCCESS`), the keys are decrypted in-memory, and execution transitions to `executing`. If the user cancels (`CANCEL_UNLOCK`), it transitions back to `inactive`.
 - **`executing`**: Running `@langchain/langgraph/web` steps in the browser (input disabled).
 - **`awaitingHumanInput`**: Graph execution is suspended (either due to a manual approval card or an `ask_questions` tool interrupt).
-- **`error`**: Displays error information if an API request or state transition fails.
+- **`error`**: Displays error information if an API request or state transition fails. Manually resuming execution from the last successful checkpoint via `RETRY_STEP` or `RESUME` transitions the state machine back to `checkingKeys`.
+- **Force Consensus / Force Summarize Early**: Permitted only in `inactive` or `awaitingHumanInput` states. Triggering `FORCE_CONSENSUS` or `FORCE_SUMMARIZE` executes an asynchronous database transaction to update the active thread's checkpoint state (setting the `consensusReached` flag to `true` or bypassing evaluation routing in the graph state) before transitioning the machine to `checkingKeys` to resume graph execution.
 
 _Transition on Route Changes and Initialization_:
 When a `ROUTE_CHANGED` or `INITIALIZE_CHECKPOINT` event is received, the machine first executes an `assign` action to update the `currentThreadId` in the context, and then the `ExecutionState` transitions to the transient `checkingStatus` state. This handles both switching threads and completing onboarding/initial page load. Note that these transitions in the `ExecutionState` region are guarded and only fire when the API keys are configured (i.e., `apiKeysConfigured` is true and the machine is not in the `initializing` state). If the database is unconfigured, execution transitions are ignored until onboarding completes:
@@ -635,13 +642,14 @@ Manages the modal overlay displayed when the user attempts to run a workflow or 
 - **States**:
   - `closed`: The modal is completely hidden.
   - `opened`: The modal is visible.
-    - `opened.idle`: Waiting for the user to input the master password.
+    - `opened.idle`: Waiting for the user to input the master password. Upon entry, both `passwordInput` and `errorMessage` are reset and cleared to avoid state leakage.
     - `opened.deriving`: Deriving the AES-GCM key from the password using PBKDF2 in the Web Crypto API.
     - `opened.decrypting`: Attempting to decrypt the static verification token using the derived key.
     - `opened.success`: Verification succeeded. The derived key is stored in memory, the modal transitions to `closed`, and the parent machine is notified via `UNLOCK_SUCCESS`.
     - `opened.error`: Verification failed (incorrect password). Displays an error message inline and remains in the modal.
 - **Transitions / Events**:
   - `TRIGGER_UNLOCK`: Transitions `closed` to `opened.idle`.
+  - `UPDATE_PASSWORD` (contains password): Updates `passwordInput` context.
   - `SUBMIT`: Transitions `opened.idle` or `opened.error` to `opened.deriving`.
   - `DERIVE_SUCCESS`: Transitions `opened.deriving` to `opened.decrypting`.
   - `DECRYPT_SUCCESS`: Transitions `opened.decrypting` to `opened.success`.
@@ -656,16 +664,18 @@ Governs the "Test Connection" button lifecycle within the LLM Preset Configurati
   - `latency`: `number | null`
   - `errorMessage`: `string | null`
   - `details`: `any`
+  - `abortController`: `AbortController | null` (used to abort in-flight requests)
 - **States**:
   - `idle`: Initial state. Displays the "Test Connection" button.
   - `testing`: Asynchronously executing a lightweight dummy request (e.g. model listing or 1-token request) using the configured API Key, Endpoint, and CORS proxy.
   - `success`: Test succeeded. Displays a green badge showing the latency and model info.
   - `failure`: Test failed. Displays a red banner detailing status codes, CORS block warnings, or network errors.
 - **Transitions / Events**:
-  - `TEST_CONNECTION`: Transitions `idle`, `success`, or `failure` to `testing`.
+  - `TEST_CONNECTION` (contains config): Aborts any active in-flight request via `abortController`, instantiates a new `AbortController`, updates context with parameters, and transitions `idle`, `success`, or `failure` to `testing`.
   - `TEST_SUCCESS` (contains latency and metadata): Transitions `testing` to `success` (updates context).
   - `TEST_FAILURE` (contains error details): Transitions `testing` to `failure` (updates context).
   - `INPUT_CHANGED` (when preset fields are modified): Transitions `success` or `failure` back to `idle`.
+  - `CANCEL`: Aborts active request via `abortController` and transitions to `idle`.
 
 #### C. `ask_questions` Tool Form State Machine
 
@@ -680,16 +690,16 @@ Governs the lifecycle of the inline form rendered in the chat feed when executio
   - `active`: The form card is rendered and editable.
     - `active.editing`: User is interacting with form controls.
     - `active.validating`: Auto-checking if all required/non-optional questions have been answered.
-  - `submitting`: Sending responses back to the LangGraph runner actor.
+  - `submitting`: Sending responses back to the LangGraph runner actor (dispatches `SUBMIT_TOOL_RESPONSE` to the runner actor).
   - `submitted`: Response successfully submitted. Form controls become disabled/read-only.
-  - `refused`: User clicked "Refuse to Answer". Form controls become disabled/read-only, showing the refusal reason.
+  - `refused`: User clicked "Refuse to Answer". Form controls become disabled/read-only, showing the refusal reason. Dispatches `REFUSE_TOOL_RESPONSE` with reason to runner actor.
 - **Transitions / Events**:
   - `LOAD_QUESTIONS`: Transitions to `active.editing` (populates `questions` context).
   - `UPDATE_ANSWER`: Transitions to `active.validating` (updates the `answers` record).
   - `VALIDATION_RESULT` (contains isValid): Transitions back to `active.editing` (updates `isValid` context).
-  - `SUBMIT` (guard: `isValid` is true): Transitions to `submitting` (sends `SUBMIT_TOOL_RESPONSE` to runner actor).
+  - `SUBMIT` (guard: `isValid` is true): Transitions to `submitting`.
   - `SUBMIT_SUCCESS`: Transitions to `submitted`.
-  - `REFUSE` (contains refusalReason): Transitions to `refused` (sends `REFUSE_TOOL_RESPONSE` with reason to runner actor).
+  - `REFUSE` (contains refusalReason): Transitions to `refused`.
 
 #### D. Proposed Action Card (Approval Form) State Machine
 
@@ -703,7 +713,7 @@ Governs database-modifying tool calls (like creating or updating a workflow) tha
   - `pending`: Active card with "Approve" and "Deny" buttons.
   - `approving`: Asynchronously executing the database modification transaction.
   - `approved`: Successfully completed. Buttons disabled, status badge shown.
-  - `denied`: User denied the action. Runner actor receives denial message.
+  - `denied`: User denied the action. Runner actor receives denial message (handles user denials as tool execution failures/refusals by returning a standardized "Operation denied by user" tool result and resumes execution).
   - `error`: Database write failed. Shows retry button and error details.
 - **Transitions / Events**:
   - `APPROVE`: Transitions `pending` or `error` to `approving`.
@@ -724,9 +734,11 @@ Rendered inline when a running thread exceeds its cumulative token budget or ste
   - `prompting`: Displays warning card with "Increase Budget & Resume" and "Abort" buttons active.
   - `resuming`: Sending temporary override budget settings and resuming execution.
   - `aborted`: Aborting and clearing active execution.
+  - `completed`: Card is disabled/read-only (transitioned once execution is successfully resumed or aborted).
 - **Transitions / Events**:
   - `INCREASE_BUDGET`: Transitions `prompting` to `resuming` (sends `RESUME` with override context to main machine).
   - `ABORT`: Transitions `prompting` to `aborted` (sends `CANCEL_EXECUTION` to main machine).
+  - `RESUME_SUCCESS` / `ABORT_SUCCESS`: Transitions `resuming` or `aborted` to `completed`.
 
 #### F. Workflow Syncing (Soft/Hard Sync) State Machine
 
@@ -736,6 +748,7 @@ Triggered from Thread Settings to synchronize a thread's workflow snapshot with 
   - `threadId`: `string`
   - `isDestructive`: `boolean` (true if graph topology node/edge structure changed, false if only system prompts/presets changed)
   - `diffDetails`: `any`
+  - `errorMessage`: `string | null`
 - **States**:
   - `idle`: Initial state. Button visible in thread settings.
   - `analyzing`: Diffing `workflowSnapshot` against the latest database workflow.
@@ -749,10 +762,11 @@ Triggered from Thread Settings to synchronize a thread's workflow snapshot with 
   - `ANALYSIS_COMPLETE` (contains `isDestructive` and diff details):
     - If `isDestructive` is true, transitions to `promptingHardSync`.
     - If `isDestructive` is false, transitions to `promptingSoftSync`.
+  - `ANALYSIS_FAILURE` (contains error): Transitions `analyzing` to `failure` (updates `errorMessage`).
   - `CONFIRM_SYNC` (from prompting states): Transitions to `syncing`.
   - `CANCEL_SYNC`: Transitions prompting/analyzing states back to `idle`.
   - `SYNC_SUCCESS`: Transitions `syncing` to `success`.
-  - `SYNC_FAILURE` (contains error): Transitions `syncing` to `failure`.
+  - `SYNC_FAILURE` (contains error): Transitions `syncing` to `failure` (updates `errorMessage`).
 
 #### G. API Payload Preview Modal State Machine
 
@@ -761,15 +775,18 @@ Governs the modal displaying compiled messages and injected system messages for 
 - **Context**:
   - `selectedAgentId`: `string | null`
   - `payload`: `any | null`
+  - `errorMessage`: `string | null`
 - **States**:
   - `closed`: Hidden.
   - `opened`: Visible.
     - `opened.loading`: Compiling payload, fetching messages, resolving injected system messages for the selected agent.
     - `opened.displaying`: Displaying compiled JSON payload.
+    - `opened.error`: Fetching or compilation failed, showing error details.
 - **Transitions / Events**:
   - `OPEN`: Transitions `closed` to `opened.loading` (sets default `selectedAgentId`).
   - `LOADED` (contains compiled payload): Transitions `opened.loading` to `opened.displaying`.
-  - `CHANGE_AGENT` (contains agentId): Transitions `opened.displaying` to `opened.loading` (updates `selectedAgentId`).
+  - `LOAD_FAILURE` (contains error): Transitions `opened.loading` to `opened.error` (updates `errorMessage`).
+  - `CHANGE_AGENT` (contains agentId): Transitions `opened.displaying` or `opened.error` to `opened.loading` (updates `selectedAgentId`).
   - `CLOSE`: Transitions any `opened` state to `closed` (clears context).
 
 #### H. Checkpoint Compaction Dialog State Machine
@@ -790,7 +807,7 @@ Triggered in Global Settings to purge old checkpoints of a thread.
   - `CONFIRM_COMPACT`: Transitions `confirming` to `compacting`.
   - `CANCEL_COMPACT`: Transitions `confirming` to `idle`.
   - `COMPACT_SUCCESS`: Transitions `compacting` to `success`.
-  - `COMPACT_FAILURE` (contains error): Transitions `compacting` to `failure`.
+  - `COMPACT_FAILURE` (contains error): Transitions `compacting` to `failure` (updates `errorMessage`).
   - `DISMISS`: Transitions `success` or `failure` back to `idle`.
 
 #### I. Inline Message Editor State Machine
@@ -802,18 +819,132 @@ Governs editing a single message in the chat history.
   - `originalContent`: `string`
   - `editContent`: `string`
   - `role`: `string`
+  - `isValidContent`: `boolean`
 - **States**:
   - `viewing`: Standard rendering mode.
   - `editing`: Textarea input is active.
+    - `editing.idle`: User is editing the content.
+    - `editing.validating`: Validation active (e.g. checks that the message content is non-empty for `user` roles).
   - `saving`: Truncating history/checkpoints and writing new message content in the database.
   - `error`: Saving failed, showing retry/error inline.
 - **Transitions / Events**:
-  - `EDIT`: Transitions `viewing` to `editing` (clones `originalContent` to `editContent`).
-  - `UPDATE_CONTENT` (contains content): Updates `editContent`.
-  - `SAVE`: Transitions `editing` or `error` to `saving`.
+  - `EDIT`: Transitions `viewing` to `editing.idle` (clones `originalContent` to `editContent`).
+  - `UPDATE_CONTENT` (contains content): Transitions to `editing.validating` (updates `editContent`).
+  - `VALIDATION_RESULT` (contains isValid): Transitions back to `editing.idle` (updates `isValidContent` flag).
+  - `SAVE` (guard: `isValidContent` is true): Transitions `editing.idle` or `error` to `saving`.
   - `SAVE_SUCCESS`: Transitions `saving` to `viewing` (updates thread cumulative token stats).
   - `SAVE_FAILURE` (contains error): Transitions `saving` to `error`.
-  - `CANCEL_EDIT`: Transitions `editing` or `error` to `viewing`.
+  - `CANCEL_EDIT`: Transitions editing/error states to `viewing`.
+
+#### J. Main Application Layout State Machine
+
+Governs the top-level application shell, responsive navigation drawer, and global UI theme.
+
+- **Context**:
+  - `sidebarOpen`: `boolean` (mobile menu expanded status)
+  - `theme`: `"light" | "dark" | "system"`
+  - `currentRoute`: `string`
+  - `isMobile`: `boolean`
+- **States**:
+  - `idle`: Layout is loaded and active. On entry, resolves the theme preference and binds window media listeners if theme is `"system"`.
+- **Transitions / Events**:
+  - `TOGGLE_SIDEBAR`: Toggles `sidebarOpen` boolean status.
+  - `OPEN_SIDEBAR`: Sets `sidebarOpen` to `true`.
+  - `CLOSE_SIDEBAR`: Sets `sidebarOpen` to `false`.
+  - `SET_THEME` (contains theme): Updates `theme` in context, updates system override class in the document element, and writes setting to IndexedDB settings.
+  - `WINDOW_RESIZED` (contains isMobile): Updates `isMobile` context. If `isMobile` transitions to `false`, forces `sidebarOpen` to `false`.
+  - `ROUTE_CHANGED` (contains route): Updates `currentRoute`. If `isMobile` is `true`, sets `sidebarOpen` to `false` to close the navigation overlay.
+
+#### K. Left Sidebar State Machine
+
+Manages the active thread list loading, searching, and thread-level cascading deletion interactions.
+
+- **Context**:
+  - `threads`: `Array<Thread>`
+  - `searchQuery`: `string`
+  - `activeThreadId`: `string | null`
+  - `deletingThreadId`: `string | null`
+  - `errorMessage`: `string | null`
+- **States**:
+  - `idle`: Displaying the search input and thread list.
+  - `confirmingDelete`: Displaying confirmation popover/modal for deleting `deletingThreadId`.
+  - `deleting`: Asynchronously executing database transactions to delete the thread and its checkpoints.
+- **Transitions / Events**:
+  - `LOAD_THREADS` (contains threads): Updates the `threads` list.
+  - `FILTER_THREADS` (contains query): Updates `searchQuery`.
+  - `TRIGGER_DELETE` (contains threadId): Sets `deletingThreadId` and transitions to `confirmingDelete`.
+  - `CONFIRM_DELETE`: Transitions `confirmingDelete` to `deleting`.
+  - `CANCEL_DELETE`: Transitions `confirmingDelete` back to `idle` (clears `deletingThreadId`).
+  - `DELETE_SUCCESS`: Transitions `deleting` back to `idle` (clears `deletingThreadId`, dispatches URL navigate if the deleted thread was active).
+  - `DELETE_FAILURE` (contains error): Transitions `deleting` to `idle` (sets `errorMessage` and displays sidebar error warning, clears `deletingThreadId`).
+
+#### L. Preset Editor State Machine
+
+Governs the lifecycle of modifying or creating an LLM Preset Configuration.
+
+- **Context**:
+  - `presetId`: `string | null` (null if creating a new preset)
+  - `presetData`: `PresetData` (containing name, provider, model, API keys, temperature, policies, etc.)
+  - `originalData`: `PresetData | null` (stored for dirty checking and reset operations)
+  - `validationErrors`: `Record<string, string>` (field name mapping to error descriptions)
+  - `isDirty`: `boolean`
+  - `errorMessage`: `string | null`
+- **States**:
+  - `idle`: Rendering editor input fields.
+    - `idle.clean`: Data matches `originalData`. Can exit safely.
+    - `idle.dirty`: Data differs. Exiting requires dirty confirmation warning.
+  - `validating`: Parsing fields (requires a non-empty name, model string, valid temperature between 0.0 and 2.0, temperature/maxTokens formatting, etc.).
+  - `saving`: Running IndexedDB transaction to insert or update the preset.
+  - `savingSuccess`: DB write succeeded. Navigates back / closes the preset configurator.
+  - `promptingDiscard`: Active modal prompting confirmation to discard unsaved edits.
+  - `error`: DB transaction failed.
+- **Transitions / Events**:
+  - `LOAD_PRESET` (contains data): Populates `presetData` and `originalData`, and sets `isDirty` to `false`. Transitions to `idle.clean`.
+  - `EDIT_FIELD` (contains field and value): Updates `presetData` field, sets `isDirty` to `true`, and transitions to `idle.dirty`.
+  - `SAVE`: Transitions `idle.dirty` or `error` to `validating`.
+  - `VALIDATION_SUCCESS`: Transitions to `saving`.
+  - `VALIDATION_FAILURE` (contains errors): Transitions back to `idle.dirty` (populates `validationErrors`).
+  - `SAVE_SUCCESS`: Transitions to `savingSuccess`.
+  - `SAVE_FAILURE` (contains error): Transitions to `error` (updates `errorMessage`).
+  - `CANCEL`:
+    - If `isDirty` is `false`, exits/closes editor.
+    - If `isDirty` is `true`, transitions to `promptingDiscard`.
+  - `CONFIRM_DISCARD`: Closes preset editor and discards unsaved edits.
+  - `ABORT_DISCARD`: Transitions back to `idle.dirty`.
+
+#### M. Workflow JSON Editor State Machine
+
+Governs the JSON editor interface used to inspect or build custom agent orchestration workflows.
+
+- **Context**:
+  - `workflowId`: `string | null` (null if creating a new workflow)
+  - `jsonContent`: `string`
+  - `originalContent`: `string`
+  - `isDirty`: `boolean`
+  - `validationErrors`: `Array<string>` (JSON parse or structural schema check failures)
+  - `errorMessage`: `string | null`
+- **States**:
+  - `viewing`: Read-only JSON view for built-in workflows (editing disabled).
+  - `editing`: Textarea input is active.
+    - `editing.clean`: Text content matches `originalContent`.
+    - `editing.dirty`: Text content modified.
+  - `validating`: Parsing JSON syntax and evaluating structural constraints (Connectivity, Entry Point, Loop Exit Paths, Routing Completeness, etc.).
+  - `saving`: Executing IndexedDB transaction to save the workflow definition.
+  - `promptingDiscard`: Confirmation dialog for exiting editor with unsaved changes.
+  - `error`: DB transaction failed.
+- **Transitions / Events**:
+  - `LOAD_WORKFLOW` (contains id and content): Sets `workflowId`, `jsonContent`, `originalContent`, `isDirty` to `false`, and transitions to `editing.clean` (or `viewing` if built-in).
+  - `EDIT_JSON` (contains content): Updates `jsonContent` in context, sets `isDirty` to `true`, and transitions to `editing.dirty`.
+  - `SAVE`: Transitions `editing.dirty` or `error` to `validating`.
+  - `VALIDATE_SUCCESS`: Transitions to `saving`.
+  - `VALIDATE_FAILURE` (contains errors): Transitions back to `editing.dirty` (populates `validationErrors`).
+  - `SAVE_SUCCESS`: Transitions to `editing.clean` (updates `originalContent`, navigates back to list).
+  - `SAVE_FAILURE` (contains error): Transitions to `error` (updates `errorMessage`).
+  - `CANCEL`:
+    - If `isDirty` is `false`, transitions to list view.
+    - If `isDirty` is `true`, transitions to `promptingDiscard`.
+  - `CONFIRM_DISCARD`: Transitions to workflow list view.
+  - `ABORT_DISCARD`: Transitions back to `editing.dirty`.
 
 ## Open questions
 
@@ -839,63 +970,4 @@ The human user will replace the `[UNRESOLVED]` tag with their response. The huma
 
 ### Current open questions:
 
-#### Question: Optimizing Checkpoint Copying during Thread Branching
-
-When branching a thread, copying all historical checkpoints and checkpoint writes can involve copying hundreds of records. Should we copy them eagerly in a batched IndexedDB transaction, or can we optimize this by referencing the parent thread's checkpoints and copying them lazily/on-demand only when a write/edit occurs?
-
-##### Response
-
-We will eagerly copy checkpoints and checkpoint writes in a single batched IndexedDB transaction during the branching process. This maintains absolute thread isolation, meaning parent threads can be safely deleted or modified without affecting the branched thread, and avoids the significant architectural complexity of traversing historical thread lineages to retrieve checkpoints lazily.
-
-#### Question: Support for User-Defined Custom Tools
-
-Currently, workflows support a fixed set of built-in tools (e.g., `ask_questions`, custom workflow editor tools). Should we support user-defined custom tools (e.g., allowing users to write custom JS/TS tool code executed in a sandboxed Web Worker/iframe), or should tools remain strictly built-in to avoid security risks and execution complexity?
-
-##### Response
-
-For the initial release, custom tools will remain strictly built-in to keep execution simple, secure, and performant without the overhead of sandboxed Web Workers or iframes. Users can configure custom workflows by composing existing built-in tools (such as the `ask_questions` tool or future generic HTTP/API calling tools) within their graph definitions.
-
-#### Question: Message Pruning and LangGraph Checkpoint Consistency
-
-When `maxHistoryMessages` is reached, how should the message history be pruned? If we delete older messages from the `messages` array in the `GraphState` to stay within the limit, does this break the checkpointer's ability to rewind to earlier steps where those messages still existed? Should we prune messages only when compiling the payload for the LLM API call (leaving the database and checkpoint history complete), or should we prune them directly from the database and graph state to save IndexedDB storage?
-
-##### Response
-
-To maintain database integrity, UI chat feed completeness, and LangGraph checkpoint consistency, messages will not be deleted from the database or the `GraphState`. Instead, the `maxHistoryMessages` pruning logic will be applied on-the-fly inside the message compiler when preparing the prompt payload for the LLM API call. The compiler will traverse backward from the latest message, keeping up to `maxHistoryMessages` messages (while ensuring system prompts, injected messages, and necessary context boundaries are preserved). This keeps the database and checkpoint history complete, allowing the user to view the full chat history and perform rewinding/branching without data loss, while successfully limiting API request costs.
-
-#### Question: Handling of Active Preset Deletion
-
-When a user deletes a custom LLM preset, how should we handle threads and workflow nodes that reference it? Should deletion be strictly blocked (similar to custom workflows), or should we allow deletion and automatically fall back to the default preset for affected threads and nodes? If we block it, should the UI display a list of all affected threads and workflows?
-
-##### Response
-
-As specified in the 'Safety Rules' of the LLM provider preset management section, deleting a custom preset that is currently active in any thread or referenced in any workflow node definitions is strictly blocked. The UI must display an inline notification listing the referencing threads or workflows. The user cannot delete the default LLM preset.
-
-#### Question: Multi-Select Tool Output Formatting
-
-When the `ask_questions` tool returns multi-select answers, how should the answers be formatted for subsequent LLM consumption? Should they be passed as a raw JSON array, or should they be formatted as a human-readable list (e.g. 'Question: X, Selected: Y, Z') to make it easier for subsequent agent nodes to reason about them without parsing JSON?
-
-##### Response
-
-The tool output returned to the LLM will be serialized as a stringified JSON object matching the `AskQuestionsResponse` interface. This ensures programmatic consistency for any graph nodes or custom logic that needs to inspect the state. To optimize LLM reasoning and readability, the JSON will be compact, and the system prompt or agent instructions for subsequent nodes will be instructed on how to interpret this standard JSON schema.
-
-#### Question: Saving Partial Responses on Abrupt Interruption/Pause
-
-Should we save partial responses to the database `messages` store when a user pauses or aborts an active LLM streaming step, or is it acceptable to discard the partial message and start the step fresh upon resuming?
-
-##### Response
-
-To maintain graph state consistency, prevent database corruption, and avoid duplicate/fragmented messages in the UI, any partially streamed text or reasoning tokens from an interrupted LLM step will be discarded upon pause, thread switch, or abort. The database `messages` store will not be updated with these partial tokens, and no checkpoint will be written for the interrupted step. When execution is resumed, the graph runner will restart the node execution fresh using the state from the last completed checkpoint.
-
-#### Question: Missing or Invalid Preset IDs in Custom Workflows
-
-If a custom workflow is imported or saved with a `presetId` that does not exist in the database, how should the compilation and execution behave? Should compilation fail immediately, or should we automatically fall back to the thread's selected preset (or the global default preset) at runtime?
-
-##### Response
-
-To ensure execution robustness, if a custom workflow contains a `presetId` that is missing or has been deleted, compilation and execution will not fail. Instead:
-
-1. The custom workflow compiler will automatically fall back to the active preset selected for the thread.
-2. If the thread's active preset is also missing or invalid, the execution will fall back to the global default preset.
-3. The UI will display a non-blocking warning notification within the execution control panel to alert the user that a fallback preset is being used due to a missing preset ID.
-   Additionally, the workflow editor's import and save validation checks will scan for missing `presetId`s and display a warning helper text, though saving will not be hard-blocked.
+None. All previous questions have been resolved and incorporated into the respective specification sections.
