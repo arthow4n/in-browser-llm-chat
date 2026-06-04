@@ -192,30 +192,23 @@ The application layout is built using the Carbon Design System (`@carbon/react`)
   - Displays the active preset and active workflow.
   - **Preview API Payload Button**: Clicking it opens a Modal showing the exact JSON structure of messages (including injected system messages) that would be sent to the LLM API next. Injected messages are highlighted with a distinct background/border and marked with an `[INJECTED]` badge to assist debugging.
 - **Loop Control Panel (Sticky)**:
-  - **Desktop**: Sticky control bar at the top of the chat area.
-  - **Mobile**: Collapses into a compact, sticky bottom status bar or overlay displaying just the round count and estimated cost. Tapping this collapses/expands a full-screen control overlay.
-  - **Controls**: Displays the current loop round, turn count, and estimated cost. Contains buttons to Pause, Resume, or Force Consensus / Summarize early.
-  - _Unresolved UI/UX Details_:
-    - **Loop Control Card Placement**: [UNRESOLVED] (Where exactly should the Loop Control Panel be positioned in the UI?)
-    - **Loop Cost Estimation Details**: [UNRESOLVED] (How should estimated cost be calculated and displayed to the user?)
+  - **Desktop**: Rendered as a sticky control bar at the top of the chat area.
+  - **Mobile**: Collapses into a compact floating action button (FAB) or thin top status bar to save vertical space; tapping it opens a modal overlay with the detailed turn counters and control actions.
+  - **Controls**: Displays the current loop round, turn count, and estimated cost. The estimated cost is calculated as a simple counter of steps/turns and a running count of estimated input/output tokens (without currency calculation). Contains buttons to Pause, Resume, or Force Consensus / Summarize early.
 - **Chat Feed**:
   - **Message Bubbles**: Render user and assistant/agent messages with rich markdown formatting, GitHub Flavored Markdown (e.g. tables, checkboxes), and LaTeX math support (both inline and block equations).
   - **Message Options Menu**: Each message bubble includes a small, low-profile overflow button (three-dots icon) with a minimum `44x44px` target. This button is permanently visible (with a light opacity like `0.6`) on both desktop and mobile viewports (no hover-only requirements; this no-hover, permanently visible approach is globally applied for all UI elements). Clicking/tapping it opens a menu (or slide-up bottom sheet on mobile) containing "Edit", "Delete", and "Branch Thread" options.
   - **Inline Message Editing**: Clicking "Edit" transforms the message bubble inline into a text area to save changes.
   - **Reasoning Process Accordion**: Collapsed by default under a "Reasoning Process" header inside the assistant's message. Capped at `max-height: 250px` with vertical scrollbars. Both reasoning tokens and text content are streamed in real-time. The accordion must remain collapsed by default during streaming and after response completion. Use a fallback renderer or debounced updates to handle malformed partial markdown or math blocks.
-  - **Tool Call / Result Accordion**: Collapsed by default under a "Tool: [Name]" header. Expanding reveals a formatted JSON block of arguments or return outputs.
-  - **`ask_questions` Tool Card Form**: Rendered inline directly in the chat feed when execution is interrupted. Sized with a minimum of `44x44px` touch targets. Includes checkboxes for multi-select, freetext comment fields, and a "Refuse to Answer" button. The form controls become read-only once submitted.
+  - **Tool Call / Result Accordion**: Collapsed by default under a "Tool: [Name]" header. Expanding reveals a formatted JSON block of arguments or return outputs. Note: the `ask_questions` tool card form is rendered inline directly in the chat feed and must render/remain visible even when the tool call message itself is collapsed.
+  - **Scroll Anchoring**: Expanding accordions preserves chat scroll anchoring so the user does not lose their viewing position.
+  - **`ask_questions` Tool Card Form**: Rendered inline directly in the chat feed when execution is interrupted. Sized with a minimum of `44x44px` touch targets. Includes checkboxes for multi-select, freetext comment fields, and a "Refuse to Answer" button. The user must either answer all questions in the card or explicitly click "Refuse to Answer" to submit the form. The form controls become read-only once submitted.
   - **Proposed Action Card**: Rendered inline for database-modifying tools (e.g., creating/updating a workflow). Shows a diff or description of the changes, with "Approve" or "Deny" buttons.
-  - _Unresolved UI/UX Details_:
-    - **Chat Feed message styling for reasoning and tool tokens**: [UNRESOLVED] (How should reasoning tokens, tool calls, and tool results be styled in the chat feed?)
-    - **Input Blocking for `ask_questions` Tool Interrupts**: [UNRESOLVED] (Should it disable the main chat message input box?)
-    - **Answering Completeness for `ask_questions` Tool Interrupts**: [UNRESOLVED] (Must the user answer all questions in the card, or can they submit answers to a subset and leave others blank?)
 - **Chat Input Area**:
   - A main auto-resizing text input area.
   - **Role Selector Dropdown**: Next to the text input (defaulting to "User"), allowing the user to select "Assistant" or "System" to manually insert/prefill messages at the end of the history.
   - Send button.
-  - _Unresolved UI/UX Details_:
-    - **Message Insertion (Prefill) UI**: [UNRESOLVED] (How should users insert messages at the end of the history as any role?)
+  - **Input Blocking**: The main chat input field is blocked/disabled while the workflow is waiting for tool answers (e.g. from `ask_questions` interrupts) or manual approval, since typing a normal chat message would violate the graph execution state. All form controls are sized with a minimum of 44x44px touch targets.
 
 ### 3. Workflow Management CRUD View
 
@@ -224,8 +217,7 @@ The application layout is built using the Carbon Design System (`@carbon/react`)
   - Text-based JSON editor containing a `TextArea` displaying the JSON content.
   - **Mobile**: Rendered as a simple `TextArea` with word-wrap and scrolling, relying on the native mobile keyboard (no helper keyboard bar or custom virtual buttons).
   - Validation error helper text displayed directly under the text area when the JSON is invalid.
-  - _Unresolved UI/UX Details_:
-    - **Custom Workflow JSON Editor UI & Validation**: [UNRESOLVED] (How should JSON formatting and validation errors be displayed to the user?)
+  - Validation: Edited via a basic `TextArea` that only validates the schema when the user clicks "Save", displaying validation errors in a modal dialog.
 
 ### 4. LLM Preset CRUD View
 
@@ -267,72 +259,4 @@ The human user will replace the `[UNRESOLVED]` tag with their response. The huma
 
 ### Current open questions:
 
-#### Question: Loop Control Card Placement
-
-For workflows containing loops (such as the Debate workflow), where should the Loop Control Panel be positioned in the UI?
-
-_Suggested Options:_
-
-- **Option A (Recommended):** Rendered as a sticky control bar at the top of the chat area on desktop. On mobile, it collapses into a compact floating action button (FAB) or thin top status bar to save vertical space; tapping it opens a modal overlay with the detailed turn counters and control actions.
-- **Option B:** Rendered inline as a special card directly in the chat feed (moving up as new messages are added).
-- **Option C:** Placed as a floating card in a corner of the chat viewport.
-
-##### Response
-
-[UNRESOLVED]
-
-#### Question: Loop Cost Estimation Details
-
-For workflows containing loops (such as the Debate workflow), how should "estimated cost" be calculated and displayed to the user?
-
-_Suggested Options:_
-
-- **Option A (Recommended):** Display a simple counter of steps/turns and a running count of estimated input/output tokens (without currency calculation).
-- **Option B:** Use a hardcoded price-per-token map for Gemini/OpenRouter models to display estimated costs in USD.
-- **Option C:** Only display step/turn counter and execution duration.
-
-##### Response
-
-[UNRESOLVED]
-
-#### Question: Chat Feed message styling for reasoning and tool tokens
-
-How should reasoning tokens, tool calls, and tool results be styled in the chat feed?
-
-_Suggested Options:_
-
-- **Option A (Recommended):** Use Carbon `<Accordion>` components.
-  - _Reasoning:_ Collapsed by default under "Reasoning Process" inside the assistant's message. To prevent page overflow, the content is capped at `max-height: 250px` with vertical scrollbars.
-  - _Tool Calls/Results:_ Collapsed by default under "Tool: [Name]". Expanding shows a formatted JSON/arguments block.
-  - _Scroll Anchoring:_ Expanding accordions preserves chat scroll anchoring so the user does not lose their viewing position.
-- **Option B:** Display reasoning inline but with a lighter font color/smaller size and a toggle button to hide it. Show tool calls/results in a smaller font size as code blocks, not collapsible.
-
-##### Response
-
-[UNRESOLVED]
-
-#### Question: Input Blocking for `ask_questions` Tool Interrupts
-
-When the `ask_questions` tool interrupts execution to ask for human input, should it disable the main chat message input box?
-
-_Suggested Options:_
-
-- **Option A (Recommended):** Yes, block/disable the main chat input field while the workflow is waiting for the tool answers, since typing a normal chat message would violate the graph execution state. All form controls are sized with a minimum of 44x44px touch targets.
-- **Option B:** No, allow the user to type a normal message, which automatically "refuses" the tool questions and sends the typed text as the refusal reason.
-
-##### Response
-
-[UNRESOLVED]
-
-#### Question: Answering Completeness for `ask_questions` Tool Interrupts
-
-When the `ask_questions` tool interrupts execution, must the user answer all questions in the card, or can they submit answers to a subset and leave others blank?
-
-_Suggested Options:_
-
-- **Option A (Recommended):** The user can fill out any subset, click checkboxes for multi-select, and submit. Any unanswered questions are treated as skipped. If the user clicks "Refuse to Answer", it clears answers and submits a refusal payload with their optional comment.
-- **Option B:** The user must either answer all questions or explicitly click "Refuse to Answer".
-
-##### Response
-
-[UNRESOLVED]
+No open questions currently.
