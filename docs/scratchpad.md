@@ -1818,6 +1818,7 @@ Governs the state of the main text area, role selector, and send button, coordin
 - **Context**:
   - `inputText`: `string`
   - `selectedRole`: `"user" | "assistant" | "system"`
+  - `isShiftPressed`: `boolean`
 - **States**:
   - `disabled`: The input area cannot be used (e.g., no active thread, onboarding, or execution in progress).
     - _Text Area Field_: Disabled, shows placeholder "Please wait...".
@@ -1839,7 +1840,10 @@ Governs the state of the main text area, role selector, and send button, coordin
   - `DISABLE`: Transitions from any `ready` state to `disabled`.
   - `INPUT_CHANGED` (contains text): Transitions between `ready.empty` and `ready.hasText` based on whether text is empty. Updates `inputText`.
   - `ROLE_CHANGED` (contains role): Updates `selectedRole`.
-  - `SUBMIT`: (from `ready.hasText`) Transitions to `submitting`. Dispatches `SUBMIT_MESSAGE` to parent coordinator.
+  - `SUBMIT`: (Triggered by Send Button or Enter key without Shift)
+    - Guard: only if `inputText` is non-empty.
+    - Action: Dispatches the message to the parent coordinator machine.
+    - Transitions to `submitting`.
   - `SUBMIT_SUCCESS`: Clears `inputText`, transitions to `disabled` (as execution starts).
   - `SUBMIT_FAILURE`: Transitions back to `ready.hasText`.
 - **Database Reads/Writes**: None (handled by parent coordinator).
@@ -1887,7 +1891,7 @@ Governs the pagination, sorting, searching, loading, and deletion states in the 
   - **Writes**: Opens a transaction on the `workflows` store to delete the custom workflow if deletion validation checks pass.
 - **API Request/Response Sequence**: None.
 
-#### R. Global Settings Form State Machine
+#### S. Global Settings Form State Machine
 
 Governs the lifecycle of editing, validating, and saving fields in the Global Settings Panel.
 
@@ -1942,7 +1946,7 @@ Governs the lifecycle of editing, validating, and saving fields in the Global Se
   - **Writes**: On `saving`, opens a read-write transaction on the `settings` store and overwrites the records for these keys. If this is saving API keys (OpenRouter or Gemini) for the first time (i.e. API keys were empty and no presets exist in the `presets` store), the transaction also seeds the default presets ("Default Gemini Flash" using `gemini-2.5-flash` and "Default OpenRouter Flash" using `google/gemini-2.5-flash`) and sets `default_preset_id` in the settings store, then commits.
 - **API Request/Response Sequence**: None.
 
-#### S. New Chat Form State Machine
+#### T. New Chat Form State Machine
 
 Governs the form in the "New Chat" selection panel when no thread is active.
 
@@ -1982,7 +1986,7 @@ Governs the form in the "New Chat" selection panel when no thread is active.
   - **Writes**: During `submitting`, opens a read-write transaction on `threads` and `messages`. Creates a new thread record (generates UUID, sets title, copies workflow snapshot, sets default active preset ID, sets `status = "inactive"`, sets `tokenStats` to `{ promptTokens: 0, completionTokens: 0, totalTokens: 0 }`). Appends the user's initial prompt message to the `messages` store under `sequence = 0`, then commits the transaction. The actual transition to `executing` occurs when the parent coordinator loads the thread and processes the auto-start event.
 - **API Request/Response Sequence**: None.
 
-#### T. Thread Settings Modal State Machine
+#### U. Thread Settings Modal State Machine
 
 Governs renaming a thread, switching thread-specific presets, syncing workflows, compacting checkpoints, or deleting the thread from within the Thread Settings Modal.
 
@@ -2020,14 +2024,14 @@ Governs renaming a thread, switching thread-specific presets, syncing workflows,
   - `SAVE_FAILURE` (contains error): Transitions to `opened.error` (updates `errorMessage`).
   - `TRIGGER_SYNC`: Dispatches `START_SYNC` to the Workflow Syncing State Machine.
   - `TRIGGER_COMPACTION`: Dispatches `START_COMPACT` to the Checkpoint Compaction Dialog State Machine.
-  - `TRIGGER_DELETE`: Dispatches `TRIGGER_DELETE` to the Left Sidebar State Machine and transitions modal to `closed`.
+  - `TRIGGER_DELETE`: Dispatches `TRIGGER_DELETE` to the Left Sidebar Navigation State Machine and transitions modal to `closed`.
   - `DISMISS_ERROR`: Transitions `opened.error` to `opened.idle` (clears `errorMessage`).
 - **Database Reads/Writes**:
   - **Reads**: Reads target thread details from the `threads` store, and active presets list from the `presets` store.
   - **Writes**: On `SAVE`, opens a read-write transaction on the `threads` store to update the thread title and active preset ID values, then commits.
 - **API Request/Response Sequence**: None.
 
-#### U. Chat Feed Auto-Scroll State Machine
+#### V. Chat Feed Auto-Scroll State Machine
 
 Governs the scrolling behavior of the chat feed to ensure a smooth reading experience while content streams in.
 
@@ -2047,35 +2051,6 @@ Governs the scrolling behavior of the chat feed to ensure a smooth reading exper
     - If in `userScrolledUp`, does nothing (leaves scroll position unchanged, optionally shows a badge on the "Scroll to Bottom" button).
   - `SCROLL_TO_BOTTOM_CLICKED`: Transitions to `lockedToBottom` and forces a scroll to the bottom.
 - **Database Reads/Writes**: None.
-- **API Request/Response Sequence**: None.
-
-#### V. Chat Input Area State Machine
-
-Governs the text area and send button behavior in the active chat thread.
-
-- **Context**:
-  - `draftMessage`: `string`
-  - `isShiftPressed`: `boolean`
-- **States**:
-  - `disabled`: Input is blocked by the parent machine (e.g. executing, waiting for approval, onboarding).
-    - _Text Area Field_: Disabled.
-    - _Send Button_: Disabled.
-  - `enabled`: Ready for user input.
-    - `enabled.empty`: No text typed.
-      - _Send Button_: Disabled.
-    - `enabled.typing`: Text is present.
-      - _Send Button_: Enabled.
-- **Transitions / Events**:
-  - `ENABLE`: Transitions from `disabled` to `enabled`.
-  - `DISABLE`: Transitions to `disabled`.
-  - `UPDATE_DRAFT` (contains text):
-    - If text is empty, transitions to `enabled.empty`.
-    - If text is non-empty, transitions to `enabled.typing`.
-  - `SUBMIT`: (Triggered by Send Button or Enter key without Shift)
-    - Guard: only if `draftMessage` is non-empty.
-    - Action: Dispatches the message to the parent coordinator machine for processing and clears `draftMessage`.
-    - Transitions back to `enabled.empty`.
-- **Database Reads/Writes**: None (handled by parent machine on submit).
 - **API Request/Response Sequence**: None.
 
 #### W. Message Accordion State Machine
@@ -2158,6 +2133,64 @@ Governs the lightweight asynchronous validation indicator displayed next to the 
 - **Database Reads/Writes**: None.
 - **API Request/Response Sequence**:
   - Same dummy API request implementation as the Preset Connection Tester State Machine (using the provider's /models endpoint or a 1-token dummy prompt).
+
+#### Z. Left Sidebar Navigation State Machine
+
+Governs the visibility and toggle state of the left sidebar, which contains the list of threads, on both mobile and desktop viewports, as well as handling thread deletion.
+
+- **Context**:
+  - `isMobile`: `boolean` (updated via window resize listener)
+  - `threads`: `Array<Thread>`
+  - `deletingThreadId`: `string | null`
+  - `errorMessage`: `string | null`
+- **States**:
+  - `desktop`: Desktop viewport active.
+    - _Sidebar_: Always visible (docked to the left).
+    - _Mobile Hamburger Button_: Hidden.
+  - `mobile`: Mobile viewport active.
+    - `mobile.closed`:
+      - _Sidebar_: Hidden (off-canvas).
+      - _Mobile Hamburger Button_: Visible and enabled. Focused.
+      - _Overlay_: Hidden.
+    - `mobile.open`:
+      - _Sidebar_: Visible (sliding in from the left).
+      - _Mobile Hamburger Button_: Hidden or shown as a close button.
+      - _Overlay_: Visible (clicking it closes the sidebar).
+  - `deletingThread`: Checking deletion safety and orchestrating the database deletion.
+    - _Sidebar Controls_: Disabled. Deleting thread row displays a loading spinner.
+  - `deleteError`: Thread deletion failed.
+    - _Error Banner_: Visible within the sidebar with Retry and Dismiss buttons.
+- **Transitions / Events**:
+  - `VIEWPORT_CHANGED` (contains isMobile): Transitions between `desktop` and `mobile` states.
+  - `TOGGLE_SIDEBAR`: Transitions between `mobile.closed` and `mobile.open`.
+  - `CLOSE_SIDEBAR`: Transitions `mobile.open` to `mobile.closed`.
+  - `ROUTE_CHANGED`: Transitions `mobile.open` to `mobile.closed` (auto-closes on navigation).
+  - `TRIGGER_DELETE` (contains threadId): Transitions `desktop` or `mobile.open` to `deletingThread` (sets `deletingThreadId`).
+  - `DELETE_SUCCESS`: Transitions `deletingThread` to `desktop` or `mobile.open` depending on viewport. If the deleted thread was the currently active thread, dispatches a route change to the home/idle screen.
+  - `DELETE_FAILURE` (contains error): Transitions `deletingThread` to `deleteError` (updates `errorMessage`).
+  - `DISMISS_ERROR`: Transitions `deleteError` to previous idle state.
+- **Database Reads/Writes**:
+  - **Reads**: Subscribes to the `threads` store to list active threads.
+  - **Writes**: On `TRIGGER_DELETE`, triggers the asynchronous batched cascading deletion pipeline for the specified thread ID, updating its status to `"deleting"`.
+- **API Request/Response Sequence**: None.
+
+#### AA. Message Bubble (Multi-Agent) Render State
+
+Governs the display state of individual message bubbles in a multi-agent chat feed, ensuring the UX clearly communicates which agent is speaking or executing tools.
+
+- **Context**:
+  - `message`: `MessageRecord` (contains role, agent name, content, tool calls, tool results)
+- **States**:
+  - `rendering`:
+    - _Avatar & Header Bar_:
+      - If `message.role === "assistant"` and `message.name` is defined (e.g. "Debater_A"), a distinct header is displayed at the top of the bubble containing the agent's name and an auto-generated visual avatar (e.g. initials with a deterministic background color based on the name hash) so users can visually scan who said what.
+      - If `message.role === "user"`, the bubble is aligned to the right, styled distinctly from assistants.
+    - _Tool Call Nesting_:
+      - If the agent makes a tool call, the tool call accordion (governed by the Message Accordion State Machine) is nested *inside* the bottom of the agent's message bubble block, rather than floating independently, visually linking the tool execution to the agent that triggered it.
+    - _Timestamps_: Hovering over the message bubble reveals an exact timestamp tooltip for the message creation time.
+- **Transitions / Events**: None (purely declarative based on message props).
+- **Database Reads/Writes**: None.
+- **API Request/Response Sequence**: None.
 
 ## Open questions
 
