@@ -689,6 +689,43 @@ The child `graphRunnerActor` manages its internal error states as follows:
     - `CHANGE_PRESET_AND_RESUME` (contains new `presetId`): Updates the runner's preset config, transitions back to `initializing`, re-compiles the graph using the updated preset, and retries the failed node.
     - `RESET_TO_CHECKPOINT` (contains `checkpointId`): Rolls back active checkpointer context and transitions the runner actor to `paused` (awaiting manual start or new inputs).
 
+### 12. Explicit DB Read/Write and API Request/Response Sequences
+
+#### API Request/Response Sequences (LLM Providers)
+
+All API calls are executed directly from the browser using `@openrouter/sdk` or `@google/genai`.
+
+1. **Compilation Phase**:
+   - Read active preset and thread message history from IndexedDB.
+   - Compile pruned history `H` applying `maxHistoryMessages`.
+   - Inject system messages based on depths.
+2. **Execution Phase**:
+   - Dispatch `fetch` to provider API (e.g., `https://openrouter.ai/api/v1/chat/completions` or Gemini equivalent).
+   - Listen to `ReadableStream` for chunks.
+   - For each chunk:
+     - Update UI state (e.g. `running.streaming`).
+     - Emit partial tokens to `GraphRunnerActor`.
+3. **Completion Phase**:
+   - Reconstruct final message string and extract any reasoning tokens or tool calls.
+   - Append resulting assistant/tool message to the graph state.
+   - Checkpointer executes batched DB Writes (see below).
+
+#### Database Read/Write Sequences (IndexedDB `idb`)
+
+1. **Thread Creation**:
+   - _Write_: Insert new record into `threads`.
+   - _Write_: (If branched) Copy parent messages into `messages` and checkpoints into `checkpoints`.
+2. **Graph Execution Step (Checkpointer)**:
+   - _Read_: Fetch latest checkpoint from `checkpoints` by `threadId` and `checkpointNs`.
+   - _Read_: Fetch intermediate writes from `checkpoint_writes`.
+   - _Write_: On step completion, insert new checkpoint into `checkpoints`.
+   - _Write_: Append new LLM/Tool output to `messages`.
+   - _Write_: Update `threads` with `latestCheckpointId` and updated `tokenStats`.
+3. **Cascading Deletions (Batched)**:
+   - _Read_: Query `messages`, `checkpoints`, `checkpoint_writes` for specific `threadId`.
+   - _Write_: Delete up to 500 records per chunk via `requestIdleCallback` to avoid blocking main thread.
+   - _Write_: Remove `threads` record once all children are deleted.
+
 ## User Interface (UI) Specification
 
 The application layout is built using the Carbon Design System (`@carbon/react`) out-of-the-box. There are no custom styling overrides (no custom glassmorphism, HSL custom palettes, or custom animations). The UI is structured into a persistent navigation layout with a primary content area that switches depending on the active view.
@@ -2186,7 +2223,7 @@ Governs the display state of individual message bubbles in a multi-agent chat fe
       - If `message.role === "assistant"` and `message.name` is defined (e.g. "Debater_A"), a distinct header is displayed at the top of the bubble containing the agent's name and an auto-generated visual avatar (e.g. initials with a deterministic background color based on the name hash) so users can visually scan who said what.
       - If `message.role === "user"`, the bubble is aligned to the right, styled distinctly from assistants.
     - _Tool Call Nesting_:
-      - If the agent makes a tool call, the tool call accordion (governed by the Message Accordion State Machine) is nested *inside* the bottom of the agent's message bubble block, rather than floating independently, visually linking the tool execution to the agent that triggered it.
+      - If the agent makes a tool call, the tool call accordion (governed by the Message Accordion State Machine) is nested _inside_ the bottom of the agent's message bubble block, rather than floating independently, visually linking the tool execution to the agent that triggered it.
     - _Timestamps_: On desktop viewports, hovering over the message bubble reveals an exact timestamp tooltip for the message creation time. On mobile viewports, the timestamp is either displayed persistently beneath the message or revealed when the user taps on the message bubble.
 - **Transitions / Events**: None (purely declarative based on message props).
 - **Database Reads/Writes**: None.
@@ -2222,7 +2259,7 @@ During streaming (in the `running.streaming` state), the LLM might send markdown
 
 ##### Response
 
-[UNRESOLVED]
+[RESOLVED] Before passing the streamed string to `react-markdown`, the rendering layer checks the count of triple backticks (` ``` `). If the count is odd (meaning a block is open), it automatically appends `\n``` ` to the end of the streaming text.
 
 #### Question: Error recovery when IndexedDB quota is exceeded
 
@@ -2230,7 +2267,7 @@ The application uses IndexedDB to store all chat histories, states, and checkpoi
 
 ##### Response
 
-[UNRESOLVED]
+[RESOLVED] When a `QuotaExceededError` is caught during execution, the system transitions to `ExecutionState.error` and renders a specialized "Storage Quota Exceeded" error bubble. The bubble provides actionable buttons to either open the "Storage Management" modal (to bulk-delete old threads) or perform a "Hard Sync/Compact" on the current thread to free up space.
 
 #### Question: Mobile UI for JSON workflow editor
 
@@ -2238,7 +2275,7 @@ Editing complex JSON workflows on a mobile device is generally a poor UX and pro
 
 ##### Response
 
-[UNRESOLVED]
+[RESOLVED] The JSON editor will remain accessible on mobile for power users, but a dismissible warning banner is displayed at the top: "Editing complex workflows on mobile devices is not recommended and may lead to syntax errors."
 
 ### Resolved open questions:
 
