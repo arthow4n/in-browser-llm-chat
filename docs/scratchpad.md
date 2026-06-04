@@ -652,7 +652,7 @@ All UI elements, interactive controls, buttons, fields, forms, and modals that p
 - Micro-interactions, loading indicators, API request phases, retry actions, and inline error states must be explicitly modeled in the machine definitions.
 - The state machines must not omit transition rules for edge cases, error recovery, or cancel actions, ensuring the UI remains robust, predictable, and fully testable under all conditions.
 
-The application state is managed by a central XState machine configured with parallel state regions. This design decouples UI view navigation from LangGraph background execution, allowing background workflows to run concurrently while the user navigates settings or configurations.
+The application state is managed by a central XState machine (the Parent Coordinator Machine) configured with parallel state regions. This design decouples UI view navigation from LangGraph background execution, allowing background workflows to run concurrently (in active-only execution mode) while the user navigates settings or configurations.
 
 ### State Transition Graph
 
@@ -741,9 +741,9 @@ stateDiagram-v2
     }
 ```
 
-### 1. Machine Context (State Schema)
+### 1. Parent Coordinator Machine Context (State Schema)
 
-The state machine context maintains the following variables:
+The parent coordinator state machine context maintains the following variables:
 
 - `currentThreadId`: `string | null` - The ID of the currently selected chat thread (synced with the URL path).
 - `activeWorkflowId`: `string | null` - The ID of the workflow loaded for the active thread.
@@ -753,8 +753,8 @@ The state machine context maintains the following variables:
 - `loopControl`:
   - `currentRound`: `number` - Current iteration count of the executing graph.
   - `turnCount`: `number` - Total messages or turns exchanged in the current run.
-  - `tokenStats`: `{ promptTokens: number; completionTokens: number; totalTokens: number }` - Statistics tracking input and output tokens for the current execution.
-- `errorMessage`: `string | null` - Details of the most recent execution or validation error.
+  - `tokenStats`: `{ promptTokens: number; completionTokens: number; totalTokens: number } | null` - Statistics tracking input and output tokens for the current execution.
+- `errorMessage`: `string | null` - Details of the most recent execution or database error.
 - `apiKeysConfigured`: `boolean` - Indicates whether required API keys (either a global API key or at least one preset-specific API key) are configured in the database.
 - `graphRunnerActor`: `any` - A reference to the active spawned child actor managing LangGraph execution.
 
@@ -763,36 +763,96 @@ The state machine context maintains the following variables:
 #### ViewState (Navigation Region)
 
 - **`initializing`**: Reads the configuration settings, API keys, presets, custom workflows, and active thread ID from the database.
-- **`onboarding`**: A blocker state when API keys are not yet configured. The main chat input is disabled, prompting the user to click the warning banner to add API keys.
+  - _Interactive Controls_: None. A global page skeleton loader is displayed.
+- **`onboarding`**: A blocker state when API keys are not yet configured.
+  - _Interactive Controls_:
+    - Global Warning Banner: Clickable, triggers `OPEN_SETTINGS` to open the Global Settings view.
+    - Main Chat Input: Disabled.
+    - Send/Role Select Buttons: Disabled.
 - **`idle`**: Ready for user interactions, with no thread loaded.
+  - _Interactive Controls_:
+    - Sidebar menu links: Enabled.
+    - New Chat Selection Form:
+      - Workflow Dropdown Selector: Enabled.
+      - Preset Dropdown Selector: Enabled.
+      - Initial message/topic input field: Enabled.
+      - Submit Button: Disabled if initial message input is empty. Shows loader if submitting.
 - **`chatting`**: Viewing an active thread. The main input is enabled and ready to accept user messages.
+  - _Interactive Controls_:
+    - Main Chat Input: Enabled (unless blocked by `ExecutionState` executing/awaiting approval).
+    - Role Selector Dropdown: Enabled (User / Assistant / System).
+    - Send Message Button: Enabled if chat input is not empty, and `ExecutionState` is not in `executing` or `awaitingUnlock` / `checkingStatus`.
+    - Message list: Options menus for each message are enabled.
+    - Chat Header controls (Preset Dropdown Switcher, Configure Preset Icon, API Payload Preview Button, Thread Settings): Enabled.
 - **`presetConfig`**: Modifying or creating an LLM preset.
+  - _Interactive Controls_:
+    - Preset configuration forms (inputs for Name, Provider, Model, temperature, policies, CORS proxy): Enabled.
+    - Save / Cancel / Delete buttons: Enabled.
 - **`workflowConfig`**: Modifying or creating custom workflows in the JSON `TextArea` editor.
+  - _Interactive Controls_:
+    - JSON text area input, Clipboard copy/paste, Import/Export buttons: Enabled.
+    - Save / Cancel / Delete buttons: Enabled.
 - **`globalSettings`**: Modifying API keys, manual theme override, and injected system messages.
+  - _Interactive Controls_:
+    - API keys input fields, toggle show/hide buttons: Enabled.
+    - Encryption toggle checkbox, Master Password prompts: Enabled.
+    - CORS proxy and injected messages inputs: Enabled.
+    - Thread Compaction controls: Enabled.
+    - Save / Close buttons: Enabled.
 
 #### ExecutionState (Execution Region)
 
 - **`inactive`**: No background workflow execution is running for the active thread.
-- **`checkingKeys`**: A transient state that checks if the API keys are encrypted and locked. If they are unlocked (or not encrypted), transitions immediately to `executing`. If they are encrypted and locked, transitions to `awaitingUnlock`.
-- **`awaitingUnlock`**: Active when API keys are encrypted and locked, and the user has initiated or resumed a workflow run. Displays a modal dialog requesting the master password. If the user enters the correct password (`UNLOCK_SUCCESS`), the keys are decrypted in-memory, and execution transitions to `executing`. If the user cancels (`CANCEL_UNLOCK`), it transitions back to `inactive`.
-- **`executing`**: Running `@langchain/langgraph/web` steps in the browser (input disabled).
-- **`awaitingHumanInput`**: Graph execution is suspended (either due to a manual approval card, an `ask_questions` tool interrupt, or a step/token budget limit being exceeded). If suspended due to a budget limit being exceeded, the state machine enters the `awaitingHumanInput.budgetExceeded` sub-state. In this sub-state, the main chat input remains blocked/disabled, and the inline `Budget Exceeded Card` is displayed in the chat feed to prompt the user for action (either "Increase Budget & Resume" or "Abort").
-- **`error`**: Displays error information if an API request or state transition fails. Manually resuming execution from the last successful checkpoint via `RETRY_STEP` or `RESUME` transitions the state machine back to `checkingKeys`.
-- **Force Consensus / Force Summarize Early**: Permitted only in `inactive` or `awaitingHumanInput` states. Triggering `FORCE_CONSENSUS` or `FORCE_SUMMARIZE` executes an asynchronous database transaction to update the active thread's checkpoint state (setting the `consensusReached` flag to `true` or bypassing evaluation routing in the graph state) before transitioning the machine to `checkingKeys` to resume graph execution.
-
-_Transition on Route Changes and Initialization_:
-When a `ROUTE_CHANGED` or `INITIALIZE_CHECKPOINT` event is received, the machine first executes an `assign` action to update the `currentThreadId` in the context, and then the `ExecutionState` transitions to the transient `checkingStatus` state. This handles both switching threads and completing onboarding/initial page load. Note that these transitions in the `ExecutionState` region are guarded and only fire when the API keys are configured (i.e., `apiKeysConfigured` is true and the machine is not in the `initializing` state). If the database is unconfigured, execution transitions are ignored until onboarding completes:
-
-- The transient `checkingStatus` state invokes a promise actor to query IndexedDB asynchronously to load the selected thread's execution checkpoint and active background state. If no thread is selected (i.e. `currentThreadId` is null), the machine bypasses the database query and immediately raises the `DB_CHECK_INACTIVE` event.
-- Once the database query completes, it raises one of the resolution events:
-  - If the database indicates the thread has a pending interrupt or approval, the machine receives `DB_CHECK_INTERRUPTED` and transitions to `awaitingHumanInput`.
-  - If background execution is supported and the thread has active background execution running (e.g., after a page refresh where the thread status was saved as `executing`), the machine transitions to `checkingKeys` (via `DB_CHECK_RUNNING`) to verify whether key decryption is needed before resuming/spawning the runner actor.
-  - Otherwise, it receives `DB_CHECK_INACTIVE` and transitions to `inactive`.
-- If the query fails, the machine receives `DB_CHECK_ERROR` and transitions to `error` (setting `errorMessage` in the context).
-- To prevent resource runaway, any active runner actor executing for a previous thread is paused/suspended as an exit action of the previous state or entry action of `checkingStatus` (the actor completes its current execution step, persists the checkpoint, and terminates).
-- When `API_KEYS_CONFIGURED` is received (e.g., when the user saves keys in the settings panel), the machine updates the `apiKeysConfigured` context flag to `true` and, in the `ExecutionState` region, transitions from `inactive` to `checkingStatus` to load the current thread's state, enabling execution. Conversely, if `API_KEYS_REMOVED` is dispatched, `apiKeysConfigured` is set to `false`, and execution transitions to `inactive` while the `ViewState` transitions to `onboarding`.
-
-In parallel, in `ViewState`, to prevent the UI from becoming stuck in configuration views when a user navigates via the thread list or URL directly, the `presetConfig`, `workflowConfig`, and `globalSettings` states handle `ROUTE_CHANGED` events by transitioning to `chatting` (if a thread is selected) or `idle` (if no thread is selected), discarding any unsaved edits. If API keys are not configured, `globalSettings` transitions to `onboarding` upon `ROUTE_CHANGED`.
+  - _Interactive Controls_:
+    - Send button: Triggers `SUBMIT_MESSAGE` when clicked.
+    - "Run Workflow" / "Resume" buttons in execution control panel: Enabled.
+- **`checkingStatus`**: A transient state that queries IndexedDB asynchronously to load the active thread's execution checkpoint and status.
+  - _Interactive Controls_:
+    - Execution Control Panel: All buttons are disabled.
+    - Main Chat Input / Send Button: Disabled.
+- **`checkingKeys`**: A transient state that checks if the API keys are encrypted and locked.
+  - _Interactive Controls_:
+    - Execution Control Panel: All buttons are disabled.
+    - Main Chat Input / Send Button: Disabled.
+- **`awaitingUnlock`**: Active when API keys are encrypted and locked, and the user has initiated or resumed a workflow run. Displays the master password unlock modal.
+  - _Interactive Controls_:
+    - Unlock Modal form fields (password input): Enabled.
+    - Unlock Modal Submit button: Enabled if password input is not empty; disabled during decryption validation.
+    - Unlock Modal Cancel button: Enabled, aborts the unlock and returns state to `inactive`.
+    - Chat Input / Send Button: Disabled.
+- **`executing`**: Running `@langchain/langgraph/web` steps in the browser.
+  - _Interactive Controls_:
+    - Execution Control Panel:
+      - Pause button: Enabled, triggers `PAUSE`.
+      - Resume / Force Consensus / Summarize Early buttons: Disabled.
+      - Abort button: Enabled, triggers `CANCEL_EXECUTION`.
+    - Main Chat Input / Send Button: Disabled.
+    - Preset switcher dropdown: Disabled.
+    - API Payload Preview button: Disabled.
+- **`awaitingHumanInput`**: Graph execution is suspended (either due to a manual approval card, an `ask_questions` tool interrupt, or a step/token budget limit being exceeded).
+  - Substates:
+    - `idle`: Paused at an interactive tool/approval card.
+      - _Interactive Controls_:
+        - Main Chat Input: Disabled.
+        - Inline Tool Cards (`ask_questions` fields, checkboxes, submits): Enabled.
+        - Inline Database Approval Card (Approve / Deny): Enabled.
+        - Execution Control Panel:
+          - Pause / Resume: Disabled.
+          - Force Consensus / Summarize Early: Enabled.
+          - Abort: Enabled, triggers `CANCEL_EXECUTION`.
+    - `budgetExceeded`: Paused because step or token execution limits have been exceeded.
+      - _Interactive Controls_:
+        - Main Chat Input / Send Button: Disabled.
+        - Inline Budget Exceeded Card buttons ("Increase Budget & Resume", "Abort"): Enabled.
+        - Execution Control Panel:
+          - Pause / Resume: Disabled.
+          - Force Consensus / Summarize Early: Enabled.
+          - Abort: Enabled, triggers `CANCEL_EXECUTION`.
+- **`error`**: Displays error information if an API request or state transition fails.
+  - _Interactive Controls_:
+    - Error Banner Retry Button: Enabled, triggers `RETRY_STEP` or `RESUME`.
+    - Error Banner Dismiss Button: Enabled, transitions to `inactive`.
+    - Execution Control Panel: All execution buttons are disabled.
 
 ### 3. Resolved State Machine Design Decisions
 
@@ -819,10 +879,23 @@ Manages the modal overlay displayed when the user attempts to run a workflow, vi
   - `closed`: The modal is completely hidden. Upon entry, both `passwordInput` and `errorMessage` are reset and cleared to avoid state leakage.
   - `opened`: The modal is visible.
     - `opened.idle`: Waiting for the user to input the master password.
+      - _Submit Button_: Enabled only if `passwordInput` is non-empty.
+      - _Cancel Button_: Enabled, dismisses modal.
+      - _Password Input Field_: Enabled and focused.
     - `opened.deriving`: Deriving the 256-bit AES-GCM key from the password using PBKDF2 (configured with 600,000 iterations and SHA-256) in the Web Crypto API.
+      - _Submit/Cancel Buttons_: Disabled.
+      - _Password Input Field_: Disabled.
+      - _Loading status_: Shows spinning progress indicator.
     - `opened.decrypting`: Attempting to decrypt the static verification token using the derived key.
+      - _Submit/Cancel Buttons_: Disabled.
+      - _Password Input Field_: Disabled.
+      - _Loading status_: Shows decrypting progress indicator.
     - `opened.success`: Verification succeeded. The derived key is stored in memory, the modal transitions to `closed`, and the parent machine/context is notified via `UNLOCK_SUCCESS`.
     - `opened.error`: Verification or derivation failed. Displays an error message inline and remains in the modal.
+      - _Password Input Field_: Enabled and auto-selected.
+      - _Error notification_: Displays "Incorrect master password. Please try again" or native Web Crypto error description.
+      - _Submit Button_: Enabled if password input is non-empty.
+      - _Cancel Button_: Enabled.
 - **Transitions / Events**:
   - `TRIGGER_UNLOCK`: Transitions `closed` to `opened.idle`.
   - `UPDATE_PASSWORD` (contains password): Updates `passwordInput` context.
@@ -844,9 +917,19 @@ Governs the "Test Connection" button lifecycle within the LLM Preset Configurati
   - `abortController`: `AbortController | null` (used to abort in-flight requests)
 - **States**:
   - `idle`: Initial state. Displays the "Test Connection" button.
-  - `testing`: Asynchronously executing a lightweight dummy request (e.g. model listing or 1-token request) using the configured API Key, Endpoint, and CORS proxy. A 10-second timeout timer is started upon entry. During the `testing` state, the preset input fields and the test button are disabled in the UI to prevent concurrent configuration changes and duplicate test requests.
+    - _Test Connection Button_: Enabled.
+    - _Cancel Button_: Hidden.
+    - _Fields (API Key, Proxy URL)_: Enabled.
+  - `testing`: Asynchronously executing a lightweight dummy request (e.g. model listing or 1-token request) using the configured API Key, Endpoint, and CORS proxy. A 10-second timeout timer is started upon entry.
+    - _Test Connection Button_: Disabled, displays loading spinner.
+    - _Cancel Button_: Visible and enabled, allowing user to abort the request.
+    - _Fields (API Key, Proxy URL)_: Disabled.
   - `success`: Test succeeded. Displays a green badge showing the latency and model info.
+    - _Test Connection Button_: Enabled, label updated to "Test Connection".
+    - _Badge_: Visible, displays latency (e.g., `120ms`) and model name.
   - `failure`: Test failed. Displays a red banner detailing status codes, CORS block warnings, or network errors.
+    - _Test Connection Button_: Enabled, label updated to "Retry Test".
+    - _Error Banner_: Visible below inputs, shows error string and recommendations.
 - **Transitions / Events**:
   - `TEST_CONNECTION` (contains config):
     - If the preset's API key is stored encrypted in the database and the keys are currently locked, clicking "Test Connection" with the stored key will first dispatch a `TRIGGER_UNLOCK` event to the Master Password Unlock Modal. If the user successfully unlocks the keys (`UNLOCK_SUCCESS`), the Connection Tester proceeds to the `testing` state. If the user cancels (`CANCEL_UNLOCK`), the tester returns to the `idle` state.
@@ -872,10 +955,27 @@ Governs the lifecycle of the inline form rendered in the chat feed when executio
 - **States**:
   - `active`: The form card is rendered and editable.
     - `active.editing`: User is interacting with form controls. On entry and on `UPDATE_ANSWER`, the current state of `answers` is persisted to the thread's record in IndexedDB under `draftAnswers` to ensure it survives page reloads or switching threads.
+      - _Form inputs (Radio, Checkbox, Text Area)_: Enabled.
+      - _Submit Button_: Disabled if `isValid` is false.
+      - _Refuse to Answer Button_: Enabled.
     - `active.validating`: Auto-checking if all required/non-optional questions have been answered.
+      - _Form inputs (Radio, Checkbox, Text Area)_: Disabled.
+      - _Submit/Refuse Buttons_: Disabled.
   - `submitting`: Sending responses back to the parent coordinator machine (dispatches `SUBMIT_TOOL_RESPONSE` containing the compiled `AskQuestionsResponse` JSON payload to the parent coordinator machine, which forwards it to the active runner actor).
+    - _Form inputs_: Disabled.
+    - _Submit Button_: Disabled, displays loading spinner.
+    - _Refuse Button_: Disabled.
   - `submitted`: Response successfully submitted. Form controls become disabled/read-only. Clears the `draftAnswers` field from the thread's database record.
+    - _Form inputs_: Disabled (Read-only view).
+    - _Submit Button_: Hidden.
+    - _Refuse Button_: Hidden.
+    - _Badge_: Shows "Submitted" in green.
   - `refused`: User clicked "Refuse to Answer". Form controls become disabled/read-only, showing the refusal reason. Clears the `draftAnswers` field from the thread's database record.
+    - _Form inputs_: Disabled (Read-only view).
+    - _Submit Button_: Hidden.
+    - _Refuse Button_: Hidden.
+    - _Refusal details_: Displays refusal reason text entered by user.
+    - _Badge_: Shows "Refused" in red.
 - **Transitions / Events**:
   - `LOAD_QUESTIONS` (contains toolCallId, questions, and optional draftAnswers): Transitions to `active.editing` (populates `toolCallId` and `questions`, and initializes `answers` with `draftAnswers` if available).
   - `UPDATE_ANSWER` (contains questionId and answer): Transitions to `active.validating` (updates the `answers` record).
@@ -895,10 +995,22 @@ Governs database-modifying tool calls (like creating or updating a workflow) tha
   - `errorMessage`: `string | null`
 - **States**:
   - `pending`: Active card with "Approve" and "Deny" buttons.
+    - _Approve Button_: Enabled, triggers `APPROVE`.
+    - _Deny Button_: Enabled, triggers `DENY`.
   - `approving`: Asynchronously executing the database modification transaction.
+    - _Approve Button_: Disabled, displays loading spinner.
+    - _Deny Button_: Disabled.
   - `approved`: Successfully completed. Buttons disabled, status badge shown.
+    - _Approve/Deny Buttons_: Hidden.
+    - _Badge_: Shows "Approved" in green.
   - `denied`: User denied the action. Form controls become disabled/read-only, showing the denial message.
+    - _Approve/Deny Buttons_: Hidden.
+    - _Badge_: Shows "Denied" in red.
   - `error`: Database write failed. Shows retry button and error details.
+    - _Approve Button_: Hidden.
+    - _Deny Button_: Enabled.
+    - _Retry Button_: Visible and enabled, triggers `RETRY_APPROVE`.
+    - _Error text_: Displays DB error details inline.
 - **Transitions / Events**:
   - `APPROVE`: Transitions `pending` or `error` to `approving`.
   - `DENY`: Transitions `pending` to `denied` (dispatches `SUBMIT_TOOL_RESPONSE` with a standardized "Operation denied by user" tool result to the parent coordinator machine to be forwarded to the active runner actor).
@@ -917,9 +1029,17 @@ Rendered inline within the chat feed when a running thread execution cycle excee
   - `errorMessage`: `string | null`
 - **States**:
   - `prompting`: Displays warning card inline. "Increase Budget & Resume" and "Abort" buttons are active.
+    - _Increase Budget Button_: Enabled, triggers `INCREASE_BUDGET`.
+    - _Abort Button_: Enabled, triggers `ABORT`.
   - `resuming`: User clicked resume; waiting for parent machine to apply override, notify the runner actor, and restart execution.
+    - _Increase Budget Button_: Disabled, displays loading spinner.
+    - _Abort Button_: Disabled.
   - `aborted`: User clicked abort; waiting for parent machine to cancel execution, terminate runner actor, and mark thread status as inactive.
+    - _Increase Budget Button_: Disabled.
+    - _Abort Button_: Disabled, displays loading spinner.
   - `completed`: The card's actions are disabled/read-only (transitioned once execution is successfully resumed or aborted).
+    - _All Buttons_: Hidden.
+    - _Status badge_: Shows "Resumed" or "Aborted" matching the final action.
 - **Transitions / Events**:
   - `INCREASE_BUDGET`: Transitions `prompting` to `resuming` (sends `RESUME_WITH_BUDGET_OVERRIDE` to parent machine).
   - `ABORT`: Transitions `prompting` to `aborted` (sends `CANCEL_EXECUTION` to parent machine).
@@ -939,12 +1059,27 @@ Triggered from Thread Settings to synchronize a thread's workflow snapshot with 
   - `errorMessage`: `string | null`
 - **States**:
   - `idle`: Initial state. Button visible in thread settings.
+    - _Sync Button_: Enabled.
   - `analyzing`: Diffing `workflowSnapshot` against the latest database workflow.
+    - _Sync Button_: Disabled, displays loading spinner.
   - `promptingSoftSync`: Prompts confirmation to update prompts/presets without clearing messages/checkpoints.
+    - _Modal Overlay_: Visible.
+    - _Confirm Button_: Enabled.
+    - _Cancel Button_: Enabled.
   - `promptingHardSync`: Displays destructive update warning, confirming messages/checkpoints will be purged.
+    - _Modal Overlay_: Visible.
+    - _Confirm Button_: Enabled, colored red (Carbon danger button).
+    - _Cancel Button_: Enabled.
   - `syncing`: Updating thread record and optionally purging checkpoints/messages in DB.
+    - _Modal controls_: All disabled.
+    - _Confirm Button_: Disabled, shows loading spinner.
   - `success`: Sync complete. Displays success inline message.
+    - _Modal_: Closed.
+    - _Notification_: Shows "Sync completed successfully" in green for 3 seconds, then returns to `idle`.
   - `failure`: Sync failed, showing error.
+    - _Modal_: Closed.
+    - _Notification_: Shows error banner with error details.
+    - _Dismiss Button_: Enabled, returns to `idle`.
 - **Transitions / Events**:
   - `START_SYNC`: Transitions `idle` to `analyzing`.
   - `ANALYSIS_COMPLETE` (contains `isDestructive` and diff details):
@@ -969,8 +1104,17 @@ Governs the modal displaying compiled messages and injected system messages for 
   - `closed`: Hidden.
   - `opened`: Visible.
     - `opened.loading`: Compiling payload, fetching messages, resolving injected system messages for the selected agent.
+      - _Agent Selection Dropdown_: Disabled.
+      - _Loading Status_: Skeleton screen displayed inside the modal content.
+      - _Close Button_: Enabled.
     - `opened.displaying`: Displaying compiled JSON payload.
+      - _Agent Selection Dropdown_: Enabled.
+      - _JSON Code block view_: Rendered with scrollbars.
+      - _Close Button_: Enabled.
     - `opened.error`: Fetching or compilation failed, showing error details.
+      - _Agent Selection Dropdown_: Enabled.
+      - _Error Banner_: Visible.
+      - _Close Button_: Enabled.
 - **Transitions / Events**:
   - `OPEN`: Transitions `closed` to `opened.loading` (sets default `selectedAgentId`).
   - `LOADED` (contains compiled payload): Transitions `opened.loading` to `opened.displaying`.
@@ -988,10 +1132,22 @@ Triggered in Global Settings to purge old checkpoints of a thread.
   - `errorMessage`: `string | null`
 - **States**:
   - `idle`: Button visible.
+    - _Compact Button_: Enabled.
   - `confirming`: Displaying warning dialog.
+    - _Modal_: Visible.
+    - _Confirm Compact Button_: Enabled, colored red (Carbon danger button).
+    - _Cancel Button_: Enabled.
   - `compacting`: Executing database deletion of historical checkpoints.
+    - _Modal buttons_: Disabled.
+    - _Confirm Compact Button_: Disabled, displays loading spinner.
   - `success`: Compaction complete. Displays confirmation.
+    - _Modal_: Closed.
+    - _Status Notification_: Inline success banner displayed.
+    - _Dismiss Button_: Enabled, returns to `idle`.
   - `failure`: Compaction failed. Displays error details.
+    - _Modal_: Closed.
+    - _Status Notification_: Inline error banner displayed.
+    - _Dismiss Button_: Enabled, returns to `idle`.
 - **Transitions / Events**:
   - `START_COMPACT`: Transitions `idle` to `confirming`.
   - `CONFIRM_COMPACT`: Transitions `confirming` to `compacting`.
@@ -1015,12 +1171,29 @@ Governs editing a single message in the chat history. Note: The Edit option is d
   - `errorMessage`: `string | null`
 - **States**:
   - `viewing`: Standard rendering mode.
+    - _Message Content_: Rendered as markdown.
+    - _Edit / Delete / Branch options in OverflowMenu_: Enabled (subject to checkpoint availability).
   - `editing`: Textarea input is active.
     - `editing.idle`: User is editing the content.
+      - _Text Area Field_: Enabled, focused.
+      - _Save Button_: Disabled if `isValidContent` is false.
+      - _Cancel Button_: Enabled.
     - `editing.validating`: Validation active (e.g. checks that the message content is non-empty for `user` roles).
+      - _Text Area Field_: Disabled.
+      - _Save/Cancel Buttons_: Disabled.
   - `promptingDiscard`: Confirmation dialog displayed to prevent accidental loss of edits when cancelling.
+    - _Confirmation Modal_: Visible.
+    - _Confirm Discard Button_: Enabled.
+    - _Cancel Discard Button_: Enabled.
   - `saving`: Truncating history/checkpoints and writing new message content in the database.
+    - _Text Area Field_: Disabled.
+    - _Save Button_: Disabled, shows loading spinner.
+    - _Cancel Button_: Disabled.
   - `error`: Saving failed, showing retry/error inline.
+    - _Text Area Field_: Enabled.
+    - _Save Button_: Enabled.
+    - _Cancel Button_: Enabled.
+    - _Error text_: Displayed inline.
 - **Transitions / Events**:
   - `EDIT`: Transitions `viewing` to `editing.idle` (clones `originalContent` to `editContent`).
   - `UPDATE_CONTENT` (contains content): Transitions to `editing.validating` (updates `editContent`).
@@ -1045,6 +1218,9 @@ Governs the top-level application shell, responsive navigation drawer, and globa
   - `isMobile`: `boolean`
 - **States**:
   - `idle`: Layout is loaded and active. On entry, resolves the theme preference and binds window media listeners if theme is `"system"`.
+    - _Theme Dropdown_: Enabled.
+    - _Hamburger Menu Button_: Enabled (visible only on mobile viewports).
+    - _Sidebar Backdrop_: Clickable if `sidebarOpen` is true and in mobile viewport.
 - **Transitions / Events**:
   - `TOGGLE_SIDEBAR`: Toggles `sidebarOpen` boolean status.
   - `OPEN_SIDEBAR`: Sets `sidebarOpen` to `true`.
@@ -1066,8 +1242,19 @@ Manages the active thread list loading, searching, and thread-level cascading de
   - `errorMessage`: `string | null`
 - **States**:
   - `idle`: Displaying the search input and thread list.
+    - _Search Input Field_: Enabled.
+    - _Thread list items_: Enabled, clicking triggers navigation.
+    - _Delete icons_: Enabled, clicking triggers `TRIGGER_DELETE`.
+    - _New Chat button_: Enabled.
   - `confirmingDelete`: Displaying confirmation popover/modal for deleting `deletingThreadId`.
+    - _Confirmation Modal_: Visible.
+    - _Confirm Delete Button_: Enabled, colored red (Carbon danger button).
+    - _Cancel Button_: Enabled.
+    - _Search input / Thread list_: Blocked/disabled.
   - `deleting`: Asynchronously executing database transactions to delete the thread and its checkpoints.
+    - _Modal buttons_: Disabled.
+    - _Confirm Delete Button_: Disabled, displays loading spinner.
+    - _Cancel Button_: Disabled.
 - **Transitions / Events**:
   - `LOAD_THREADS` (contains threads): Updates the `threads` list.
   - `FILTER_THREADS` (contains query): Updates `searchQuery`.
@@ -1087,23 +1274,55 @@ Governs the lifecycle of modifying or creating an LLM Preset Configuration.
   - `originalData`: `PresetData | null` (stored for dirty checking and reset operations)
   - `validationErrors`: `Record<string, string>` (field name mapping to error descriptions)
   - `isDirty`: `boolean`
+  - `isBuiltIn`: `boolean`
   - `errorMessage`: `string | null`
 - **States**:
   - `idle`: Rendering editor input fields.
     - `idle.clean`: Data matches `originalData`. Can exit safely.
+      - _Form Fields_: Enabled.
+      - _Save Button_: Disabled.
+      - _Cancel Button_: Enabled.
+      - _Delete Button_: Enabled (if custom and not default preset).
+      - _Test Connection Button_: Enabled.
     - `idle.dirty`: Data differs. Exiting requires dirty confirmation warning.
+      - _Form Fields_: Enabled.
+      - _Save Button_: Enabled.
+      - _Cancel Button_: Enabled.
+      - _Delete Button_: Enabled.
+      - _Test Connection Button_: Enabled.
   - `validating`: Parsing fields (requires a non-empty name, model string, valid temperature between 0.0 and 2.0, temperature/maxTokens formatting, etc.).
+    - _Form controls_: Disabled.
+    - _Save/Cancel/Delete/Test buttons_: Disabled.
+  - `promptingClone`: Prompting "Clone and Customize" for built-in presets when edits are submitted.
+    - _Modal Overlay_: Visible.
+    - _Clone and Save Button_: Enabled, triggers `CONFIRM_CLONE`.
+    - _Cancel Button_: Enabled.
   - `saving`: Running IndexedDB transaction to insert or update the preset.
+    - _Form controls / Modal buttons_: Disabled.
+    - _Save Button / Clone Button_: Disabled, shows loading spinner.
   - `savingSuccess`: DB write succeeded. Navigates back / closes the preset configurator.
   - `deleting`: Executing safety validation and database deletion of the preset.
+    - _Form controls_: Disabled.
+    - _Delete Button_: Disabled, shows loading spinner.
   - `promptingDiscard`: Active modal prompting confirmation to discard unsaved edits.
+    - _Confirmation Modal_: Visible.
+    - _Confirm Discard Button_: Enabled.
+    - _Cancel Discard Button_: Enabled.
   - `error`: DB transaction failed.
+    - _Form controls_: Enabled.
+    - _Save Button_: Enabled.
+    - _Cancel Button_: Enabled.
+    - _Error Notification Banner_: Visible, displays DB transaction error.
 - **Transitions / Events**:
-  - `LOAD_PRESET` (contains data): Populates `presetData` and `originalData`, and sets `isDirty` to `false`. Transitions to `idle.clean`.
+  - `LOAD_PRESET` (contains data): Populates `presetData`, `originalData`, `isBuiltIn`, and sets `isDirty` to `false`. Transitions to `idle.clean`.
   - `EDIT_FIELD` (contains field and value): Updates `presetData` field, sets `isDirty` to `true`, and transitions to `idle.dirty`.
   - `SAVE`: Transitions `idle.dirty` or `error` to `validating`.
-  - `VALIDATION_SUCCESS`: Transitions to `saving`.
-  - `VALIDATION_FAILURE` (contains errors): Transitions back to `idle.dirty` (populates `validationErrors`).
+  - `VALIDATION_SUCCESS`:
+    - If `isBuiltIn` is true, transitions to `promptingClone`.
+    - If `isBuiltIn` is false, transitions to `saving`.
+  - `CONFIRM_CLONE`: Generates a new UUID for `presetId`, sets `isBuiltIn` to false, prefixes name with `"Copy of "`, and transitions to `saving`.
+  - `CANCEL_CLONE`: Transitions back to `idle.dirty`.
+  - `VALIDATION_FAILURE` (contains errors): Transitions back to `idle.dirty` (populates `validationErrors` to display inline under invalid fields).
   - `SAVE_SUCCESS`: Transitions to `savingSuccess`.
   - `SAVE_FAILURE` (contains error): Transitions to `error` (updates `errorMessage`).
   - `DELETE_PRESET` (contains presetId): Transitions `idle` or `error` to `deleting`. Checks if the preset is the designated global default preset, or is active in any threads/workflows. If blocked, transitions back to `idle` (updates `errorMessage` with blocking details). If safe, performs the delete and transitions to `savingSuccess`.
@@ -1122,24 +1341,51 @@ Governs the JSON editor interface used to inspect or build custom agent orchestr
   - `jsonContent`: `string`
   - `originalContent`: `string`
   - `isDirty`: `boolean`
+  - `isBuiltIn`: `boolean`
   - `validationErrors`: `Array<string>` (JSON parse or structural schema check failures)
   - `errorMessage`: `string | null`
 - **States**:
   - `viewing`: Read-only JSON view for built-in workflows (editing disabled).
+    - _Textarea_: Read-only.
+    - _Save/Delete Buttons_: Hidden/Disabled.
+    - _Clipboard Copy, Export to File Buttons_: Enabled.
+    - _Import from File Button_: Disabled.
   - `editing`: Textarea input is active.
     - `editing.clean`: Text content matches `originalContent`.
+      - _Text Area Field_: Enabled.
+      - _Save Button_: Disabled.
+      - _Cancel Button_: Enabled.
+      - _Delete Button_: Enabled (if custom).
+      - _Clipboard / Import / Export buttons_: Enabled.
     - `editing.dirty`: Text content modified.
+      - _Text Area Field_: Enabled.
+      - _Save Button_: Enabled.
+      - _Cancel Button_: Enabled.
+      - _Delete Button_: Enabled.
+      - _Clipboard / Import / Export buttons_: Enabled.
   - `validating`: Parsing JSON syntax and evaluating structural constraints (Connectivity, Entry Point, Loop Exit Paths, Routing Completeness, etc.).
+    - _Editor controls_: Disabled.
   - `saving`: Executing IndexedDB transaction to save the workflow definition.
+    - _Editor controls / buttons_: Disabled.
+    - _Save Button_: Disabled, shows loading spinner.
   - `deleting`: Executing safety validation and database deletion of the workflow.
+    - _Editor controls_: Disabled.
+    - _Delete Button_: Disabled, shows loading spinner.
   - `promptingDiscard`: Confirmation dialog for exiting editor with unsaved changes.
+    - _Confirmation Modal_: Visible.
+    - _Confirm Discard Button_: Enabled.
+    - _Cancel Discard Button_: Enabled.
   - `error`: DB transaction failed.
+    - _Text Area Field_: Enabled.
+    - _Save Button_: Enabled.
+    - _Cancel Button_: Enabled.
+    - _Error Notification Banner_: Visible, displays DB transaction error.
 - **Transitions / Events**:
-  - `LOAD_WORKFLOW` (contains id and content): Sets `workflowId`, `jsonContent`, `originalContent`, `isDirty` to `false`, and transitions to `editing.clean` (or `viewing` if built-in).
+  - `LOAD_WORKFLOW` (contains id, content, and isBuiltIn): Sets `workflowId`, `jsonContent`, `originalContent`, `isBuiltIn`, `isDirty` to `false`, and transitions to `viewing` (if `isBuiltIn` is true) or `editing.clean` (if `isBuiltIn` is false).
   - `EDIT_JSON` (contains content): Updates `jsonContent` in context, sets `isDirty` to `true`, and transitions to `editing.dirty`.
   - `SAVE`: Transitions `editing.dirty` or `error` to `validating`.
   - `VALIDATE_SUCCESS`: Transitions to `saving`.
-  - `VALIDATE_FAILURE` (contains errors): Transitions back to `editing.dirty` (populates `validationErrors`).
+  - `VALIDATE_FAILURE` (contains errors): Transitions back to `editing.dirty` (populates `validationErrors` list rendered under the editor text area).
   - `SAVE_SUCCESS`: Transitions to `editing.clean` (updates `originalContent`, navigates back to list).
   - `SAVE_FAILURE` (contains error): Transitions to `error` (updates `errorMessage`).
   - `DELETE_WORKFLOW` (contains workflowId): Transitions `editing` or `viewing` to `deleting`. Checks if the workflow is built-in, or is currently in use by any threads. If blocked, transitions back to `editing` / `viewing` (updates `errorMessage` with referencing threads). If safe, performs the delete and transitions to `SAVE_SUCCESS`.
@@ -1160,13 +1406,31 @@ Governs toggling master-password encryption on or off in the Global Settings pan
   - `errorMessage`: `string | null`
 - **States**:
   - `idle`: Toggling is inactive.
+    - _Master Password encryption checkbox_: Enabled.
   - `promptingEnable`: Modal open to enter and confirm new master password.
     - `promptingEnable.idle`: Waiting for input.
+      - _Password & Confirm Password fields_: Enabled.
+      - _Submit Button_: Disabled.
+      - _Cancel Button_: Enabled.
     - `promptingEnable.validating`: Verifying that password is at least 8 characters and matches the confirmation password.
+      - _Form fields / Buttons_: Disabled.
   - `promptingDisable`: Modal open to enter current master password to disable encryption.
+    - _Password field_: Enabled.
+    - _Submit Button_: Enabled if password is non-empty.
+    - _Cancel Button_: Enabled.
+    - _Reset Keys Button_: Enabled, colored red (Carbon danger button).
   - `processing`: Performing batch database transaction (encrypting or decrypting all keys in `settings` and `presets` stores, writing/deleting verification tokens, or purging keys on reset).
+    - _Modal fields / Buttons_: Disabled.
+    - _Submit/Reset Buttons_: Disabled, show loading spinner.
   - `success`: Toggle complete.
+    - _Modal_: Closed.
+    - _Status Notification_: Inline success banner displayed.
+    - _Dismiss Button_: Enabled, returns to `idle`.
   - `error`: Failed to toggle, displaying error inline.
+    - _Form fields_: Enabled.
+    - _Submit Button_: Enabled.
+    - _Cancel Button_: Enabled.
+    - _Error Notification Banner_: Visible inside the modal.
 - **Transitions / Events**:
   - `TOGGLE_ENCRYPTION` (contains action):
     - If `action` is `"enable"`, transition to `promptingEnable.idle`.
@@ -1178,8 +1442,6 @@ Governs toggling master-password encryption on or off in the Global Settings pan
   - `PROCESS_FAILURE` (contains error): Transition to `error` (updates `errorMessage`).
   - `CANCEL`: Transition back to `idle`.
   - `DISMISS`: Transition from `success` or `error` back to `idle`.
-
-_Note on Key Rotation (Password Change)_: To change the master password, the user can disable encryption using their current password (decrypting keys back to plaintext in DB) and then re-enable it with their new password. This ensures a secure, simple key rotation path without needing a separate complex state machine.
 
 #### O. Graph Runner Actor State Machine
 
@@ -1245,44 +1507,47 @@ The human user will replace the `[UNRESOLVED]` tag with their response. The huma
 
 ### Current open questions:
 
+#### Question: CORS proxy error handling and fallback behavior
+
+If a custom CORS proxy is configured for a preset or globally in settings, but requests routed through it fail (e.g., due to proxy timeout, proxy 502/504 errors, or SSL issues on the proxy host), how should the runner behave?
+
+##### Options:
+
+1. **Option A (Strict fail)**: Treat proxy failures as hard execution errors. Transition thread state to `error` and display the proxy error details, requiring the user to disable or adjust the proxy settings to retry.
+2. **Option B (Automatic fallback)**: If a proxy request fails, log a warning notification and automatically attempt a direct fallback API request to the provider (OpenRouter or Gemini) from the browser.
+
+##### Response
+
+[UNRESOLVED]
+
+### Resolved open questions:
+
 #### Question: Handle concurrent background execution of multiple threads
 
 The application supports navigating to other views and threads while a background workflow is running. However, the active execution policy currently specifies that switching away from a thread pauses the runner actor, and the thread state in the DB is saved as paused ("Active-Only Execution Mode").
 Should we support true concurrent background execution of multiple threads in the browser (e.g. using Web Workers or multiple spawned runner actors running in parallel in the background), or is the "Active-Only Execution Mode" (which pauses the current thread runner on switch) sufficient?
 
-##### Options:
-
-1. **Option A (Active-Only Execution Mode)**: Keep the current design where only the currently visible thread can actively execute. Switching threads pauses execution of the active thread, which simplifies DB persistence and resource usage.
-2. **Option B (True Concurrent Background Execution)**: Allow multiple threads to run in parallel in the background, spawning separate runner actors. This requires complex concurrent DB write coordination and UI indicators for multiple running threads in the sidebar.
-
 ##### Response
 
-[UNRESOLVED]
+[RESOLVED] Option A (Active-Only Execution Mode) is selected.
+Running multiple concurrent graph execution threads in a single browser window can lead to rapid resource exhaustion, API rate limits, and complex concurrent write conflicts in the IndexedDB checkpointer. Limiting active execution to the currently open thread provides a reliable, secure user experience, matching standard multi-agent interfaces.
 
 #### Question: Handling of browser tab closure during active workflow execution
 
 Since execution happens entirely client-side in the browser, closing the browser tab or window during active workflow execution will abruptly terminate the running process.
 When the app initializes or the user re-opens the app, how should it handle threads that were left in the `"executing"` status?
 
-##### Options:
-
-1. **Option A (Auto-resume)**: On app load, detect any threads with `"executing"` status and automatically trigger key checking and resume execution from their last saved checkpoints.
-2. **Option B (Mark as paused/inactive)**: On app load, automatically transition any threads with `"executing"` status to `"inactive"` or `"paused"` with a warning banner, allowing the user to manually click "Resume" to start them again.
-
 ##### Response
 
-[UNRESOLVED]
+[RESOLVED] Option B (Mark as paused/inactive) is selected.
+Upon application load, any thread records with `"executing"` status are automatically transitioned to `"inactive"` / `"paused"` in the database. When the thread is subsequently opened, a warning banner is displayed offering a manual "Resume" option. This is necessary because API keys are encrypted under a session-only in-memory key derived from the master password (which is lost when the browser tab is closed). The runner cannot resume execution automatically without first prompting the user to unlock the keys.
 
 #### Question: Master password reset and recovery policy for user-defined workflows
 
 If a user encrypts their settings using a master password and subsequently forgets it, they can use the `RESET_KEYS` action to purge all stored API keys and disable encryption.
 However, if a user-defined workflow has preset configurations with custom API key overrides, should those custom preset keys also be purged during a master password reset?
 
-##### Options:
-
-1. **Option A (Purge all key overrides)**: Yes, a master password reset must completely purge all API keys in the database, including the global settings keys and any preset-specific API key overrides, to prevent leaving un-decryptable ciphertext in the database.
-2. **Option B (Keep encrypted overrides)**: Keep the encrypted preset key overrides in the database, but show them as invalid/un-decryptable in the UI, allowing the user to manually re-enter/override them.
-
 ##### Response
 
-[UNRESOLVED]
+[RESOLVED] Option A (Purge all key overrides) is selected.
+A master password reset must perform a clean, batched transaction that purges all API keys in the database—both global settings keys and any preset-specific API key overrides. This prevents orphan, un-decryptable ciphertext from remaining in the database and ensures a consistent security posture where a password reset completely clears all credentials.
