@@ -111,6 +111,7 @@ interface WorkflowNode {
   tools?: string[]; // e.g. ["ask_questions"]
   loopHeader?: boolean; // designates a node where a new loop round starts
   maxHistoryMessages?: number; // optional message pruning/trimming threshold to control API cost
+  excludeToolsBeforeRound?: { [toolName: string]: number }; // optional mapping of tool name to the 1-indexed loop round number before which the tool is excluded from LLM bindings (e.g. {"declare_consensus": 3} forces 2 rounds of loop before the tool becomes available in round 3)
 }
 
 interface WorkflowEdge {
@@ -681,7 +682,11 @@ Should the application support overriding LLM settings (such as temperature, max
 
 ##### Response
 
-[UNRESOLVED]
+Threads will strictly inherit their LLM settings from their selected Presets to keep the database schema clean and avoid merging complex parameter overrides in the LangGraph runner. The active thread record in the database stores an `activePresetId` which acts as the default preset for any workflow nodes that do not explicitly define a node-level `presetId`.
+To support quick adjustments and experimentation:
+
+1. **Quick Preset Switcher**: The Chat Header will display the active preset's name as a dropdown trigger, allowing the user to easily switch the active thread's preset.
+2. **Inline Preset Customization**: Next to the preset switcher in the Chat Header, a configure icon will allow the user to edit the selected preset in a modal panel. If the active preset is a built-in/system preset, the UI will prompt the user to "Clone and Customize", saving a new custom preset copy and automatically selecting it for the thread.
 
 #### Question: Connectivity Testing for Custom and Local Providers
 
@@ -689,4 +694,11 @@ For custom endpoints or local providers (like Ollama or self-hosted servers) con
 
 ##### Response
 
-[UNRESOLVED]
+Yes, the Preset Configuration Panel will include a "Test Connection" button next to the API Key and CORS Proxy fields to verify custom or local provider settings:
+
+1. **Lightweight Test Request**: Clicking the button triggers an asynchronous mock API request (e.g. querying the `/v1/models` endpoint or requesting a 1-token dummy response) using the configured API Key, Endpoint, and CORS proxy, passing any configured custom headers.
+2. **Visual Feedback Badges**:
+   - **Testing**: Displays a loading spinner next to the button.
+   - **Success**: Displays a green badge (e.g., "Connected") showing the detected provider/model name and request latency (e.g., `180ms`).
+   - **Failure**: Displays a red warning banner detailing the response status code, CORS block warnings, or network error messages to assist in troubleshooting.
+3. **Non-Blocking**: This connection test is entirely optional and non-blocking; users are free to save the preset even if the test fails or has not been run.
