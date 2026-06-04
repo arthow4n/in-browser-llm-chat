@@ -82,16 +82,18 @@ We propose using the following stores in the `in-browser-llm-chat-db` database:
   - Fields: `name`, `description`, `isBuiltIn` (boolean), `nodes` (Array of node definitions), `edges` (Array of transition definitions)
 - **`threads`**: Chat sessions.
   - Key: `id` (UUID)
-  - Fields: `title`, `workflowId`, `activePresetId`, `createdAt`, `updatedAt`, `parentThreadId` (null or parent UUID for branched threads), `parentMessageId` (null or parent message UUID at which branching occurred), `status` (`"idle" | "executing" | "awaiting_input" | "error"`), `errorMessage` (null or string), `latestCheckpointId` (null or string), `latestCheckpointNs` (null or string)
-  - _Branching Behavior_: When branching a thread, the messages from the parent thread up to and including the `parentMessageId` are copied (cloned) to the new thread in the `messages` store under the new thread's ID. Subsequent checkpoints are not copied; instead, the new thread compiles its initial state from the checkpoint associated with the `parentMessageId` (using the same checkpoint ID and namespace, but saved under the new thread's ID).
+  - Fields: `title`, `workflowId`, `activePresetId`, `createdAt`, `updatedAt`, `parentThreadId` (null or parent UUID for branched threads), `parentMessageId` (null or parent message UUID at which branching occurred), `status` (`"inactive" | "executing" | "awaiting_input" | "error"`), `errorMessage` (null or string), `latestCheckpointId` (null or string), `latestCheckpointNs` (null or string)
+  - _Branching Behavior_: When branching a thread, the messages from the parent thread up to and including the `parentMessageId` are copied (cloned) to the new thread in the `messages` store under the new thread's ID. The checkpoint associated with the `parentMessageId` (specifically, the parent checkpoint matching `[parentThreadId, checkpointNs, checkpointId]`) must also be copied to the `checkpoints` store under the new thread's ID (`[newThreadId, checkpointNs, checkpointId]`) to serve as the initial state of the branched thread. Subsequent checkpoints are not copied.
 - **`messages`**: Individual messages in threads.
   - Key: `id` (UUID)
   - Fields: `threadId` (indexed for query performance), `role` (`"system" | "user" | "assistant" | "tool"`), `content`, `type` (`"text" | "reasoning" | "tool_call" | "tool_result"`), `toolCallId` (optional), `name` (agent/tool name), `createdAt`, `metadata` (reasoning tokens, raw response, etc.), `checkpointId` (null or string), `checkpointNs` (null or string)
 - **`checkpoints`**: LangGraph checkpointer state to enable resuming active graph execution and supporting history rewinding/branching.
   - Key: `[threadId, checkpointNs, checkpointId]` (compound key)
+  - Indices: `threadId` (indexed to support cascading cleanup on thread deletion)
   - Fields: LangGraph checkpoint state objects (checkpoint data, metadata, parent checkpoint ID).
 - **`checkpoint_writes`**: Stores intermediate writes for LangGraph tasks.
   - Key: `[threadId, checkpointNs, checkpointId, taskId, idx]` (compound key)
+  - Indices: `threadId` (indexed to support cascading cleanup on thread deletion)
   - Fields: `channel`, `value`
 
 ### 2. Custom Workflow JSON Serialization
@@ -200,7 +202,7 @@ The `ask_questions` tool is defined as:
 - **Nodes**:
   - `Initiator`: Sets the debate topic and seeds the conversation.
   - `Debater_A` & `Debater_B`: Two agent nodes with conflicting stances or system messages (e.g., Pro vs. Con).
-  - `Consensus_Evaluator`: Checks if consensus is reached or if maximum loops are exceeded. If yes, routes to `Summarizer`; if no, loops back to the next debater.
+  - `Consensus_Evaluator`: Checks if consensus is reached or if maximum loops are exceeded. If yes, routes to `Summarizer`; if no, loops back to the next debater. The node reads the `consensusReached` state flag (which is set to `true` when a debater successfully calls the `declare_consensus` tool). Additionally, if the debaters fail to call the tool but the evaluator's LLM determines that consensus has been reached, the evaluator can set `consensusReached` to `true` to terminate the loop.
 - **Safety / Cost Control & Loop Controls**:
   - Max loop limit (default: 5 rounds of debate / 10 turns) to prevent infinite loops and runaway API costs.
   - The debaters themselves must call a `declare_consensus` tool when they agree, which terminates the loop.
@@ -245,7 +247,7 @@ The application layout is built using the Carbon Design System (`@carbon/react`)
   - **Preview API Payload Button**: Clicking it opens a Modal showing the exact JSON structure of messages (including injected system messages) that would be sent to the LLM API next. Injected messages are highlighted with a distinct background/border and marked with an `[INJECTED]` badge to assist debugging. Since a workflow may contain multiple agents, the modal includes a dropdown selector showing all agents in the current workflow (defaulting to the workflow's entry agent node if the thread is empty, or the next scheduled agent based on the graph's execution checkpoint) so the user can inspect the preview payload for any specific agent. For new or empty threads with no message history, the payload preview displays the initial system prompt configuration for the selected agent, combined with any active injected system messages. During active background execution, the preview button is disabled to prevent race conditions with running state updates.
 - **Loop Control Panel (Sticky)**:
   - **Desktop**: Rendered as a sticky control bar at the top of the chat area.
-  - **Mobile**: Collapses into a compact floating action button (FAB) or thin top status bar to save vertical space; tapping it opens a modal overlay with the detailed turn counters and control actions.
+  - **Mobile**: Collapses into a compact, sticky status bar at the top or bottom of the viewport to save vertical space (avoiding custom Floating Action Buttons (FABs) to adhere strictly to Carbon layout patterns); tapping it opens a modal overlay containing detailed turn counters and control actions.
   - **Controls**: Displays the current loop round, turn count, and token usage (prompt and completion tokens tracked separately, without currency calculation). Contains buttons to Pause, Resume, or Force Consensus / Summarize early.
 - **Chat Feed**:
   - **Message Bubbles**: Render user and assistant/agent messages with rich markdown formatting, GitHub Flavored Markdown (e.g. tables, checkboxes), and LaTeX math support (both inline and block equations).
@@ -319,12 +321,19 @@ stateDiagram-v2
 
             presetConfig --> chatting : CLOSE_PRESET_EDIT [If thread active]
             presetConfig --> idle : CLOSE_PRESET_EDIT [If no thread active]
+            presetConfig --> chatting : ROUTE_CHANGED [Thread Selected]
+            presetConfig --> idle : ROUTE_CHANGED [No Thread Selected]
 
             workflowConfig --> chatting : CLOSE_WORKFLOW_EDIT [If thread active]
             workflowConfig --> idle : CLOSE_WORKFLOW_EDIT [If no thread active]
+            workflowConfig --> chatting : ROUTE_CHANGED [Thread Selected]
+            workflowConfig --> idle : ROUTE_CHANGED [No Thread Selected]
 
             globalSettings --> chatting : CLOSE_SETTINGS [If thread active]
             globalSettings --> idle : CLOSE_SETTINGS [If no thread active]
+            globalSettings --> chatting : ROUTE_CHANGED [Thread Selected & Keys Configured]
+            globalSettings --> idle : ROUTE_CHANGED [No Thread Selected & Keys Configured]
+            globalSettings --> onboarding : ROUTE_CHANGED [No Keys Configured]
 
             chatting --> onboarding : API_KEYS_REMOVED
             idle --> onboarding : API_KEYS_REMOVED
@@ -353,15 +362,10 @@ stateDiagram-v2
             awaitingHumanInput --> checkingStatus : ROUTE_CHANGED / INITIALIZE_CHECKPOINT
             error --> checkingStatus : ROUTE_CHANGED / INITIALIZE_CHECKPOINT
 
-            state checkingStatus {
-                [*] --> queryingDB
-                queryingDB --> resolveState : DB_RESULT
-                queryingDB --> resolveError : DB_ERROR
-            }
-            checkingStatus --> inactive : RESOLVE_INACTIVE
-            checkingStatus --> awaitingHumanInput : RESOLVE_INTERRUPTED
-            checkingStatus --> executing : RESOLVE_RUNNING [If background execution is active]
-            checkingStatus --> error : RESOLVE_ERROR
+            checkingStatus --> inactive : DB_CHECK_INACTIVE
+            checkingStatus --> awaitingHumanInput : DB_CHECK_INTERRUPTED
+            checkingStatus --> executing : DB_CHECK_RUNNING [If background execution is active]
+            checkingStatus --> error : DB_CHECK_ERROR
         }
     }
 ```
@@ -380,7 +384,7 @@ The state machine context maintains the following variables:
   - `turnCount`: `number` - Total messages or turns exchanged in the current run.
   - `tokenStats`: `{ promptTokens: number; completionTokens: number; totalTokens: number }` - Statistics tracking input and output tokens for the current execution.
 - `errorMessage`: `string | null` - Details of the most recent execution or validation error.
-- `apiKeysConfigured`: `boolean` - Indicates whether required API keys are available in IndexedDB.
+- `apiKeysConfigured`: `boolean` - Indicates whether required API keys (either a global API key or at least one preset-specific API key) are configured in the database.
 - `graphRunnerActor`: `any` - A reference to the active spawned child actor managing LangGraph execution.
 
 ### 2. State Descriptions
@@ -406,12 +410,14 @@ _Transition on Route Changes and Initialization_:
 When a `ROUTE_CHANGED` or `INITIALIZE_CHECKPOINT` event is received, the `ExecutionState` transitions to the transient `checkingStatus` state. This handles both switching threads and completing onboarding/initial page load:
 
 - The transient `checkingStatus` state invokes a promise actor to query IndexedDB asynchronously to load the selected thread's execution checkpoint and active background state.
-- If the query succeeds with a `DB_RESULT`:
-  - If the database indicates the thread has a pending interrupt or approval, the machine transitions to `awaitingHumanInput`.
-  - If background execution is supported and the thread has active background execution running, it transitions to `executing` and resumes/spawns the runner actor.
-  - Otherwise, it transitions to `inactive`.
-- If the query fails with a `DB_ERROR`, the machine transitions to `error` via `RESOLVE_ERROR` and sets `errorMessage` in the context.
+- Once the database query completes, it raises one of the resolution events:
+  - If the database indicates the thread has a pending interrupt or approval, the machine receives `DB_CHECK_INTERRUPTED` and transitions to `awaitingHumanInput`.
+  - If background execution is supported and the thread has active background execution running, it receives `DB_CHECK_RUNNING` and transitions to `executing` (resuming/spawning the runner actor).
+  - Otherwise, it receives `DB_CHECK_INACTIVE` and transitions to `inactive`.
+- If the query fails, the machine receives `DB_CHECK_ERROR` and transitions to `error` (setting `errorMessage` in the context).
 - To prevent resource runaway, any active runner actor executing for a previous thread is paused/suspended as an exit action of the previous state or entry action of `checkingStatus` (the actor completes its current execution step, persists the checkpoint, and terminates).
+
+In parallel, in `ViewState`, to prevent the UI from becoming stuck in configuration views when a user navigates via the thread list or URL directly, the `presetConfig`, `workflowConfig`, and `globalSettings` states handle `ROUTE_CHANGED` events by transitioning to `chatting` (if a thread is selected) or `idle` (if no thread is selected), discarding any unsaved edits. If API keys are not configured, `globalSettings` transitions to `onboarding` upon `ROUTE_CHANGED`.
 
 ### 3. Resolved State Machine Design Decisions
 
@@ -578,6 +584,22 @@ To facilitate sharing custom agent orchestrations, should we support file-based 
 #### Question: Parallel Node Execution and State Merge Policies
 
 In a complex custom workflow, multiple agent nodes might execute in parallel. LangGraph supports parallel execution, but how should the state machine merge parallel updates to the message history? Should it interleave them by timestamp, group them by agent, or prevent parallel nodes in custom JSON workflows entirely to simplify execution?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: API Key Validation in Settings
+
+When a user inputs or updates their API key in Global Settings, should the application immediately perform a lightweight validation request (e.g. fetching available models from OpenRouter/Gemini) to verify the key, or should it only validate the key on-the-fly during workflow execution?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Cascading Delete Performance for Thread Checkpoints
+
+Deleting a thread requires removing the thread record, all of its messages, all of its checkpoints, and all of its checkpoint writes. Because IndexedDB operates on the main thread, deleting a long-running thread with thousands of checkpoints could block the UI. Should we perform cascading deletes asynchronously in small, batched chunks in the background, or is a single large transaction sufficient?
 
 ##### Response
 
