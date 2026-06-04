@@ -119,6 +119,14 @@ During runtime, a factory function converts this JSON schema into a compiled `@l
 - **`consensus_check`**: Runs an LLM node or rule-based evaluator to analyze the message history and determine if consensus is reached, routing the graph outcome to the next state based on the consensus evaluation.
 - **`summary`**: Runs a specialized LLM node to summarize the chat history up to the current point.
 
+#### Conditional Routing and Edge Compilation Rules
+
+During graph compilation, the factory function maps conditional routes by creating custom router functions passed to `StateGraph.addConditionalEdges`:
+
+- **Agent Routing**: If an `agent` node has tools, the graph needs to check if the agent produced a tool call. The compiled graph evaluates whether the state's last message is a tool call request. If yes, it routes along the edge with `condition: "on_tool_call"` (typically to a `tool` node). If no, it routes along the direct/unconditional edge (or an edge with `condition: "on_tool_result"`, though a default edge is preferred).
+- **Consensus Routing**: A `consensus_check` node returns a state flag (e.g. `consensusReached: boolean`). The routing function evaluates this flag: if `true`, it routes to the destination defined in the edge with `condition: "on_consensus"`; if `false`, it routes to the edge with `condition: "on_no_consensus"`.
+- **Default Fallback**: If a node has multiple outbound edges and none of the specific conditions match the node execution outcome, the compiler uses the unconditional edge (i.e. where `condition` is omitted) as the default fallback target. If no fallback is defined, execution throws an error.
+
 ### 3. XState Application States
 
 A single high-level state machine will coordinate the application:
@@ -164,8 +172,8 @@ The `ask_questions` tool is defined as:
   - Max loop limit (default: 5 rounds of debate / 10 turns) to prevent infinite loops and runaway API costs.
   - The debaters themselves must call a `declare_consensus` tool when they agree, which terminates the loop.
   - The workflow configuration must support forcing a minimum of X rounds of loop before the `declare_consensus` tool is given to the debaters (X can be set to 0 to disable this forced loop).
-  - General Loop Control Panel: Any workflow with loops (including the debate workflow) should render a control card in the UI showing the current round, number of turns, and estimated cost, with buttons to Pause, Resume, or Force Consensus / Summarize early. On mobile viewports, the panel collapses into a compact, sticky bottom bar (or overlay) showing the round count and estimated cost, where a single tap opens a full-screen control overlay detailing all stats and controls.
-  - Cost and Token Tracking Details: Each LLM request response stores usage statistics (e.g., `prompt_tokens`, `completion_tokens`) inside the message's `metadata` field under `metadata.usage`. The LangGraph runner updates the `loopControl.estimatedCost` context property in real-time by summing up the usage statistics from new messages generated during the current execution run.
+  - General Loop Control Panel: Any workflow with loops (including the debate workflow) should render a control card in the UI showing the current round, number of turns, and token usage, with buttons to Pause, Resume, or Force Consensus / Summarize early. On mobile viewports, the panel collapses into a compact, sticky bottom bar (or overlay) showing the round count and token statistics, where a single tap opens a full-screen control overlay detailing all stats and controls.
+  - Cost and Token Tracking Details: Each LLM request response stores usage statistics (e.g., `prompt_tokens`, `completion_tokens`) inside the message's `metadata` field under `metadata.usage`. The LangGraph runner updates the `loopControl.tokenStats` context property in real-time by summing up the usage statistics from new messages generated during the current execution run, tracking both `promptTokens` and `completionTokens` separately.
 
 ### 6. System Message Injection Details
 
@@ -198,11 +206,11 @@ The application layout is built using the Carbon Design System (`@carbon/react`)
 - **Chat Header**:
   - Displays the active thread's title.
   - Displays the active preset and active workflow.
-  - **Preview API Payload Button**: Clicking it opens a Modal showing the exact JSON structure of messages (including injected system messages) that would be sent to the LLM API next. Injected messages are highlighted with a distinct background/border and marked with an `[INJECTED]` badge to assist debugging. Since a workflow may contain multiple agents, the modal includes a dropdown selector showing all agents in the current workflow (defaulting to the next scheduled agent based on the graph's execution checkpoint) so the user can inspect the preview payload for any specific agent.
+  - **Preview API Payload Button**: Clicking it opens a Modal showing the exact JSON structure of messages (including injected system messages) that would be sent to the LLM API next. Injected messages are highlighted with a distinct background/border and marked with an `[INJECTED]` badge to assist debugging. Since a workflow may contain multiple agents, the modal includes a dropdown selector showing all agents in the current workflow (defaulting to the next scheduled agent based on the graph's execution checkpoint) so the user can inspect the preview payload for any specific agent. For new or empty threads with no message history, the payload preview displays the initial system prompt configuration for the selected agent, combined with any active injected system messages. During active background execution, the preview button is disabled to prevent race conditions with running state updates.
 - **Loop Control Panel (Sticky)**:
   - **Desktop**: Rendered as a sticky control bar at the top of the chat area.
   - **Mobile**: Collapses into a compact floating action button (FAB) or thin top status bar to save vertical space; tapping it opens a modal overlay with the detailed turn counters and control actions.
-  - **Controls**: Displays the current loop round, turn count, and estimated cost. The estimated cost is calculated as a simple counter of steps/turns and a running count of estimated input/output tokens (without currency calculation). Contains buttons to Pause, Resume, or Force Consensus / Summarize early.
+  - **Controls**: Displays the current loop round, turn count, and token usage (prompt and completion tokens tracked separately, without currency calculation). Contains buttons to Pause, Resume, or Force Consensus / Summarize early.
 - **Chat Feed**:
   - **Message Bubbles**: Render user and assistant/agent messages with rich markdown formatting, GitHub Flavored Markdown (e.g. tables, checkboxes), and LaTeX math support (both inline and block equations).
   - **Message Options Menu**: Each message bubble includes a small, low-profile overflow button (three-dots icon) with a minimum `44x44px` target. This button is permanently visible (with a light opacity like `0.6`) on both desktop and mobile viewports (no hover-only requirements; this no-hover, permanently visible approach is globally applied for all UI elements). Clicking/tapping it opens a menu (or slide-up bottom sheet on mobile) containing "Edit", "Delete", and "Branch Thread" options.
@@ -295,19 +303,21 @@ stateDiagram-v2
 
             error --> inactive : DISMISS_ERROR
 
-            %% Route Change handling via asynchronous checking state
-            inactive --> checkingStatus : ROUTE_CHANGED
-            executing --> checkingStatus : ROUTE_CHANGED [Pause current actor]
-            awaitingHumanInput --> checkingStatus : ROUTE_CHANGED
-            error --> checkingStatus : ROUTE_CHANGED
+            %% Route Change & Initial Checkpoint Loading
+            inactive --> checkingStatus : ROUTE_CHANGED / INITIALIZE_CHECKPOINT
+            executing --> checkingStatus : ROUTE_CHANGED [Pause current actor] / INITIALIZE_CHECKPOINT
+            awaitingHumanInput --> checkingStatus : ROUTE_CHANGED / INITIALIZE_CHECKPOINT
+            error --> checkingStatus : ROUTE_CHANGED / INITIALIZE_CHECKPOINT
 
             state checkingStatus {
                 [*] --> queryingDB
                 queryingDB --> resolveState : DB_RESULT
+                queryingDB --> resolveError : DB_ERROR
             }
             checkingStatus --> inactive : RESOLVE_INACTIVE
             checkingStatus --> awaitingHumanInput : RESOLVE_INTERRUPTED
             checkingStatus --> executing : RESOLVE_RUNNING [If background execution is active]
+            checkingStatus --> error : RESOLVE_ERROR
         }
     }
 ```
@@ -324,7 +334,7 @@ The state machine context maintains the following variables:
 - `loopControl`:
   - `currentRound`: `number` - Current iteration count of the executing graph.
   - `turnCount`: `number` - Total messages or turns exchanged in the current run.
-  - `estimatedCost`: `number` - Cumulative steps/tokens count.
+  - `tokenStats`: `{ promptTokens: number; completionTokens: number; totalTokens: number }` - Statistics tracking input and output tokens for the current execution.
 - `errorMessage`: `string | null` - Details of the most recent execution or validation error.
 - `apiKeysConfigured`: `boolean` - Indicates whether required API keys are available in IndexedDB.
 - `graphRunnerActor`: `any` - A reference to the active spawned child actor managing LangGraph execution.
@@ -348,13 +358,16 @@ The state machine context maintains the following variables:
 - **`awaitingHumanInput`**: Graph execution is suspended (either due to a manual approval card or an `ask_questions` tool interrupt).
 - **`error`**: Displays error information if an API request or state transition fails.
 
-_Transition on Route Changes_:
-When a `ROUTE_CHANGED` event is received in the parallel regions, the `ExecutionState` first transitions to a transient `checkingStatus` state. This state queries IndexedDB asynchronously to load the new thread's execution checkpoint and active background state:
+_Transition on Route Changes and Initialization_:
+When a `ROUTE_CHANGED` or `INITIALIZE_CHECKPOINT` event is received, the `ExecutionState` transitions to the transient `checkingStatus` state. This handles both switching threads and completing onboarding/initial page load:
 
-- If the database indicates the new thread has a pending interrupt or approval, the machine transitions to `awaitingHumanInput`.
-- If background execution is supported and the thread has an active background execution running, it transitions to `executing` and resumes/spawns the runner actor.
-- Otherwise, it transitions to `inactive`.
-- Any active runner actor executing for the previous thread is paused/suspended as an exit action of the previous state or entry action of `checkingStatus`.
+- The transient `checkingStatus` state invokes a promise actor to query IndexedDB asynchronously to load the selected thread's execution checkpoint and active background state.
+- If the query succeeds with a `DB_RESULT`:
+  - If the database indicates the thread has a pending interrupt or approval, the machine transitions to `awaitingHumanInput`.
+  - If background execution is supported and the thread has active background execution running, it transitions to `executing` and resumes/spawns the runner actor.
+  - Otherwise, it transitions to `inactive`.
+- If the query fails with a `DB_ERROR`, the machine transitions to `error` via `RESOLVE_ERROR` and sets `errorMessage` in the context.
+- To prevent resource runaway, any active runner actor executing for a previous thread is paused/suspended as an exit action of the previous state or entry action of `checkingStatus` (the actor completes its current execution step, persists the checkpoint, and terminates).
 
 ### 3. Resolved State Machine Design Decisions
 
@@ -429,6 +442,30 @@ Database-modifying actions trigger inline approval cards. However, how should we
 #### Question: Debating Agent Context Window and Memory Management
 
 In a debate workflow loop, two agents debate potentially infinitely. As the conversation progresses, the message history grows and may exceed the model's token limits or increase API call costs. Should the orchestration graph support a memory-pruning or summary-sliding-window mechanism for agent nodes, or should they always receive the full history?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Error Recovery and Resume Policy in Active Loops
+
+If an API call fails mid-stream or during a workflow step (e.g., rate limit hit, network dropout, or service degradation), how should the graph runner handle the error? Should it immediately transition to the `error` state, pause execution, and render a "Retry Step" button to let the user resume from the same checkpoint, or should it perform automatic exponential backoff/retries behind the scenes before prompting the user?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Unresolved Debate Resolution on Max Loops
+
+If a debate loop reaches the maximum loop limit (e.g., 5 rounds) without the agents calling the `declare_consensus` tool, how should the workflow proceed? Should it automatically route to the `summary` node to compile a summary of the unresolved debate (noting that consensus was not achieved), or should it pause, alert the user, and prompt them to either manually force a consensus/summary, or extend the loop limit?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Custom Tool UI Customization
+
+If custom user-defined tools are supported, how should their outputs and execution states be rendered in the chat feed? Should they always fall back to a generic JSON viewer accordion under "Tool: [Name]", or should the schema allow defining a simple declarative UI form (e.g., with input, select, and checkbox fields) so the user can see/interact with a tailored card?
 
 ##### Response
 
