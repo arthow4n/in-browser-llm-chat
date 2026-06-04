@@ -1,6 +1,6 @@
 # Scratchpad
 
-This a scratchpad for writing down vague ideas for building this LLM chat app for personal use. The goal is to provide a clear specification so that the coding agent can later build the app with minimal human intervention while still aligning with the user's vision.
+This is a scratchpad for writing down vague ideas for building this LLM chat app for personal use. The goal is to provide a clear specification so that the coding agent can later build the app with minimal human intervention while still aligning with the user's vision.
 
 This file will be collaboratively updated by the human user and the coding agent, by default the coding agent should ask open questions before editing this scratchpad as per the [Open questions](#open-questions) section, don't jump into editing the other parts of this scratchpad directly.
 
@@ -20,7 +20,7 @@ This file will be collaboratively updated by the human user and the coding agent
 - Vite for bundling.
 - Vitest for tests. "Write tests. Not too many. Mostly integration."
 - No E2E test.
-- Persistance with IndexedDB via `idb` (and `fake-indexeddb` in test) instead of localStorage/sessionStorage. This is to ensure the storage has higher quota.
+- Persistence with IndexedDB via `idb` (and `fake-indexeddb` in test) instead of localStorage/sessionStorage. This is to ensure the storage has higher quota.
 - Markdown & Math Rendering: `react-markdown`, `rehype-katex`, `remark-gfm`, and `remark-math` for rendering markdown messages and LaTeX equations.
 - Support using OpenRouter and Gemini API as LLM API provider, and potentially switching to another provider in the future.
   - Prefer using the official `@openrouter/sdk` and `@google/genai` client libraries within custom LangGraph nodes to execute direct browser API calls rather than a custom fetch wrapper, while retaining full control over streaming and reasoning configurations.
@@ -36,24 +36,27 @@ Fill in anything missing.
 
 - The user is always chatting with a workflow (an orchestration graph with 0-many LLM agents) directly instead of a single agent.
   - The normal chat feature for chatting to one single LLM agent like in an average LLM chat app still works, just that behind the scene it should go through the same code path as if chatting with an orchestration with many LLM agents.
-  - The default selected workflow when creating a new chat is still the good old workflow where there's only 1 human user and 1 agent with a system prompt like "you are an helpful assistant".
-  - The UI should also support running orchestration workflow without an user input (but still requires the user to manuall approve to start such a workflow).
+  - The default selected workflow when creating a new chat is still the good old workflow where there is only 1 human user and 1 agent with a system prompt like "you are a helpful assistant".
+  - The UI should also support running orchestration workflow without user input (but still requires the user to manually approve to start such a workflow).
 - Workflow management CRUD:
   - Workflow = agent orchestration graph like for LangGraph
     - Built-in workflow can be anything LangGraph supported.
-    - User-defined workflow needs to be able to be serialised to/deserialised from persistance.
+    - User-defined workflow needs to be able to be serialized to/deserialized from persistence.
     - The editing interface for custom workflows is a text-based JSON editor (no graphical/visual editor required). See the [Workflow Management CRUD View](#3-workflow-management-crud-view) section in the UI Specification for details.
     - Here is where the user can define which are the agents involved in an orchestration and their system prompts.
     - _Safety Rules_: The user cannot delete built-in workflows or the default LLM preset. Deleting a custom workflow that is currently in use by any threads is blocked, and an inline notification is displayed showing the active threads referencing it.
   - Node execution sequence and underlying LLM threads should be visible in the chat feed, rendered as flatly as possible so they look like working within one single thread, including reasoning tokens.
-  - To begin with, there should be a built-in debate workflow, where the user should be able to seed the debate with a topic, then let 2 agents debate infinitely in a loop until they come to consensus, the agents come to consensus by making tool call to suggest leaving the debate loop, then finally another agent summarise the debate for the user to review.
+  - To begin with, there should be a built-in debate workflow, where the user should be able to seed the debate with a topic, then let 2 agents debate infinitely in a loop until they come to consensus, the agents come to consensus by making tool call to suggest leaving the debate loop, then finally another agent summarize the debate for the user to review.
 - LLM provider preset management CRUD:
   - Preset = combination of LLM API provider, API key, LLM model, and configs like reasoning/thinking level, API retry policy, budget policy (e.g. force asking for human approval after X steps or Y tokens in the workflow execution cycle without human user sending a message).
   - When opening a new chat thread, the thread selects the default preset as the initial preset. The selected preset ID is saved per thread in the database.
   - When switching back to an old thread: if the saved preset is still available, it is used; otherwise, it falls back to the default preset.
   - Onboarding and First-Time User Experience: Guides users on first load if no presets or API keys exist. See the [Global Settings View](#5-global-settings-view) in the UI Specification for warning banner details. When the user configures and saves their API keys for the first time, the application automatically seeds a set of default presets ("Default Gemini Flash" using `gemini-2.5-flash` and "Default OpenRouter Flash" using `google/gemini-2.5-flash`) into the database.
 - Thread management CRUD
-  - Current thread ID is sync with URL so refreshing should lead to the same thread
+  - Current thread ID is synced with the URL so refreshing leads to the same thread.
+  - Thread-level presets are strictly inherited from the selected preset. The active preset is displayed as a dropdown trigger in the Chat Header, allowing quick switching. A configure icon next to it allows editing the preset in a modal panel. If a built-in preset is edited, the UI prompts the user to "Clone and Customize" to create a new custom preset copy.
+  - Cascading deletes for thread checkpoints and messages are performed in batched transactions (deleting up to 500 records per chunk) scheduled asynchronously via microtasks or `requestIdleCallback` to keep the UI responsive.
+  - Active thread workflows use a snapshot (`workflowSnapshot`) stored in the thread record. If the custom workflow definition is modified in the Workflow Manager, it does not affect already active/paused threads. Users can manually sync the thread to the latest workflow definition via a "Sync to Latest Workflow" button in the thread settings, which updates the snapshot and resets execution (purging all checkpoints/messages).
 - System message management CRUD for automatically inserting system message to agents upon API request, but these automatically inserted messages shouldn't be persisted in the chat history.
   - Should support insertion depth (similar to SillyTavern, should be able to specify to attach system message at the Nth message from the beginning/end of the chat messages thread).
   - Configured via a global settings list. See the [Global Settings View](#5-global-settings-view) in the UI Specification for details.
@@ -279,13 +282,14 @@ The application layout is built using the Carbon Design System (`@carbon/react`)
     - **Workflow Management**
     - **LLM Preset Settings**
     - **Global Settings**
-  - **Mobile Adaptation**: On viewports `< 672px`, the sidebar collapses completely. Tapping the header's hamburger icon slides the sidebar in from the left as an overlay (max-width `280px` to leave a tap-to-close backdrop area). Tapping any menu item or the backdrop backdrop auto-collapses it.
+  - **Mobile Adaptation**: On viewports `< 672px`, the sidebar collapses completely. Tapping the header's hamburger icon slides the sidebar in from the left as an overlay (max-width `280px` to leave a tap-to-close backdrop area). Tapping any menu item or the backdrop auto-collapses it.
 
 ### 2. Main Chat Interface
 
 - **Chat Header**:
   - Displays the active thread's title.
-  - Displays the active preset and active workflow.
+  - Displays the active workflow.
+  - **Preset Dropdown Switcher**: The active preset is displayed as a dropdown trigger in the Chat Header, allowing quick preset switching. Next to it, a configure icon allows editing the preset in a modal panel. If a built-in preset is edited, the UI prompts the user to "Clone and Customize" to create a new custom preset copy.
   - **Preview API Payload Button**: Clicking it opens a Modal showing the exact JSON structure of messages (including injected system messages) that would be sent to the LLM API next. Injected messages are highlighted with a distinct background/border and marked with an `[INJECTED]` badge to assist debugging. Since a workflow may contain multiple agents, the modal includes a dropdown selector showing all agents in the current workflow (defaulting to the workflow's entry agent node if the thread is empty, or the next scheduled agent based on the graph's execution checkpoint) so the user can inspect the preview payload for any specific agent. For new or empty threads with no message history, the payload preview displays the initial system prompt configuration for the selected agent, combined with any active injected system messages. During active background execution, the preview button is disabled to prevent race conditions with running state updates.
 - **Execution & Loop Control Panel (Sticky)**:
   - **Desktop**: Rendered as a sticky control bar at the top of the chat area.
@@ -293,12 +297,14 @@ The application layout is built using the Carbon Design System (`@carbon/react`)
   - **Controls**: Displays the current execution stats. For workflows with loops, it shows the current loop round, turn count, and token usage. For sequential workflows, it shows the current node/step, turn count, and token usage (prompt and completion tokens tracked separately, without currency calculation). Contains buttons to Pause, Resume, or Abort execution, plus "Force Consensus" / "Summarize early" buttons specifically visible during loop workflows.
 - **Chat Feed**:
   - **Message Bubbles**: Render user and assistant/agent messages with rich markdown formatting, GitHub Flavored Markdown (e.g. tables, checkboxes), and LaTeX math support (both inline and block equations).
+  - **Performance & Virtualization**: The message feed uses standard browser rendering. Virtualization (only rendering messages in the viewport) is deferred unless performance benchmarks degrade for threads exceeding 200+ messages.
   - **Message Options Menu**: Each message bubble includes a small, low-profile overflow button (three-dots icon) with a minimum `44x44px` target. This button is permanently visible (with a light opacity like `0.6`) on both desktop and mobile viewports (no hover-only requirements; this no-hover, permanently visible approach is globally applied for all UI elements). Clicking/tapping it opens a Carbon `OverflowMenu` (or a native Carbon `Modal` on mobile viewports for easier touch interaction) containing "Edit", "Delete", and "Branch Thread" options.
   - **Inline Message Editing**: Clicking "Edit" transforms the message bubble inline into a text area to save changes.
   - **Reasoning Process Accordion**: Collapsed by default under a "Reasoning Process" header inside the assistant's message. Capped at `max-height: 250px` with vertical scrollbars. Both reasoning tokens and text content are streamed in real-time. The accordion must remain collapsed by default during streaming and after response completion. Use a fallback renderer or debounced updates to handle malformed partial markdown or math blocks.
   - **Tool Call / Result Accordion**: Collapsed by default under a "Tool: [Name]" header. Expanding reveals a formatted JSON block of arguments or return outputs. Note: the `ask_questions` tool card form is rendered inline directly in the chat feed and must render/remain visible even when the tool call message itself is collapsed.
   - **Scroll Anchoring**: Expanding accordions preserves chat scroll anchoring so the user does not lose their viewing position.
   - **`ask_questions` Tool Card Form**: Rendered inline directly in the chat feed (using a Carbon `Tile` component to structure the form contents) when execution is interrupted. Sized with a minimum of `44x44px` touch targets. The form displays options using Carbon `RadioButtonGroup`/`RadioButton` for `single-select` questions, `Checkbox` for `multi-select` questions, and `TextArea`/`TextInput` fields for `free-text` comments and inputs. Includes a "Refuse to Answer" button. The user must either answer all questions in the card or explicitly click "Refuse to Answer" to submit the form. The form controls become read-only once submitted.
+  - **Budget Exceeded Card**: Rendered inline directly in the chat feed if the cumulative execution token limit is exceeded. Shows token usage and options to "Increase Budget & Resume" (temporarily raising the token threshold for the active execution run) or "Abort".
   - **Proposed Action Card**: Rendered inline for database-modifying tools (e.g., creating/updating a workflow). Shows a diff or description of the changes, with "Approve" or "Deny" buttons.
 - **Chat Input Area**:
   - A main auto-resizing text input area.
@@ -320,6 +326,7 @@ The application layout is built using the Carbon Design System (`@carbon/react`)
 - **Preset List**: List of configured LLM presets with options to edit or delete.
 - **Preset Configuration Panel**:
   - Fields for configuring Name, Provider (`"openrouter" | "gemini"`), Model ID (string), API Key (optional override), Temperature, Max Tokens, Reasoning/Thinking Level, Budget Policy (e.g. max steps without user message, max tokens per run limit), and CORS Proxy URL (optional override).
+  - **Connection Testing**: Includes a "Test Connection" button next to the API Key and CORS Proxy fields to verify custom or local provider settings. Clicking it triggers an asynchronous mock API request (e.g. querying the `/v1/models` endpoint or requesting a 1-token dummy response) using the configured API Key, Endpoint, and CORS proxy, passing any custom headers. Displays a loading spinner while testing, a green success badge (showing provider/model and latency), or a red warning banner detailing status codes, CORS block warnings, or network errors on failure. This test is optional and non-blocking.
 
 ### 5. Global Settings View
 
@@ -454,7 +461,7 @@ The state machine context maintains the following variables:
 _Transition on Route Changes and Initialization_:
 When a `ROUTE_CHANGED` or `INITIALIZE_CHECKPOINT` event is received, the machine first executes an `assign` action to update the `currentThreadId` in the context, and then the `ExecutionState` transitions to the transient `checkingStatus` state. This handles both switching threads and completing onboarding/initial page load:
 
-- The transient `checkingStatus` state invokes a promise actor to query IndexedDB asynchronously to load the selected thread's execution checkpoint and active background state.
+- The transient `checkingStatus` state invokes a promise actor to query IndexedDB asynchronously to load the selected thread's execution checkpoint and active background state. If no thread is selected (i.e. `currentThreadId` is null), the machine bypasses the database query and immediately raises the `DB_CHECK_INACTIVE` event.
 - Once the database query completes, it raises one of the resolution events:
   - If the database indicates the thread has a pending interrupt or approval, the machine receives `DB_CHECK_INTERRUPTED` and transitions to `awaitingHumanInput`.
   - If background execution is supported and the thread has active background execution running, it receives `DB_CHECK_RUNNING` and transitions to `executing` (resuming/spawning the runner actor).
@@ -498,207 +505,4 @@ The human user will replace the `[UNRESOLVED]` tag with their response. The huma
 
 ### Current open questions:
 
-#### Question: Background Multi-Thread Execution vs. Active-Only Execution
-
-Should the application support executing multiple LangGraph workflows in the background simultaneously (e.g. running a debate in Thread A while chatting with another agent in Thread B), or should it only support execution on the active thread (pausing/suspending background runs when switching threads)?
-
-##### Response
-
-The application will support Active-Only Execution Mode. Switching away from a thread pauses the runner actor, and the thread state in the DB is saved as paused (resolving to `inactive` or `awaitingHumanInput` when queried again). This prevents resource runaway and simplifies state management in client-side IndexedDB.
-
-#### Question: Token Usage and Cost Tracking Persistence
-
-The Loop Control Panel tracks estimated token usage and turn counts during workflow runs. Where should these stats be persisted? We propose adding a `stats` field (e.g. `{ totalTokens: number, totalTurns: number }`) to the `threads` database store so the historical usage remains visible on thread reload. Alternatively, these stats could be transient and only computed/displayed for the active run.
-
-##### Response
-
-Token usage and turn statistics will be persisted in a `tokenStats` field on the `threads` database store (e.g. `{ promptTokens: number, completionTokens: number, totalTokens: number }`). This ensures the stats remain visible when reloading threads or returning to previous chat sessions.
-
-#### Question: Default Presets Seeding for First-Time Users
-
-When a new user loads the application for the first time, they will not have any presets or API keys in the database. When they configure their first API key(s) in Global Settings, should the application automatically seed a set of default presets (e.g., "Default Gemini" using `gemini-2.5-flash`, "Default OpenRouter" using `google/gemini-2.5-flash` or similar) so they can start chatting immediately?
-
-##### Response
-
-Yes, the application will automatically seed a set of default presets (e.g., "Default Gemini Flash" using `gemini-2.5-flash` and "Default OpenRouter Flash" using `google/gemini-2.5-flash`) into the database once the user configures their API keys for the first time. This enables an immediate out-of-the-box chatting experience.
-
-#### Question: LangGraph Checkpoint Cleanup and Size Management
-
-As users run various agents and workflows, LangGraph creates checkpoints for each state step and persists them in IndexedDB. Over time, these checkpoints can grow significantly in size. Should we implement an automatic cleanup policy (e.g., keeping only the last X checkpoints or cleaning up checkpoints when a thread is deleted/completed), or should we keep all checkpoints indefinitely to allow full historical navigation?
-
-##### Response
-
-Checkpoints will be kept indefinitely for active threads to allow full historical navigation, rewinding, and branching. However, a cascading delete policy will be enforced to remove all associated checkpoints and checkpoint writes when a thread is deleted. Additionally, a manual "Compact Thread" button will be provided in settings to allow users to manually purge older checkpoints.
-
-#### Question: Custom User-Defined JavaScript Tools
-
-Database-modifying actions trigger inline approval cards. However, how should we handle tool execution customizability? Can users define custom JavaScript tools directly in their custom workflow JSON schemas, or are they limited to the built-in system tools (such as `ask_questions` and preset database updates)? If custom tools are permitted, should they run inside a sandboxed environment to prevent security/malicious code risks?
-
-##### Response
-
-For the initial version, users are limited to built-in system tools (such as `ask_questions`, `declare_consensus`, and predefined database tools). Custom JavaScript tool definition is not supported in the JSON schema to avoid security/sandboxing risks and simplify compiling.
-
-#### Question: Debating Agent Context Window and Memory Management
-
-In a debate workflow loop, two agents debate potentially infinitely. As the conversation progresses, the message history grows and may exceed the model's token limits or increase API call costs. Should the orchestration graph support a memory-pruning or summary-sliding-window mechanism for agent nodes, or should they always receive the full history?
-
-##### Response
-
-The orchestration graph runner will support an optional message-trimming policy per node (e.g., `maxHistoryMessages: number`) to prune historical messages, keeping only the N most recent messages plus the system prompt and initial topic message. This prevents context window overflow and controls API costs.
-
-#### Question: Error Recovery and Resume Policy in Active Loops
-
-If an API call fails mid-stream or during a workflow step (e.g., rate limit hit, network dropout, or service degradation), how should the graph runner handle the error? Should it immediately transition to the `error` state, pause execution, and render a "Retry Step" button to let the user resume from the same checkpoint, or should it perform automatic exponential backoff/retries behind the scenes before prompting the user?
-
-##### Response
-
-The application will perform automatic retries with exponential backoff (up to 3 times) for transient API or network errors. If the error persists, the graph runner will transition the state machine to the `error` state, pause execution, and render a "Retry Step" button in the UI to let the user manually resume from the last successful checkpoint.
-
-#### Question: Unresolved Debate Resolution on Max Loops
-
-If a debate loop reaches the maximum loop limit (e.g., 5 rounds) without the agents calling the `declare_consensus` tool, how should the workflow proceed? Should it automatically route to the `summary` node to compile a summary of the unresolved debate (noting that consensus was not achieved), or should it pause, alert the user, and prompt them to either manually force a consensus/summary, or extend the loop limit?
-
-##### Response
-
-When the max loop limit is reached without consensus, the workflow will automatically transition to the `summary` node to compile a summary of the unresolved debate (explicitly noting that consensus was not achieved), write it to the thread, and mark execution as complete.
-
-#### Question: Custom Tool UI Customization
-
-If custom user-defined tools are supported, how should their outputs and execution states be rendered in the chat feed? Should they always fall back to a generic JSON viewer accordion under "Tool: [Name]", or should the schema allow defining a simple declarative UI form (e.g., with input, select, and checkbox fields) so the user can see/interact with a tailored card?
-
-##### Response
-
-Since user-defined custom tools are not supported in the first version, tool results will always render using the generic JSON viewer accordion under "Tool: [Name]".
-
-#### Question: Support for Single-Select and Input Types in ask_questions
-
-The current `ask_questions` schema assumes multi-select options. Should we support a `type` field (e.g., `"single-select" | "multi-select" | "free-text"`) to allow radio buttons, dropdowns, or purely text-based forms, or is a simple checklist with optional comments sufficient?
-
-##### Response
-
-Yes, the `ask_questions` schema will support a `type` field (`"single-select" | "multi-select" | "free-text"`) to render radio buttons, checkboxes, or text input areas accordingly, providing a more versatile user form interface.
-
-#### Question: Abort and Token Preservation on Thread Switch / App Pause
-
-When a thread execution is paused or the user switches threads, how should we handle the active streaming/HTTP requests? We proposed using an `AbortController` to abort the connection immediately. Should the app also discard any partially received tokens for that step, or should it save the partial message and allow resuming from the exact point of interruption?
-
-##### Response
-
-When execution is aborted/paused mid-step, any partially received tokens for the active node will be discarded. The execution will resume from the beginning of the interrupted node using the last persisted checkpoint.
-
-#### Question: Workflow Resumption and Message History Mutations
-
-When editing or deleting a message in the middle of a thread's history, the current message history will deviate from the recorded checkpoints. How should the application align the LangGraph execution state when history mutations occur? We propose that editing/deleting any message before the latest checkpoint should invalidate and delete all subsequent checkpoints for that thread, forcing the graph execution to resume (or rewind) from the last matching checkpoint prior to the mutated message. Alternatively, should we prevent editing historical messages altogether once a workflow has completed?
-
-##### Response
-
-When a message is edited or deleted before the latest checkpoint, the application will delete all subsequent checkpoints for that thread, rewinding the graph execution state to the last matching checkpoint prior to the mutated message. This allows full editing flexibility while keeping LangGraph's internal state synchronized with the message feed history.
-
-#### Question: CORS Proxies for Client-Side-Only API Calls
-
-The application is a client-side-only app deployed to GitHub Pages, executing direct browser-based API calls. While Gemini and OpenRouter support CORS out of the box, other LLM providers (or self-hosted local backends like Ollama/Llama.cpp) may have strict CORS policies that block browser requests. Should the preset configuration and settings page support configuring a custom CORS proxy URL or custom request headers, or should the app strictly support CORS-friendly providers?
-
-##### Response
-
-The application will support an optional custom CORS proxy URL and custom headers configuration within both the global settings and preset configurations to allow flexibility for self-hosted models (like Ollama) or other third-party API providers.
-
-#### Question: Plain-text vs Encrypted API Key Storage in IndexedDB
-
-While IndexedDB is sandboxed to the origin, browser extensions or client-side scripting vulnerabilities (XSS) could theoretically expose stored plain-text keys. Should the application support encrypting API keys with a user-provided master password (using Web Crypto API PBKDF2/AES-GCM), or is plain-text storage acceptable for a static, client-side personal application?
-
-##### Response
-
-By default, keys are stored in plain text in IndexedDB as acceptable for a local-first personal app. However, the application will provide an optional setting to encrypt API keys using a user-provided master password (leveraging Web Crypto API PBKDF2/AES-GCM). If enabled, the user must input their master password once per session to decrypt keys in-memory.
-
-#### Question: Message Feed Virtualization for Long Threads
-
-For threads with large histories (e.g., after long debate loops of 100+ turns), rendering full rich-markdown and math formatting on all messages can degrade UI performance. Should we implement virtualized scrolling (only rendering messages currently in the viewport), or is it acceptable to rely on browser performance and standard rendering?
-
-##### Response
-
-For the initial version, the application will rely on standard browser rendering. The message feed list will be structured to avoid excessive re-renders, and virtualization will be deferred unless performance benchmarks degrade for threads exceeding 200+ messages.
-
-#### Question: Workflow Import/Export Format and Sharing
-
-To facilitate sharing custom agent orchestrations, should we support file-based export/import (e.g., downloading the workflow definition as a `.json` file) and copy-to-clipboard actions, or is manual copy-pasting from the JSON editor pane sufficient?
-
-##### Response
-
-The application will support file-based import/export (downloading and uploading `.json` files) and a "Copy JSON to Clipboard" action directly within the Workflow Management CRUD View to simplify sharing and backups.
-
-#### Question: Parallel Node Execution and State Merge Policies
-
-In a complex custom workflow, multiple agent nodes might execute in parallel. LangGraph supports parallel execution, but how should the state machine merge parallel updates to the message history? Should it interleave them by timestamp, group them by agent, or prevent parallel nodes in custom JSON workflows entirely to simplify execution?
-
-##### Response
-
-To prevent complex race conditions and message synchronization issues, custom user-defined workflows will be restricted to sequential and conditional DAG topologies (no parallel execution branches).
-
-#### Question: API Key Validation in Settings
-
-When a user inputs or updates their API key in Global Settings, should the application immediately perform a lightweight validation request (e.g. fetching available models from OpenRouter/Gemini) to verify the key, or should it only validate the key on-the-fly during workflow execution?
-
-##### Response
-
-The application will perform a lightweight, asynchronous validation request on-save in the settings page to verify key validity, showing immediate visual feedback (e.g. valid/invalid badges), while still handling execution-time API errors gracefully.
-
-#### Question: Cascading Delete Performance for Thread Checkpoints
-
-Deleting a thread requires removing the thread record, all of its messages, all of its checkpoints, and all of its checkpoint writes. Because IndexedDB operates on the main thread, deleting a long-running thread with thousands of checkpoints could block the UI. Should we perform cascading deletes asynchronously in small, batched chunks in the background, or is a single large transaction sufficient?
-
-##### Response
-
-Cascading deletes for long-running threads will be performed in batched transactions (deleting up to 500 checkpoints/messages per chunk) scheduled asynchronously via microtasks or `requestIdleCallback` to keep the UI completely responsive.
-
-#### Question: Workflow Schema Modifications on Active Threads
-
-If a user edits a custom workflow's definition while a thread using that workflow is paused (in `awaitingHumanInput` or `error` state), should the thread attempt to recompile and resume execution using the new workflow definition, or should the workflow definition be locked for active threads (or force the thread to restart/rewind to the beginning)?
-
-##### Response
-
-To ensure execution stability and prevent compilation errors or state mismatches when resuming a thread, every thread will store a snapshot of its associated workflow definition directly within the `threads` database record (`workflowSnapshot`).
-
-1. **Snapshotting on Creation**: When a new thread is initialized, the active workflow definition is copied into `threads.workflowSnapshot`.
-2. **Execution from Snapshot**: The LangGraph runner compiles and executes the graph using `workflowSnapshot` rather than querying the global `workflows` store. Consequently, modifying or deleting a custom workflow in the Workflow Manager has no effect on already active or paused threads.
-3. **Updating / Syncing the Schema**: If a user wishes to apply the latest workflow edits to an active thread, they can trigger a "Sync to Latest Workflow" action in the thread settings. This updates `threads.workflowSnapshot` to the latest definition from the `workflows` store and purges all existing checkpoints and checkpoint writes for the thread, resetting its execution state to the starting node.
-
-#### Question: Token/Cost Budget Policies
-
-Should the preset and thread budget policy support a token-limit or cost-limit threshold (e.g. pause execution and ask for human approval if a single run exceeds X total tokens or Y estimated cents) to prevent runaway costs, in addition to the step-based limit?
-
-##### Response
-
-To prevent runaway API costs, the preset and thread budget policy will support both step-based and token-based limits.
-
-1. **Preset Budget Configuration**: The `budgetPolicy` object under `presets` will be extended to include `maxTokensPerRun` (e.g. `{ maxStepsWithoutUser: number, maxTokensPerRun: number | null }`).
-2. **Limit Execution**: When a workflow starts executing, a running counter tracks the total tokens (prompt + completion tokens) consumed during the active run/session.
-3. **Interrupt on Limit Exceeded**: If the token limit is exceeded mid-execution, the graph runner halts execution immediately, persists the current checkpoint, transitions the state machine to `awaitingHumanInput`, and renders an inline "Budget Exceeded" card in the chat feed.
-4. **Resolution**: The card will display the token consumption and present the user with options to "Increase Budget & Resume" (temporarily raising the token threshold for the active execution run) or "Abort".
-5. **No Currency Estimations**: We will not track cost limits in monetary cents to avoid the overhead of maintaining an up-to-date pricing database for all providers and models in a client-only frontend.
-
-#### Question: Thread-Level Parameter Overrides vs. Strict Preset Inheritance
-
-Should the application support overriding LLM settings (such as temperature, max tokens, or reasoning level) directly on a per-thread basis, or should threads strictly inherit their settings from their selected Preset?
-
-##### Response
-
-Threads will strictly inherit their LLM settings from their selected Presets to keep the database schema clean and avoid merging complex parameter overrides in the LangGraph runner. The active thread record in the database stores an `activePresetId` which acts as the default preset for any workflow nodes that do not explicitly define a node-level `presetId`.
-To support quick adjustments and experimentation:
-
-1. **Quick Preset Switcher**: The Chat Header will display the active preset's name as a dropdown trigger, allowing the user to easily switch the active thread's preset.
-2. **Inline Preset Customization**: Next to the preset switcher in the Chat Header, a configure icon will allow the user to edit the selected preset in a modal panel. If the active preset is a built-in/system preset, the UI will prompt the user to "Clone and Customize", saving a new custom preset copy and automatically selecting it for the thread.
-
-#### Question: Connectivity Testing for Custom and Local Providers
-
-For custom endpoints or local providers (like Ollama or self-hosted servers) configured via a custom CORS proxy, should the preset configuration interface provide a "Test Connection" button to verify endpoint availability and response headers prior to executing workflows?
-
-##### Response
-
-Yes, the Preset Configuration Panel will include a "Test Connection" button next to the API Key and CORS Proxy fields to verify custom or local provider settings:
-
-1. **Lightweight Test Request**: Clicking the button triggers an asynchronous mock API request (e.g. querying the `/v1/models` endpoint or requesting a 1-token dummy response) using the configured API Key, Endpoint, and CORS proxy, passing any configured custom headers.
-2. **Visual Feedback Badges**:
-   - **Testing**: Displays a loading spinner next to the button.
-   - **Success**: Displays a green badge (e.g., "Connected") showing the detected provider/model name and request latency (e.g., `180ms`).
-   - **Failure**: Displays a red warning banner detailing the response status code, CORS block warnings, or network error messages to assist in troubleshooting.
-3. **Non-Blocking**: This connection test is entirely optional and non-blocking; users are free to save the preset even if the test fails or has not been run.
+There are no unresolved open questions. All design decisions have been resolved and incorporated into the specification.
