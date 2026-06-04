@@ -74,7 +74,7 @@ Fill in anything missing.
   3. Delete all checkpoints and checkpoint writes whose creation timestamp is greater than the preceding checkpoint's creation timestamp, or that descend from it in parent-child lineage traversal.
   4. Truncate the message history by deleting all messages in that thread where `sequence >= idx` (for deletion) or `sequence > idx` (for inline editing).
      Following any truncation, edit, or branching, the cumulative token statistics for the affected thread(s) are recalculated by summing the usage metadata of their remaining messages, and the thread record is updated in IndexedDB.
-     _Note on Message Role Behaviors_: For inline editing of a user message, the message content is updated, and when the user clicks "Resubmit", execution is triggered from the preceding checkpoint with the updated user message. For inline editing of an assistant message, the message is updated in the database, but resuming execution directly would cause the agent to rerun and overwrite it; to avoid this, the user can insert a user message after the edited assistant message before resuming.
+     _Note on Message Role Behaviors and State Synchronization_: For inline editing of any message role (user, assistant, or system), the database message at sequence `idx` is updated, and all subsequent messages are deleted. Since LangGraph's internal checkpoint state contains the historical messages array, editing a message requires updating the checkpoint. When execution is subsequently resumed, the runner automatically detects if the database message at sequence `idx` is newer than the latest message in the loaded preceding checkpoint. If so, it invokes `graph.updateState` passing the target config and the edited message (retaining its original message ID) to update the checkpointer state and append the edited message to the state graph's message history, creating a new checkpoint from which execution streams.
 - API Payload Preview: Allow inspecting the exact payload sent to the LLM API (including injected system messages).
 - _Note_: See the [Main Chat Interface](#2-main-chat-interface) section in the UI Specification for the exact layout and component details for all the above elements.
 
@@ -96,8 +96,8 @@ We propose using the following stores in the `in-browser-llm-chat-db` database:
   - Fields: `name`, `description`, `isBuiltIn` (boolean), `nodes` (Array of node definitions), `edges` (Array of transition definitions), `injectedSystemMessages` (optional Array of `{ content: string, depth: number }`)
 - **`threads`**: Chat sessions.
   - Key: `id` (UUID)
-  - Fields: `title`, `workflowId`, `workflowSnapshot` (a copy of workflow configuration JSON, copied from the workflow definition upon thread creation for both built-in and custom workflows to ensure execution stability against schema modifications), `activePresetId`, `createdAt`, `updatedAt`, `parentThreadId` (null or parent UUID for branched threads), `parentMessageId` (null or parent message UUID at which branching occurred), `status` (`"inactive" | "executing" | "awaiting_input" | "error"`), `errorMessage` (null or string), `latestCheckpointId` (null or string), `latestCheckpointNs` (null or string), `tokenStats` (`{ promptTokens: number, completionTokens: number, totalTokens: number } | null`)
-  - _Branching Behavior_: When branching a thread, the messages from the parent thread up to and including the `parentMessageId` are copied (cloned) to the new thread in the `messages` store under the new thread's ID (with their `sequence` order preserved). The `workflowSnapshot` is also copied from the parent thread to the new thread's record in the `threads` store to preserve execution consistency. To ensure that the branched thread's history can be edited or rewound later, ALL checkpoints and `checkpoint_writes` associated with the copied messages must be copied/cloned to the `checkpoints` and `checkpoint_writes` stores under the `newThreadId`. Subsequent checkpoints are not copied. To identify the checkpoints and writes associated with the copied messages, the cloning process gathers the set of all unique non-null `[checkpointNs, checkpointId]` pairs stored in the `checkpointNs` and `checkpointId` fields of the copied messages (messages with sequence <= parent message's sequence). It then queries the `checkpoints` and `checkpoint_writes` stores for records matching the parent `threadId` and these gathered namespace/ID pairs, and clones them to the new `threadId` in IndexedDB. Child threads remain fully functional even if their parent thread is later deleted (as they hold independent clones of historical messages and checkpoints); in such cases, their `parentThreadId` is retained for provenance but resolves to null/absent in reference checks.
+  - Fields: `title`, `workflowId`, `workflowSnapshot` (a copy of workflow configuration JSON, copied from the workflow definition upon thread creation for both built-in and custom workflows to ensure execution stability against schema modifications), `activePresetId`, `createdAt`, `updatedAt`, `parentThreadId` (null or parent UUID for branched threads), `parentMessageId` (null or parent message UUID at which branching occurred), `status` (`"inactive" | "executing" | "awaiting_input" | "error"`), `activeInterrupt` (null or object specifying active interrupt details e.g., `{ type: "ask_questions" | "approval" | "budget_exceeded", toolCallId?: string, budgetDetails?: { currentTokens: number, maxTokens: number | null, stepCount: number } }`), `errorMessage` (null or string), `latestCheckpointId` (null or string), `latestCheckpointNs` (null or string), `tokenStats` (`{ promptTokens: number, completionTokens: number, totalTokens: number } | null`)
+  - _Branching Behavior_: When branching a thread, the messages from the parent thread up to and including the `parentMessageId` are copied (cloned) to the new thread in the `messages` store under the new thread's ID (with their `sequence` order preserved). The `workflowSnapshot` is also copied from the parent thread to the new thread's record in the `threads` store to preserve execution consistency. The new thread's `latestCheckpointId` and `latestCheckpointNs` are set to the `checkpointId` and `checkpointNs` of the highest-sequence copied message that contains a non-null checkpoint reference, or `null` if no copied messages contain checkpoints. To ensure that the branched thread's history can be edited or rewound later, ALL checkpoints and `checkpoint_writes` associated with the copied messages must be copied/cloned to the `checkpoints` and `checkpoint_writes` stores under the `newThreadId`. Subsequent checkpoints are not copied. To identify the checkpoints and writes associated with the copied messages, the cloning process gathers the set of all unique non-null `[checkpointNs, checkpointId]` pairs stored in the `checkpointNs` and `checkpointId` fields of the copied messages (messages with sequence <= parent message's sequence). It then queries the `checkpoints` and `checkpoint_writes` stores for records matching the parent `threadId` and these gathered namespace/ID pairs, and clones them to the new `threadId` in IndexedDB. Child threads remain fully functional even if their parent thread is later deleted (as they hold independent clones of historical messages and checkpoints); in such cases, their `parentThreadId` is retained for provenance but resolves to null/absent in reference checks.
 - **`messages`**: Individual messages in threads.
   - Key: `id` (UUID)
   - Fields: `threadId` (indexed for query performance), `sequence` (integer index within thread for deterministic sorting and truncation), `role` (`"system" | "user" | "assistant" | "tool"`), `content`, `type` (`"text" | "reasoning" | "tool_call" | "tool_result"`), `toolCallId` (optional), `name` (agent/tool name), `createdAt`, `metadata` (reasoning tokens, raw response, etc.), `checkpointId` (null or string), `checkpointNs` (null or string)
@@ -261,6 +261,7 @@ The `ask_questions` tool is defined as:
         type: z.enum(["single-select", "multi-select", "free-text"]).default("multi-select"),
         options: z.array(z.string()).optional(), // suggested options (required for select types)
         allowFreetext: z.boolean().default(true), // allows comments/free-text alongside select options
+        required: z.boolean().default(true), // if true, the user must provide an answer/selection before submitting
       }),
     ),
   });
@@ -280,9 +281,11 @@ The `ask_questions` tool is defined as:
   ```
 - **Flow**:
   1. The LLM agent invokes `ask_questions` with specific questions.
-  2. The LangGraph runner intercepts the tool call and pauses execution (using LangGraph interrupts).
-  3. The UI detects the pending interrupt and renders a premium inline card form directly in the chat feed with checkboxes, freetext comment fields, and a "Refuse to answer" button with optional reasoning. Multiple tool calls per agent turn can be rendered as multiple inline cards. Once answered/refused, form inputs become disabled/read-only to preserve the history.
-  4. Once submitted, the user's answers are formatted according to the `AskQuestionsResponse` structure as a `tool` role message and execution resumes.
+  2. The LangGraph runner intercepts the tool call and pauses execution (using LangGraph interrupts), writing the active interrupt to `activeInterrupt` in the `threads` store.
+  3. The UI detects the pending interrupt and renders a premium inline card form directly in the chat feed. On entry and on `UPDATE_ANSWER`, draft answers are stored in `draftAnswers` (a dictionary keyed by `toolCallId` inside the thread's record) to survive page reloads or switching threads without conflicts.
+  4. The form displays checkboxes, text areas, and comment fields based on the question definitions. If a question has `required: false`, it is marked optional and can be left blank; if `required: true`, the submit button remains disabled until it is filled or the user opts to refuse the entire form.
+  5. **Restoration on Page Load**: When rendering the chat feed, if a `"tool_call"` message for `ask_questions` is found at the end of history without a corresponding `"tool"` result message, the UI initializes the form card in its active state (restoring drafts from `draftAnswers` matching the `toolCallId`). If a matching tool result message is found, the form card is rendered as a read-only historical record displaying the submitted answers.
+  6. Once submitted, the user's answers are formatted according to the `AskQuestionsResponse` structure as a `tool` role message, `draftAnswers` for this `toolCallId` and `activeInterrupt` in the thread record are cleared, and execution resumes.
 
 ### 5. `declare_consensus` Tool Schema
 
@@ -555,13 +558,16 @@ When a user deletes or edits a message at sequence index `idx`, or branches a th
 4. **Update Thread Reference**: Update the active thread record in the `threads` store:
    - Set `latestCheckpointId` and `latestCheckpointNs` to those of the target checkpoint (or `null` if resetting to start).
    - Recalculate the cumulative `tokenStats` by summing up the token usage fields in the `metadata` of all remaining messages in the thread, and update the thread's `tokenStats` record.
-5. **Execution Resumption & Message Appending**:
-   - If the user resubmitted an edited user message:
-     - Save the new message to the `messages` store with `sequence = idx` and with its `checkpointId`/`checkpointNs` set to the target checkpoint's values.
-     - Re-compile the `StateGraph` and initialize the runner config with `{ configurable: { thread_id: threadId, checkpoint_ns: latestCheckpointNs || "", checkpoint_id: latestCheckpointId || undefined } }`.
-     - Prior to starting the graph execution stream, the runner calls `await graph.updateState(config, { messages: [newEditedUserMessage] })` (passing the target config and edited message). This updates the checkpointer state and appends the edited message to the state graph's message history.
-     - Invoke `graph.stream(null, config)` to resume execution. The graph starts from the target checkpoint, incorporates the appended message, and flows to the next scheduled node.
-   - If resuming a paused execution without new user input (e.g. resuming after clicking Resume on a loop control card):
+5. **Automatic Checkpoint Synchronization on Resume**:
+   - If the user resubmitted an edited message (of any role: user, assistant, or system) or inserted a prefilled assistant message:
+     - Save the new or edited message to the `messages` store with `sequence = idx` (the message keeps its original unique message ID).
+     - When the `graphRunnerActor` compiles the `StateGraph` and initializes the runner config, it loads the target preceding checkpoint $C_{prev}$ (using `latestCheckpointId` and `latestCheckpointNs`).
+     - Prior to starting the graph execution stream, the runner compares the database messages list with the loaded checkpoint's messages list. It automatically detects any newer database messages (with `sequence >= idx`) that are not yet in the checkpoint state.
+     - For each such message, the runner invokes `await graph.updateState(config, { messages: [newerMessage] })`. Since the edited message retains its original ID, LangGraph's default message reducer replaces the old message in the state if it existed, or appends it, writing a new synchronized checkpoint $C_{new}$.
+     - The thread's `latestCheckpointId` and `latestCheckpointNs` are updated in the database to point to $C_{new}$.
+     - If the message role at `idx` is `user`, the runner then calls `graph.stream(null, config)` (with config pointing to $C_{new}$) to resume execution.
+     - If the message role is `assistant` or `system`, the runner halts in a paused/inactive state, allowing the user to either review the edited response, write a new user message, or manually click Resume to run the next step.
+   - If resuming a paused execution without any new or edited messages (e.g. resuming after clicking Resume on a loop control card):
      - Initialize the runner config with `{ configurable: { thread_id: threadId, checkpoint_ns: latestCheckpointNs || "", checkpoint_id: latestCheckpointId || undefined } }`.
      - Invoke `graph.stream(null, config)` directly to resume execution from the last persisted checkpoint.
 
@@ -854,7 +860,7 @@ The parent coordinator state machine context maintains the following variables:
   - `turnCount`: `number` - Total messages or turns exchanged in the current run.
   - `tokenStats`: `{ promptTokens: number; completionTokens: number; totalTokens: number } | null` - Statistics tracking input and output tokens for the current execution.
 - `errorMessage`: `string | null` - Details of the most recent execution or database error.
-- `apiKeysConfigured`: `boolean` - Indicates whether required API keys (either a global API key or at least one preset-specific API key) are configured in the database.
+- `apiKeysConfigured`: `boolean` - Indicates whether required API keys are configured. It is `true` if and only if there is a non-empty global OpenRouter API key or Gemini API key in the `settings` store, or at least one preset in the `presets` store has a non-empty `apiKey` defined.
 - `graphRunnerActor`: `any` - A reference to the active spawned child actor managing LangGraph execution.
 
 ### 2. State Descriptions
@@ -904,7 +910,7 @@ The parent coordinator state machine context maintains the following variables:
   - _Interactive Controls_:
     - Send button: Triggers `SUBMIT_MESSAGE` when clicked.
     - "Run Workflow" / "Resume" buttons in execution control panel: Enabled.
-- **`checkingStatus`**: A transient state that queries IndexedDB asynchronously to load the active thread's execution checkpoint and status.
+- **`checkingStatus`**: A transient state that queries IndexedDB asynchronously to load the active thread's execution checkpoint and status. Checks the thread record's `status` and `activeInterrupt` fields. If `activeInterrupt` is not null, it transitions to `awaitingHumanInput` (substates `idle` or `budgetExceeded` based on the interrupt type) and restores the pending form states.
   - _Interactive Controls_:
     - Execution Control Panel: All buttons are disabled.
     - Main Chat Input / Send Button: Disabled.
@@ -1017,30 +1023,30 @@ Governs the lifecycle of the inline form rendered in the chat feed when executio
   - `errorMessage`: `string | null`
 - **States**:
   - `active`: The form card is rendered and editable.
-    - `active.editing`: User is interacting with form controls. On entry and on `UPDATE_ANSWER`, the current state of `answers` is persisted to the thread's record in IndexedDB under `draftAnswers` to ensure it survives page reloads or switching threads.
+    - `active.editing`: User is interacting with form controls. On entry and on `UPDATE_ANSWER`, the current state of `answers` is persisted to the thread's record in IndexedDB under a `draftAnswers` dictionary keyed by `toolCallId` to ensure it survives page reloads or switching threads without conflicts.
       - _Form inputs (Radio, Checkbox, Text Area)_: Enabled.
       - _Submit Button_: Disabled if `isValid` is false.
       - _Refuse to Answer Button_: Enabled.
-    - `active.validating`: Auto-checking if all required/non-optional questions have been answered.
+    - `active.validating`: Auto-checking validation constraints. For each question in `questions`, if `required` is true, verifies that `answers[questionId]` is defined and non-empty (i.e. has at least one selected option or non-empty text input). If `required` is false, it is treated as optional.
       - _Form inputs (Radio, Checkbox, Text Area)_: Disabled.
       - _Submit/Refuse Buttons_: Disabled.
   - `submitting`: Sending responses back to the parent coordinator machine (dispatches `SUBMIT_TOOL_RESPONSE` containing the compiled `AskQuestionsResponse` JSON payload to the parent coordinator machine, which forwards it to the active runner actor).
     - _Form inputs_: Disabled.
     - _Submit Button_: Disabled, displays loading spinner.
     - _Refuse Button_: Disabled.
-  - `submitted`: Response successfully submitted. Form controls become disabled/read-only. Clears the `draftAnswers` field from the thread's database record.
+  - `submitted`: Response successfully submitted. Form controls become disabled/read-only. Clears the `draftAnswers[toolCallId]` entry from the thread's database record.
     - _Form inputs_: Disabled (Read-only view).
     - _Submit Button_: Hidden.
     - _Refuse Button_: Hidden.
     - _Badge_: Shows "Submitted" in green.
-  - `refused`: User clicked "Refuse to Answer". Form controls become disabled/read-only, showing the refusal reason. Clears the `draftAnswers` field from the thread's database record.
+  - `refused`: User clicked "Refuse to Answer". Form controls become disabled/read-only, showing the refusal reason. Clears the `draftAnswers[toolCallId]` entry from the thread's database record.
     - _Form inputs_: Disabled (Read-only view).
     - _Submit Button_: Hidden.
     - _Refuse Button_: Hidden.
     - _Refusal details_: Displays refusal reason text entered by user.
     - _Badge_: Shows "Refused" in red.
 - **Transitions / Events**:
-  - `LOAD_QUESTIONS` (contains toolCallId, questions, and optional draftAnswers): Transitions to `active.editing` (populates `toolCallId` and `questions`, and initializes `answers` with `draftAnswers` if available).
+  - `LOAD_QUESTIONS` (contains toolCallId, questions, and optional draftAnswers): Transitions to `active.editing` (populates `toolCallId` and `questions`, and initializes `answers` with `draftAnswers[toolCallId]` if available).
   - `UPDATE_ANSWER` (contains questionId and answer): Transitions to `active.validating` (updates the `answers` record).
   - `VALIDATION_RESULT` (contains isValid and validationErrors): Transitions back to `active.editing` (updates `isValid` and `validationErrors` context).
   - `SUBMIT` (guard: `isValid` is true): Transitions to `submitting`.
@@ -1050,7 +1056,7 @@ Governs the lifecycle of the inline form rendered in the chat feed when executio
 
 #### C. Proposed Action Card (Approval Form) State Machine
 
-Governs database-modifying tool calls (like creating or updating a workflow) that require explicit user approval before execution. All events are dispatched to the parent coordinator machine, which handles routing/forwarding events to the active `graphRunnerActor`.
+Governs database-modifying tool calls (like creating or updating a workflow) that require explicit user approval before execution. Displays a visual diff (highlighting additions in green and deletions in red) for workflow updates, or a structured key-value list for new workflow creations. All events are dispatched to the parent coordinator machine, which handles routing/forwarding events to the active `graphRunnerActor`.
 
 - **Context**:
   - `toolCallId`: `string`
@@ -1060,6 +1066,7 @@ Governs database-modifying tool calls (like creating or updating a workflow) tha
   - `pending`: Active card with "Approve" and "Deny" buttons.
     - _Approve Button_: Enabled, triggers `APPROVE`.
     - _Deny Button_: Enabled, triggers `DENY`.
+    - _Restoration on Page Load_: When rendering the chat feed, if a `"tool_call"` message for a database-modifying action is found without a corresponding `"tool"` result message, the UI initializes the card in this `pending` state. If a matching tool result message exists in the database, the card is initialized directly into the `approved` or `denied` state depending on the status stored in that result message.
   - `approving`: Asynchronously executing the database modification transaction.
     - _Approve Button_: Disabled, displays loading spinner.
     - _Deny Button_: Disabled.
@@ -1075,6 +1082,7 @@ Governs database-modifying tool calls (like creating or updating a workflow) tha
     - _Retry Button_: Visible and enabled, triggers `RETRY_APPROVE`.
     - _Error text_: Displays DB error details inline.
 - **Transitions / Events**:
+  - `LOAD_CARD` (contains toolCallId, actionDetails, and optional toolResult): If a toolResult is provided, transitions directly to `approved` or `denied` matching its status. Otherwise, transitions to `pending` (populates `toolCallId` and `actionDetails`).
   - `APPROVE`: Transitions `pending` or `error` to `approving`.
   - `DENY`: Transitions `pending` to `denied` (dispatches `SUBMIT_TOOL_RESPONSE` with a standardized "Operation denied by user" tool result to the parent coordinator machine to be forwarded to the active runner actor).
   - `APPROVE_SUCCESS` (contains tool result): Transitions `approving` to `approved` (dispatches `SUBMIT_TOOL_RESPONSE` with the successful database transaction results as the tool result to the parent coordinator machine to be forwarded to the active runner actor).
@@ -1151,7 +1159,7 @@ Triggered from Thread Settings to synchronize a thread's workflow snapshot with 
   - `ANALYSIS_FAILURE` (contains error): Transitions `analyzing` to `failure` (updates `errorMessage`).
   - `CONFIRM_SYNC` (from prompting states): Transitions to `syncing`.
   - `CANCEL_SYNC`: Transitions prompting/analyzing states back to `idle`.
-  - `SYNC_SUCCESS`: Transitions `syncing` to `success` (updates the thread record in the database, and if a Hard Sync was performed, deletes all message, checkpoint, and checkpoint write records for the thread, resets the thread's `latestCheckpointId`, `latestCheckpointNs`, and `tokenStats` to `null` in IndexedDB, and dispatches `INITIALIZE_CHECKPOINT` to the parent coordinator to reset the active execution state to `inactive` and reload the empty thread state).
+  - `SYNC_SUCCESS`: Transitions `syncing` to `success` (updates the thread record in the database. If a Hard Sync was performed, deletes all message, checkpoint, and checkpoint write records for the thread. The deletion is performed in a single database transaction if the total message count is small (e.g., < 100 messages), or delegates to the asynchronous chunked cascading deletion pipeline if larger, to keep the UI responsive. Resets the thread's `latestCheckpointId`, `latestCheckpointNs`, and `tokenStats` to `null` in IndexedDB, and dispatches `INITIALIZE_CHECKPOINT` to the parent coordinator to reset the active execution state to `inactive` and reload the empty thread state).
   - `SYNC_FAILURE` (contains error): Transitions `syncing` to `failure` (updates `errorMessage`).
   - `DISMISS`: Transitions `success` or `failure` back to `idle`.
 
@@ -1309,7 +1317,7 @@ Governs the top-level application shell, responsive navigation drawer, and globa
   - `currentRoute`: `string`
   - `isMobile`: `boolean`
 - **States**:
-  - `idle`: Layout is loaded and active. On entry, resolves the theme preference and binds window media listeners if theme is `"system"`.
+  - `idle`: Layout is loaded and active. On entry, resolves the theme preference. It registers a media query listener for `(prefers-color-scheme: dark)` which dispatches `SYSTEM_THEME_CHANGED` dynamically on change. The media query listener remains active globally, but its event is ignored by the state handler if the theme is explicitly set to `"light"` or `"dark"`.
     - _Theme Dropdown_: Enabled.
     - _Hamburger Menu Button_: Enabled (visible only on mobile viewports).
     - _Sidebar Backdrop_: Clickable if `sidebarOpen` is true and in mobile viewport.
@@ -1317,27 +1325,37 @@ Governs the top-level application shell, responsive navigation drawer, and globa
   - `TOGGLE_SIDEBAR`: Toggles `sidebarOpen` boolean status.
   - `OPEN_SIDEBAR`: Sets `sidebarOpen` to `true`.
   - `CLOSE_SIDEBAR`: Sets `sidebarOpen` to `false`.
-  - `SET_THEME` (contains theme): Updates `theme` in context, updates system override class in the document element, and writes setting to IndexedDB settings.
+  - `SET_THEME` (contains theme): Updates `theme` in context. If theme is `"light"` or `"dark"`, it forces the document element to that theme class immediately, bypassing OS settings. If theme is `"system"`, it queries the active system color scheme and applies it. Writes setting to IndexedDB settings.
   - `SYSTEM_THEME_CHANGED` (contains `isDark`): When in `idle` and the `theme` context is `"system"`, dynamically updates the document's applied theme classes matching `isDark` (without altering the saved `theme` context value) to ensure real-time synchronization with OS dark/light mode switches.
   - `WINDOW_RESIZED` (contains isMobile): Updates `isMobile` context. If `isMobile` transitions to `false`, forces `sidebarOpen` to `false`.
   - `ROUTE_CHANGED` (contains route): Updates `currentRoute`. If `isMobile` is `true`, sets `sidebarOpen` to `false` to close the navigation overlay.
 
 #### J. Left Sidebar State Machine
 
-Manages the active thread list loading, searching, and thread-level cascading deletion interactions.
+Manages the active thread list loading, searching, and thread-level cascading deletion interactions. Supports page-based infinite scrolling to efficiently handle lists with thousands of threads.
 
 - **Context**:
   - `threads`: `Array<Thread>`
   - `searchQuery`: `string`
   - `activeThreadId`: `string | null`
   - `deletingThreadId`: `string | null`
+  - `page`: `number` (1-indexed page counter for infinite scroll)
+  - `pageSize`: `number` (default 50)
+  - `hasMore`: `boolean` (indicates if there are more threads to load)
   - `errorMessage`: `string | null`
 - **States**:
+  - `loadingInitial`: Querying the database to fetch the first page of threads.
+    - _Search Input Field_: Disabled.
+    - _Thread list items_: Hidden/disabled. Shows skeleton loader.
   - `idle`: Displaying the search input and thread list.
     - _Search Input Field_: Enabled.
     - _Thread list items_: Enabled, clicking triggers navigation.
     - _Delete icons_: Enabled, clicking triggers `TRIGGER_DELETE`.
     - _New Chat button_: Enabled.
+  - `loadingMore`: Triggered when the user scrolls to the bottom of the thread list to fetch the next page of threads.
+    - _Search Input Field_: Enabled.
+    - _Thread list items_: Enabled.
+    - _Loading indicator_: Spinner visible at the bottom of the list.
   - `confirmingDelete`: Displaying confirmation popover/modal for deleting `deletingThreadId`.
     - _Confirmation Modal_: Visible.
     - _Confirm Delete Button_: Enabled, colored red (Carbon danger button).
@@ -1349,8 +1367,13 @@ Manages the active thread list loading, searching, and thread-level cascading de
     - _Cancel Button_: Disabled.
     - _Background Behavior_: Triggers optimistic invalidation by setting the thread status to `"deleting"`, removing it from local sidebar search list, and launching the chunked async deletion loop.
 - **Transitions / Events**:
-  - `LOAD_THREADS` (contains threads): Updates the `threads` list (filters out any threads with status `"deleting"`).
-  - `FILTER_THREADS` (contains query): Updates `searchQuery`.
+  - `LOAD_INITIAL_THREADS`: Transitions `idle` or startup to `loadingInitial`.
+  - `LOAD_INITIAL_SUCCESS` (contains threads and hasMore): Transitions `loadingInitial` to `idle` (replaces `threads`, updates `hasMore`, sets `page` to 1).
+  - `LOAD_INITIAL_FAILURE` (contains error): Transitions `loadingInitial` to `idle` (updates `errorMessage`).
+  - `LOAD_MORE`: If `hasMore` is true, transitions `idle` to `loadingMore`.
+  - `LOAD_MORE_SUCCESS` (contains threads and hasMore): Transitions `loadingMore` to `idle` (appends threads, updates `hasMore`, increments `page`).
+  - `LOAD_MORE_FAILURE` (contains error): Transitions `loadingMore` to `idle` (updates `errorMessage`).
+  - `FILTER_THREADS` (contains query): Updates `searchQuery`, resets `page` to 1, and transitions to `loadingInitial` to perform a filtered database query.
   - `TRIGGER_DELETE` (contains threadId): Sets `deletingThreadId` and transitions to `confirmingDelete`.
   - `CONFIRM_DELETE`: Transitions `confirmingDelete` to `deleting` (triggers optimistic UI updates and schedules background async chunked deletion).
   - `CANCEL_DELETE`: Transitions `confirmingDelete` back to `idle` (clears `deletingThreadId`).
@@ -1502,7 +1525,7 @@ Governs the lifecycle of the LangGraph background execution runner, which runs a
   - `tokensInCurrentRun`: `number` (tracks cumulative tokens in the active execution cycle)
   - `budgetOverride`: `{ maxStepsWithoutUser: number; maxTokensPerRun: number | null } | null` (active temporary budget override values)
 - **States**:
-  - `initializing`: Compiles the `StateGraph` using the `workflowSnapshot`, instantiates the custom checkpointer, and prepares the runner.
+  - `initializing`: Compiles the `StateGraph` using the `workflowSnapshot`, instantiates the custom checkpointer, and prepares the runner. Loads the thread's latest checkpoint config. Queries the `messages` store for any messages with `sequence` higher than the sequence of the latest message in the loaded checkpoint. If newer messages exist in the database, applies them to the graph state via `graph.updateState(config, { messages: newerMessages })`, updating the latest checkpoint references.
   - `running`: Actively invoking `graph.stream()` or resuming the stream generator step-by-step.
     - `running.requesting`: Sending request to LLM API (direct client call).
     - `running.streaming`: Buffering text and reasoning tokens in real-time, throttling UI updates.
@@ -1775,7 +1798,7 @@ Governs the form in the "New Chat" selection panel when no thread is active.
     - _Preset Dropdown_: Enabled.
     - _Initial Message Textarea_: Enabled.
     - _Submit Button_: Enabled only if `initialMessage` is non-empty.
-  - `submitting`: Creating a new thread in the database, cloning the workflow snapshot, writing the initial message, and initializing checkpointer state.
+  - `submitting`: Creating a new thread in the database. The thread title is initialized to a truncated version of the user's `initialMessage` (e.g. first 40 characters) or the selected workflow's name. Copies the workflow snapshot to the thread record, writes the initial message, and initializes the checkpointer.
     - _All controls_: Disabled, shows loading spinner on Submit button.
   - `error`: Failed to load options or create thread.
     - _All controls_: Enabled.
