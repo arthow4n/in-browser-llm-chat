@@ -106,11 +106,8 @@ interface WorkflowNode {
 
 interface WorkflowEdge {
   from: string;
-  to: string;
-  condition?: {
-    type: "on_tool_call" | "on_tool_result" | "on_consensus" | "on_no_consensus";
-    targetNode: string;
-  };
+  to: string; // The destination node
+  condition?: "on_tool_call" | "on_tool_result" | "on_consensus" | "on_no_consensus";
 }
 ```
 
@@ -168,6 +165,7 @@ The `ask_questions` tool is defined as:
   - The debaters themselves must call a `declare_consensus` tool when they agree, which terminates the loop.
   - The workflow configuration must support forcing a minimum of X rounds of loop before the `declare_consensus` tool is given to the debaters (X can be set to 0 to disable this forced loop).
   - General Loop Control Panel: Any workflow with loops (including the debate workflow) should render a control card in the UI showing the current round, number of turns, and estimated cost, with buttons to Pause, Resume, or Force Consensus / Summarize early. On mobile viewports, the panel collapses into a compact, sticky bottom bar (or overlay) showing the round count and estimated cost, where a single tap opens a full-screen control overlay detailing all stats and controls.
+  - Cost and Token Tracking Details: Each LLM request response stores usage statistics (e.g., `prompt_tokens`, `completion_tokens`) inside the message's `metadata` field under `metadata.usage`. The LangGraph runner updates the `loopControl.estimatedCost` context property in real-time by summing up the usage statistics from new messages generated during the current execution run.
 
 ### 6. System Message Injection Details
 
@@ -200,7 +198,7 @@ The application layout is built using the Carbon Design System (`@carbon/react`)
 - **Chat Header**:
   - Displays the active thread's title.
   - Displays the active preset and active workflow.
-  - **Preview API Payload Button**: Clicking it opens a Modal showing the exact JSON structure of messages (including injected system messages) that would be sent to the LLM API next. Injected messages are highlighted with a distinct background/border and marked with an `[INJECTED]` badge to assist debugging.
+  - **Preview API Payload Button**: Clicking it opens a Modal showing the exact JSON structure of messages (including injected system messages) that would be sent to the LLM API next. Injected messages are highlighted with a distinct background/border and marked with an `[INJECTED]` badge to assist debugging. Since a workflow may contain multiple agents, the modal includes a dropdown selector showing all agents in the current workflow (defaulting to the next scheduled agent based on the graph's execution checkpoint) so the user can inspect the preview payload for any specific agent.
 - **Loop Control Panel (Sticky)**:
   - **Desktop**: Rendered as a sticky control bar at the top of the chat area.
   - **Mobile**: Collapses into a compact floating action button (FAB) or thin top status bar to save vertical space; tapping it opens a modal overlay with the detailed turn counters and control actions.
@@ -297,12 +295,19 @@ stateDiagram-v2
 
             error --> inactive : DISMISS_ERROR
 
-            executing --> inactive : ROUTE_CHANGED [New thread is inactive]
-            executing --> awaitingHumanInput : ROUTE_CHANGED [New thread is interrupted]
-            awaitingHumanInput --> inactive : ROUTE_CHANGED [New thread is inactive]
-            awaitingHumanInput --> awaitingHumanInput : ROUTE_CHANGED [New thread is interrupted]
-            inactive --> awaitingHumanInput : ROUTE_CHANGED [New thread is interrupted]
-            error --> inactive : ROUTE_CHANGED
+            %% Route Change handling via asynchronous checking state
+            inactive --> checkingStatus : ROUTE_CHANGED
+            executing --> checkingStatus : ROUTE_CHANGED [Pause current actor]
+            awaitingHumanInput --> checkingStatus : ROUTE_CHANGED
+            error --> checkingStatus : ROUTE_CHANGED
+
+            state checkingStatus {
+                [*] --> queryingDB
+                queryingDB --> resolveState : DB_RESULT
+            }
+            checkingStatus --> inactive : RESOLVE_INACTIVE
+            checkingStatus --> awaitingHumanInput : RESOLVE_INTERRUPTED
+            checkingStatus --> executing : RESOLVE_RUNNING [If background execution is active]
         }
     }
 ```
@@ -344,11 +349,12 @@ The state machine context maintains the following variables:
 - **`error`**: Displays error information if an API request or state transition fails.
 
 _Transition on Route Changes_:
-When a `ROUTE_CHANGED` event is received in the parallel regions, the `ExecutionState` transitions to align with the new thread's execution status:
+When a `ROUTE_CHANGED` event is received in the parallel regions, the `ExecutionState` first transitions to a transient `checkingStatus` state. This state queries IndexedDB asynchronously to load the new thread's execution checkpoint and active background state:
 
-- If the new thread's database checkpoints indicate a pending interrupt/approval, the state transitions/remains in `awaitingHumanInput`.
-- Otherwise, the state transitions to `inactive`.
-- Any active execution or actor running for the previous thread is stopped/paused as a transition action.
+- If the database indicates the new thread has a pending interrupt or approval, the machine transitions to `awaitingHumanInput`.
+- If background execution is supported and the thread has an active background execution running, it transitions to `executing` and resumes/spawns the runner actor.
+- Otherwise, it transitions to `inactive`.
+- Any active runner actor executing for the previous thread is paused/suspended as an exit action of the previous state or entry action of `checkingStatus`.
 
 ### 3. Resolved State Machine Design Decisions
 
@@ -399,6 +405,30 @@ The Loop Control Panel tracks estimated token usage and turn counts during workf
 #### Question: Default Presets Seeding for First-Time Users
 
 When a new user loads the application for the first time, they will not have any presets or API keys in the database. When they configure their first API key(s) in Global Settings, should the application automatically seed a set of default presets (e.g., "Default Gemini" using `gemini-2.5-flash`, "Default OpenRouter" using `google/gemini-2.5-flash` or similar) so they can start chatting immediately?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: LangGraph Checkpoint Cleanup and Size Management
+
+As users run various agents and workflows, LangGraph creates checkpoints for each state step and persists them in IndexedDB. Over time, these checkpoints can grow significantly in size. Should we implement an automatic cleanup policy (e.g., keeping only the last X checkpoints or cleaning up checkpoints when a thread is deleted/completed), or should we keep all checkpoints indefinitely to allow full historical navigation?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Custom User-Defined JavaScript Tools
+
+Database-modifying actions trigger inline approval cards. However, how should we handle tool execution customizability? Can users define custom JavaScript tools directly in their custom workflow JSON schemas, or are they limited to the built-in system tools (such as `ask_questions` and preset database updates)? If custom tools are permitted, should they run inside a sandboxed environment to prevent security/malicious code risks?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Debating Agent Context Window and Memory Management
+
+In a debate workflow loop, two agents debate potentially infinitely. As the conversation progresses, the message history grows and may exceed the model's token limits or increase API call costs. Should the orchestration graph support a memory-pruning or summary-sliding-window mechanism for agent nodes, or should they always receive the full history?
 
 ##### Response
 
