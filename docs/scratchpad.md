@@ -52,6 +52,7 @@ Fill in anything missing.
   - When opening a new chat thread, the thread selects the default preset as the initial preset. The selected preset ID is saved per thread in the database.
   - When switching back to an old thread: if the saved preset is still available, it is used; otherwise, it falls back to the default preset.
   - Onboarding and First-Time User Experience: Guides users on first load if no presets or API keys exist. See the [Global Settings View](#5-global-settings-view) in the UI Specification for warning banner details. When the user configures and saves their API keys for the first time, the application automatically seeds a set of default presets ("Default Gemini Flash" using `gemini-2.5-flash` and "Default OpenRouter Flash" using `google/gemini-2.5-flash`) into the database.
+  - _Safety Rules_: The user cannot delete the default LLM preset. Deleting a custom preset that is currently set as the active preset for any threads or referenced in any workflow node definitions is blocked, and the UI displays an inline notification listing the referencing threads or workflows.
 - Thread management CRUD
   - Current thread ID is synced with the URL so refreshing leads to the same thread.
   - Thread-level presets are strictly inherited from the selected preset. The active preset is displayed as a dropdown trigger in the Chat Header, allowing quick switching. A configure icon next to it allows editing the preset in a modal panel. If a built-in preset is edited, the UI prompts the user to "Clone and Customize" to create a new custom preset copy.
@@ -65,7 +66,12 @@ Fill in anything missing.
 - Render tool call message and tool result message (collapsed by default).
   - There should be a built-in "ask_questions" tool which LLM can invoke to render a specific form directly in the chat feed to let users answer questions with check-boxes and comments.
   - There should be built-in tools for creating/updating custom workflows interactively via LLM chat. Any database-modifying tools (like custom workflow creation) require explicit user confirmation via an inline approval card.
-- Manual history edit and branching: Allow editing/deleting any message in history, inserting new messages with selectable roles (prefill), and branching threads. Editing or deleting a message in-place in a thread's history truncates the message history at that point (deleting all messages in that thread where `sequence > editedMessage.sequence`). It also deletes all subsequent checkpoints (specifically, checkpoints in the `checkpoints` and `checkpoint_writes` stores for that thread that were created after the checkpoint associated with the edited message, based on checkpoint creation timestamps or parent-child lineage traversal), to keep LangGraph's internal state synchronized with the message feed. Following any truncation, edit, or branching, the cumulative token statistics for the affected thread(s) are recalculated by summing the usage metadata of their remaining messages, and the thread record is updated in IndexedDB.
+- Manual history edit and branching: Allow editing/deleting any message in history, inserting new messages with selectable roles (prefill), and branching threads. Editing or deleting a message (say, message M at sequence `idx`) in-place in a thread's history truncates the history and rolls back the LangGraph state using these steps:
+  1. Identify the checkpoint associated with the message immediately preceding the edited/deleted message (i.e. message M-1's `checkpointId` and `checkpointNs`). If editing the first message, there is no preceding checkpoint, so the latest checkpoint is set to null.
+  2. Set the thread's `latestCheckpointId` and `latestCheckpointNs` to those of the preceding checkpoint.
+  3. Delete all checkpoints and checkpoint writes whose creation timestamp is greater than the preceding checkpoint's creation timestamp, or that descend from it in parent-child lineage traversal.
+  4. Truncate the message history by deleting all messages in that thread where `sequence >= idx` (for deletion) or `sequence > idx` (for inline editing).
+     Following any truncation, edit, or branching, the cumulative token statistics for the affected thread(s) are recalculated by summing the usage metadata of their remaining messages, and the thread record is updated in IndexedDB.
 - API Payload Preview: Allow inspecting the exact payload sent to the LLM API (including injected system messages).
 - _Note_: See the [Main Chat Interface](#2-main-chat-interface) section in the UI Specification for the exact layout and component details for all the above elements.
 
@@ -91,7 +97,17 @@ We propose using the following stores in the `in-browser-llm-chat-db` database:
 - **`messages`**: Individual messages in threads.
   - Key: `id` (UUID)
   - Fields: `threadId` (indexed for query performance), `sequence` (integer index within thread for deterministic sorting and truncation), `role` (`"system" | "user" | "assistant" | "tool"`), `content`, `type` (`"text" | "reasoning" | "tool_call" | "tool_result"`), `toolCallId` (optional), `name` (agent/tool name), `createdAt`, `metadata` (reasoning tokens, raw response, etc.), `checkpointId` (null or string), `checkpointNs` (null or string)
-  - _Message Compilation for LLM APIs_: To ensure compatibility with LLM API providers that require strictly alternating user/assistant message roles, consecutive assistant-role messages in the database (such as separate reasoning, text, or tool_call entries belonging to the same turn) must be merged into a single logical `AIMessage` with appropriate fields (combining text/reasoning contents and populating the `tool_calls` list) prior to sending the payload to the LLM API. For consecutive assistant messages from _different_ agents (e.g., in a debate loop without user messages in between), the compiler must format the history such that when calling the active agent's LLM, all messages from other agents are mapped to the `user` role (with their `name` field populated or prefixed in the message content, e.g. `[Agent Name]: message content`), while only the active agent's own previous messages are kept as `assistant` role. This maintains strictly alternating user/assistant roles (or user/assistant/user/assistant) and ensures compatibility with strict API providers (like Gemini or Anthropic via OpenRouter) without losing the distinct identities of the debating agents.
+  - _Message Compilation for LLM APIs_: To ensure compatibility with strict LLM API providers (like Gemini, Anthropic, or OpenRouter) that enforce strictly alternating user/assistant message roles and forbid consecutive messages of the same role, the compiler compiles the history for any given active agent node's LLM call using these rules:
+    1. **Identify the Active Agent**: Identify the specific agent node making the LLM call.
+    2. **Assign Roles**:
+       - The active agent's own previous messages are kept as `assistant` role.
+       - The active agent's own tool calls/results are kept in their native roles (`assistant` for tool calls, `tool` for results) and kept in sequence.
+       - All other messages (actual user messages, other agents' messages, and other agents' tool calls/results) are mapped to the `user` role.
+    3. **Prefix Non-User Messages**: For messages mapped to the `user` role that did not originate from the human user, prefix the content with the sender's name/identifier (e.g., `[Agent Name]: ...` or `[Tool Name Result]: ...`).
+    4. **Merge Consecutive Messages of the Same Role**:
+       - Consecutive `user` messages (including actual user messages and mapped-to-user messages) are merged into a single logical `user` message, concatenating their content with double newlines.
+       - Consecutive `assistant` messages from the active agent (e.g. separate reasoning, text, or tool_call entries) are merged into a single logical `assistant` message, combining text/reasoning contents and populating the `tool_calls` array.
+         This maintains strictly alternating user/assistant roles (or user/assistant/user/assistant) and ensures compatibility with strict API providers without losing the distinct identities of the debating agents.
 - **`checkpoints`**: LangGraph checkpointer state to enable resuming active graph execution and supporting history rewinding/branching.
   - Key: `[threadId, checkpointNs, checkpointId]` (compound key)
   - Indices: `threadId` (indexed to support cascading cleanup on thread deletion)
@@ -421,7 +437,9 @@ The application layout is built using the Carbon Design System (`@carbon/react`)
   - A main auto-resizing text input area.
   - **Role Selector Dropdown**: Next to the text input (defaulting to "User"), allowing the user to select "Assistant" or "System" to manually insert/prefill messages at the end of the history.
   - Send button.
-  - **Input Blocking**: The main chat input field is blocked/disabled while the workflow is waiting for tool answers (e.g. from `ask_questions` interrupts) or manual approval, since typing a normal chat message would violate the graph execution state. All form controls are sized with a minimum of 44x44px touch targets.
+  - **Input Blocking**: The main chat input field is blocked/disabled while the workflow is executing, waiting for tool answers (e.g. from `ask_questions` interrupts), waiting for manual approval, or paused/inactive, unless the graph is explicitly interrupted at an `input` node (or the thread is brand new and has not yet started execution). This prevents users from entering arbitrary messages that violate the graph state. All form controls are sized with a minimum of 44x44px touch targets.
+- **New Chat Selection Panel**:
+  - When no thread is active (i.e. the `ViewState` is in `idle`), the main content area displays a "New Chat" panel. This panel includes a dropdown selector to choose a Workflow (defaulting to the standard 1-agent workflow), a dropdown selector to choose a Preset (defaulting to the global default preset), and a text input for the initial message/topic. Submitting this form creates a new thread in IndexedDB with a copy of the selected workflow in `workflowSnapshot`, updates the URL to sync with the new thread ID, and initiates the execution.
 
 ### 3. Workflow Management CRUD View
 
@@ -442,7 +460,7 @@ The application layout is built using the Carbon Design System (`@carbon/react`)
 ### 5. Global Settings View
 
 - **Global Config Form**:
-  - **API Keys & Security Section**: Password-masked input fields (masked by default with a show/hide toggle button) for OpenRouter and Gemini API keys. Includes a checkbox to enable optional master-password encryption for storage (requiring the user to input a master password decrypted in-memory per session; note that reloading the page clears the in-memory password, requiring the user to re-enter it to unlock settings and resume execution) and visual status indicators (spinner, green check for valid, red cross for invalid) that asynchronously perform lightweight validation requests immediately on-save.
+  - **API Keys & Security Section**: Password-masked input fields (masked by default with a show/hide toggle button) for OpenRouter and Gemini API keys. Includes a checkbox to enable optional master-password encryption for storage (requiring the user to input a master password decrypted in-memory per session; note that reloading the page clears the in-memory password, requiring the user to re-enter it to unlock settings and resume execution) and visual status indicators (spinner, green check for valid, red cross for invalid) that asynchronously perform lightweight validation requests immediately on-save. When master-password encryption is toggled on/off, all API keys (both global keys in `settings` and any preset-specific `apiKey` overrides in the `presets` store) are encrypted or decrypted in a single batched database transaction.
   - **Network & Proxy Section**: Global input field for configuring an optional custom CORS proxy URL and custom request headers.
   - **Theme Override Selector**: Selector for manually forcing Light/Dark mode.
   - **Injected System Messages Section**: Global UI list configuration for system messages that apply to all workflows.
@@ -468,8 +486,8 @@ stateDiagram-v2
 
             onboarding --> globalSettings : OPEN_SETTINGS
             globalSettings --> onboarding : CLOSE_SETTINGS [Still No Keys]
-            globalSettings --> idle : CLOSE_SETTINGS [Keys Configured, No Active Thread]
-            globalSettings --> chatting : CLOSE_SETTINGS [Keys Configured, Active Thread]
+            globalSettings --> idle : CLOSE_SETTINGS [Keys Configured, No Active Thread] / API_KEYS_CONFIGURED [No Active Thread]
+            globalSettings --> chatting : CLOSE_SETTINGS [Keys Configured, Active Thread] / API_KEYS_CONFIGURED [Active Thread]
 
             idle --> chatting : ROUTE_CHANGED [Thread Selected]
             idle --> presetConfig : OPEN_PRESET_EDIT
@@ -527,7 +545,7 @@ stateDiagram-v2
             error --> inactive : DISMISS_ERROR
 
             %% Route Change & Initial Checkpoint Loading
-            inactive --> checkingStatus : ROUTE_CHANGED [apiKeysConfigured] / INITIALIZE_CHECKPOINT [apiKeysConfigured]
+            inactive --> checkingStatus : ROUTE_CHANGED [apiKeysConfigured] / INITIALIZE_CHECKPOINT [apiKeysConfigured] / API_KEYS_CONFIGURED
             executing --> checkingStatus : ROUTE_CHANGED [apiKeysConfigured, Pause current actor] / INITIALIZE_CHECKPOINT [apiKeysConfigured]
             awaitingHumanInput --> checkingStatus : ROUTE_CHANGED [apiKeysConfigured] / INITIALIZE_CHECKPOINT [apiKeysConfigured]
             error --> checkingStatus : ROUTE_CHANGED [apiKeysConfigured] / INITIALIZE_CHECKPOINT [apiKeysConfigured]
@@ -588,6 +606,7 @@ When a `ROUTE_CHANGED` or `INITIALIZE_CHECKPOINT` event is received, the machine
   - Otherwise, it receives `DB_CHECK_INACTIVE` and transitions to `inactive`.
 - If the query fails, the machine receives `DB_CHECK_ERROR` and transitions to `error` (setting `errorMessage` in the context).
 - To prevent resource runaway, any active runner actor executing for a previous thread is paused/suspended as an exit action of the previous state or entry action of `checkingStatus` (the actor completes its current execution step, persists the checkpoint, and terminates).
+- When `API_KEYS_CONFIGURED` is received (e.g., when the user saves keys in the settings panel), the machine updates the `apiKeysConfigured` context flag to `true` and, in the `ExecutionState` region, transitions from `inactive` to `checkingStatus` to load the current thread's state, enabling execution. Conversely, if `API_KEYS_REMOVED` is dispatched, `apiKeysConfigured` is set to `false`, and execution transitions to `inactive` while the `ViewState` transitions to `onboarding`.
 
 In parallel, in `ViewState`, to prevent the UI from becoming stuck in configuration views when a user navigates via the thread list or URL directly, the `presetConfig`, `workflowConfig`, and `globalSettings` states handle `ROUTE_CHANGED` events by transitioning to `chatting` (if a thread is selected) or `idle` (if no thread is selected), discarding any unsaved edits. If API keys are not configured, `globalSettings` transitions to `onboarding` upon `ROUTE_CHANGED`.
 
@@ -631,11 +650,35 @@ When branching a thread, copying all historical checkpoints and checkpoint write
 
 ##### Response
 
-[UNRESOLVED]
+We will eagerly copy checkpoints and checkpoint writes in a single batched IndexedDB transaction during the branching process. This maintains absolute thread isolation, meaning parent threads can be safely deleted or modified without affecting the branched thread, and avoids the significant architectural complexity of traversing historical thread lineages to retrieve checkpoints lazily.
 
 #### Question: Support for User-Defined Custom Tools
 
 Currently, workflows support a fixed set of built-in tools (e.g., `ask_questions`, custom workflow editor tools). Should we support user-defined custom tools (e.g., allowing users to write custom JS/TS tool code executed in a sandboxed Web Worker/iframe), or should tools remain strictly built-in to avoid security risks and execution complexity?
+
+##### Response
+
+For the initial release, custom tools will remain strictly built-in to keep execution simple, secure, and performant without the overhead of sandboxed Web Workers or iframes. Users can configure custom workflows by composing existing built-in tools (such as the `ask_questions` tool or future generic HTTP/API calling tools) within their graph definitions.
+
+#### Question: Message Pruning and LangGraph Checkpoint Consistency
+
+When `maxHistoryMessages` is reached, how should the message history be pruned? If we delete older messages from the `messages` array in the `GraphState` to stay within the limit, does this break the checkpointer's ability to rewind to earlier steps where those messages still existed? Should we prune messages only when compiling the payload for the LLM API call (leaving the database and checkpoint history complete), or should we prune them directly from the database and graph state to save IndexedDB storage?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Handling of Active Preset Deletion
+
+When a user deletes a custom LLM preset, how should we handle threads and workflow nodes that reference it? Should deletion be strictly blocked (similar to custom workflows), or should we allow deletion and automatically fall back to the default preset for affected threads and nodes? If we block it, should the UI display a list of all affected threads and workflows?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Multi-Select Tool Output Formatting
+
+When the `ask_questions` tool returns multi-select answers, how should the answers be formatted for subsequent LLM consumption? Should they be passed as a raw JSON array, or should they be formatted as a human-readable list (e.g. 'Question: X, Selected: Y, Z') to make it easier for subsequent agent nodes to reason about them without parsing JSON?
 
 ##### Response
 
