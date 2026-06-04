@@ -86,6 +86,9 @@ We propose using the following stores in the `in-browser-llm-chat-db` database:
 - **`messages`**: Individual messages in threads.
   - Key: `id` (UUID)
   - Fields: `threadId`, `role` (`"system" | "user" | "assistant" | "tool"`), `content`, `type` (`"text" | "reasoning" | "tool_call" | "tool_result"`), `toolCallId` (optional), `name` (agent/tool name), `createdAt`, `metadata` (reasoning tokens, raw response, etc.)
+- **`checkpoints`**: LangGraph checkpointer state to enable resuming active graph execution across page reloads.
+  - Key: `threadId` (UUID)
+  - Fields: LangGraph checkpoint state objects (checkpoints, metadata, writes).
 
 ### 2. Custom Workflow JSON Serialization
 
@@ -111,7 +114,13 @@ interface WorkflowEdge {
 }
 ```
 
-During runtime, a factory function converts this JSON schema into a compiled `@langchain/langgraph` `StateGraph`.
+During runtime, a factory function converts this JSON schema into a compiled `@langchain/langgraph` `StateGraph`. The factory maps each `WorkflowNode` type to its concrete execution behavior:
+
+- **`agent`**: Invokes the LLM specified by `presetId` (or the default preset) using the `systemPrompt`, passing the thread's message history. It binds the tools specified in the `tools` array.
+- **`input`**: Execution is interrupted/paused, waiting for a user message (uses a LangGraph interrupt).
+- **`tool`**: Executes tool calls returned by agent nodes (e.g. `ask_questions`, `declare_consensus`, or other custom database tools) and generates the corresponding `tool` messages.
+- **`consensus_check`**: Runs an LLM node or rule-based evaluator to analyze the message history and determine if consensus is reached, routing the graph outcome to the next state based on the consensus evaluation.
+- **`summary`**: Runs a specialized LLM node to summarize the chat history up to the current point.
 
 ### 3. XState Application States
 
@@ -167,6 +176,7 @@ The `ask_questions` tool is defined as:
   - Depth `0`: Prepend to the very beginning of the messages list.
   - Depth `N` (positive): Insert after the N-th message.
   - Depth `-N` (negative): Insert N messages from the end of the history.
+  - _Note_: If the active message history length is less than the calculated injection index, the insertion index is clamped to the range of valid indices: `Math.max(0, Math.min(messages.length, targetIndex))`.
 - When sending context to the LLM API, these messages are inserted on-the-fly but are **never** persisted to the IndexedDB `messages` store for that thread. They are invisible in the main chat feed, and can only be viewed/previewed within a "Preview API Payload" overlay or in the workflow settings panel.
 
 ## User Interface (UI) Specification
@@ -216,8 +226,7 @@ The application layout is built using the Carbon Design System (`@carbon/react`)
 - **Workflow JSON Editor Pane**:
   - Text-based JSON editor containing a `TextArea` displaying the JSON content.
   - **Mobile**: Rendered as a simple `TextArea` with word-wrap and scrolling, relying on the native mobile keyboard (no helper keyboard bar or custom virtual buttons).
-  - Validation error helper text displayed directly under the text area when the JSON is invalid.
-  - Validation: Edited via a basic `TextArea` that only validates the schema when the user clicks "Save", displaying validation errors in a modal dialog.
+  - Validation: Performed when the user clicks "Save" (or dynamically as they type, debounced). If invalid, helper text describing the schema validation errors is displayed directly under the `TextArea`, and the "Save" button is disabled. No modal dialog validation interrupts should be used.
 
 ### 4. LLM Preset CRUD View
 
@@ -228,7 +237,7 @@ The application layout is built using the Carbon Design System (`@carbon/react`)
 ### 5. Global Settings View
 
 - **Global Config Form**:
-  - **API Keys Section**: plain text input fields for OpenRouter and Gemini API keys (stored in IndexedDB).
+  - **API Keys Section**: Password-masked input fields (masked by default with a show/hide toggle button) for OpenRouter and Gemini API keys (stored in IndexedDB).
   - **Theme Override Selector**: Selector for manually forcing Light/Dark mode.
   - **Injected System Messages Section**: Global UI list configuration for system messages that apply to all workflows.
 - **Onboarding / Warning Banner**:
@@ -287,6 +296,13 @@ stateDiagram-v2
             awaitingHumanInput --> inactive : CANCEL_EXECUTION
 
             error --> inactive : DISMISS_ERROR
+
+            executing --> inactive : ROUTE_CHANGED [New thread is inactive]
+            executing --> awaitingHumanInput : ROUTE_CHANGED [New thread is interrupted]
+            awaitingHumanInput --> inactive : ROUTE_CHANGED [New thread is inactive]
+            awaitingHumanInput --> awaitingHumanInput : ROUTE_CHANGED [New thread is interrupted]
+            inactive --> awaitingHumanInput : ROUTE_CHANGED [New thread is interrupted]
+            error --> inactive : ROUTE_CHANGED
         }
     }
 ```
@@ -327,6 +343,13 @@ The state machine context maintains the following variables:
 - **`awaitingHumanInput`**: Graph execution is suspended (either due to a manual approval card or an `ask_questions` tool interrupt).
 - **`error`**: Displays error information if an API request or state transition fails.
 
+_Transition on Route Changes_:
+When a `ROUTE_CHANGED` event is received in the parallel regions, the `ExecutionState` transitions to align with the new thread's execution status:
+
+- If the new thread's database checkpoints indicate a pending interrupt/approval, the state transitions/remains in `awaitingHumanInput`.
+- Otherwise, the state transitions to `inactive`.
+- Any active execution or actor running for the previous thread is stopped/paused as a transition action.
+
 ### 3. Resolved State Machine Design Decisions
 
 - **Navigation during active graph execution**: Resolved using XState **parallel states** (separate `ViewState` and `ExecutionState` regions). Users can navigate away to edit presets, customize workflows, or adjust global settings while a LangGraph run continues executing in the background. If the user switches the active thread (via a route change), the state machine executes an action to pause/suspend the child actor running for the previous thread, preventing resource and API cost runaway.
@@ -357,4 +380,26 @@ The human user will replace the `[UNRESOLVED]` tag with their response. The huma
 
 ### Current open questions:
 
-No open questions currently.
+#### Question: Background Multi-Thread Execution vs. Active-Only Execution
+
+Should the application support executing multiple LangGraph workflows in the background simultaneously (e.g. running a debate in Thread A while chatting with another agent in Thread B), or should it only support execution on the active thread (pausing/suspending background runs when switching threads)?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Token Usage and Cost Tracking Persistence
+
+The Loop Control Panel tracks estimated token usage and turn counts during workflow runs. Where should these stats be persisted? We propose adding a `stats` field (e.g. `{ totalTokens: number, totalTurns: number }`) to the `threads` database store so the historical usage remains visible on thread reload. Alternatively, these stats could be transient and only computed/displayed for the active run.
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Default Presets Seeding for First-Time Users
+
+When a new user loads the application for the first time, they will not have any presets or API keys in the database. When they configure their first API key(s) in Global Settings, should the application automatically seed a set of default presets (e.g., "Default Gemini" using `gemini-2.5-flash`, "Default OpenRouter" using `google/gemini-2.5-flash` or similar) so they can start chatting immediately?
+
+##### Response
+
+[UNRESOLVED]
