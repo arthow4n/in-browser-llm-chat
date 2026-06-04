@@ -82,10 +82,11 @@ We propose using the following stores in the `in-browser-llm-chat-db` database:
   - Fields: `name`, `description`, `isBuiltIn` (boolean), `nodes` (Array of node definitions), `edges` (Array of transition definitions)
 - **`threads`**: Chat sessions.
   - Key: `id` (UUID)
-  - Fields: `title`, `workflowId`, `activePresetId`, `createdAt`, `updatedAt`, `parentThreadId` (null or parent UUID for branched threads), `parentMessageId` (null or parent message UUID at which branching occurred)
+  - Fields: `title`, `workflowId`, `activePresetId`, `createdAt`, `updatedAt`, `parentThreadId` (null or parent UUID for branched threads), `parentMessageId` (null or parent message UUID at which branching occurred), `status` (`"idle" | "executing" | "awaiting_input" | "error"`), `errorMessage` (null or string), `latestCheckpointId` (null or string), `latestCheckpointNs` (null or string)
+  - _Branching Behavior_: When branching a thread, the messages from the parent thread up to and including the `parentMessageId` are copied (cloned) to the new thread in the `messages` store under the new thread's ID. Subsequent checkpoints are not copied; instead, the new thread compiles its initial state from the checkpoint associated with the `parentMessageId` (using the same checkpoint ID and namespace, but saved under the new thread's ID).
 - **`messages`**: Individual messages in threads.
   - Key: `id` (UUID)
-  - Fields: `threadId` (indexed for query performance), `role` (`"system" | "user" | "assistant" | "tool"`), `content`, `type` (`"text" | "reasoning" | "tool_call" | "tool_result"`), `toolCallId` (optional), `name` (agent/tool name), `createdAt`, `metadata` (reasoning tokens, raw response, etc.)
+  - Fields: `threadId` (indexed for query performance), `role` (`"system" | "user" | "assistant" | "tool"`), `content`, `type` (`"text" | "reasoning" | "tool_call" | "tool_result"`), `toolCallId` (optional), `name` (agent/tool name), `createdAt`, `metadata` (reasoning tokens, raw response, etc.), `checkpointId` (null or string), `checkpointNs` (null or string)
 - **`checkpoints`**: LangGraph checkpointer state to enable resuming active graph execution and supporting history rewinding/branching.
   - Key: `[threadId, checkpointNs, checkpointId]` (compound key)
   - Fields: LangGraph checkpoint state objects (checkpoint data, metadata, parent checkpoint ID).
@@ -113,6 +114,14 @@ interface WorkflowEdge {
   to: string; // The destination node
   condition?: "on_tool_call" | "on_tool_result" | "on_consensus" | "on_no_consensus";
 }
+
+interface GraphState {
+  messages: any[]; // message history reducer to append/update messages
+  lastAgentId: string | null; // records the ID of the agent node executed last (resolves routing back after tool runs)
+  consensusReached: boolean; // boolean flag populated by consensus_check nodes for conditional routing
+  turnCount: number; // tracks total steps/messages in execution
+  currentRound: number; // tracks active loop iterations
+}
 ```
 
 During runtime, a factory function converts this JSON schema into a compiled `@langchain/langgraph` `StateGraph`. The factory maps each `WorkflowNode` type to its concrete execution behavior:
@@ -139,6 +148,10 @@ Before a custom workflow is compiled or saved, the editor performs structural va
 2. **Edge Validity**: The `from` and `to` properties of every edge must reference existing node IDs in the `nodes` array.
 3. **Graph Entry Point**: There must be exactly one entry point node (defined either as an `input` node or a node with no incoming edges). If multiple entry nodes or none are found, compilation fails.
 4. **Loop Exit Paths**: Any loop/cycle in the graph must contain at least one conditional routing node (such as a `consensus_check` node or an `agent` node with tool capabilities) that can branch out of the loop, preventing compile-time or run-time infinite loop errors.
+
+#### Dynamic Prompt Placeholders
+
+To allow workflows to adapt to different user requests, system prompts in `WorkflowNode` definitions support dynamic placeholders (e.g. `{{user_input}}` or `{{topic}}`). The LangGraph runner compiles the workflow by replacing `{{user_input}}` with the content of the thread's first message, and `{{topic}}` with the debate topic or thread title. This enables creating re-usable, dynamic multi-agent workflows.
 
 ### 3. XState Application States
 
@@ -196,6 +209,7 @@ The `ask_questions` tool is defined as:
   - **Loop Round & Turn Tracking**: `turnCount` is defined as the total number of agent execution steps (nodes executed or messages generated) during the active run. `currentRound` tracks loop iterations and is incremented each time execution transitions back to a designated loop header node (e.g. `Debater_A` in the debate workflow). The workflow JSON schema supports designating a node as the `loopHeader` to identify where a round boundary is.
   - **Step-by-Step Execution and Pausing**: Pausing a loop is implemented using LangGraph's step-by-step streaming capability. The graph runner consumes the stream generator step-by-step. When "Pause" is clicked or the thread is switched, the runner stops pulling from the generator, aborts any active streaming LLM connection using an `AbortController` (to save costs and prevent orphaned calls), persists the current checkpoint, and transitions the state machine to `awaitingHumanInput` or `inactive`.
   - **Cost and Token Tracking Details**: Each LLM request response stores usage statistics (e.g., `prompt_tokens`, `completion_tokens`) inside the message's `metadata` field under `metadata.usage`. The LangGraph runner updates the `loopControl.tokenStats` context property in real-time by summing up the usage statistics from new messages generated during the current execution run, tracking both `promptTokens` and `completionTokens` separately.
+  - **Streaming Buffer & Performance**: To prevent performance bottlenecks during real-time streaming, text tokens and reasoning tokens are buffered within the `graphRunnerActor`'s local state and sent to the parent machine's context via throttled events (e.g., every 100ms) for UI display. The cumulative stream content is only written to the IndexedDB `messages` store upon completion of the active node execution step, rather than on every individual token received. This prevents excessive database write transactions and UI re-renders.
 
 ### 6. System Message Injection Details
 
@@ -532,6 +546,38 @@ When editing or deleting a message in the middle of a thread's history, the curr
 #### Question: CORS Proxies for Client-Side-Only API Calls
 
 The application is a client-side-only app deployed to GitHub Pages, executing direct browser-based API calls. While Gemini and OpenRouter support CORS out of the box, other LLM providers (or self-hosted local backends like Ollama/Llama.cpp) may have strict CORS policies that block browser requests. Should the preset configuration and settings page support configuring a custom CORS proxy URL or custom request headers, or should the app strictly support CORS-friendly providers?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Plain-text vs Encrypted API Key Storage in IndexedDB
+
+While IndexedDB is sandboxed to the origin, browser extensions or client-side scripting vulnerabilities (XSS) could theoretically expose stored plain-text keys. Should the application support encrypting API keys with a user-provided master password (using Web Crypto API PBKDF2/AES-GCM), or is plain-text storage acceptable for a static, client-side personal application?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Message Feed Virtualization for Long Threads
+
+For threads with large histories (e.g., after long debate loops of 100+ turns), rendering full rich-markdown and math formatting on all messages can degrade UI performance. Should we implement virtualized scrolling (only rendering messages currently in the viewport), or is it acceptable to rely on browser performance and standard rendering?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Workflow Import/Export Format and Sharing
+
+To facilitate sharing custom agent orchestrations, should we support file-based export/import (e.g., downloading the workflow definition as a `.json` file) and copy-to-clipboard actions, or is manual copy-pasting from the JSON editor pane sufficient?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Parallel Node Execution and State Merge Policies
+
+In a complex custom workflow, multiple agent nodes might execute in parallel. LangGraph supports parallel execution, but how should the state machine merge parallel updates to the message history? Should it interleave them by timestamp, group them by agent, or prevent parallel nodes in custom JSON workflows entirely to simplify execution?
 
 ##### Response
 
