@@ -12,9 +12,9 @@ This file will be collaboratively updated by the human user and the coding agent
 - XState and `@xstate/react`, all the application and UI states should be fully driven by state machine(s).
 - Carbon Design System `@carbon/react` as is without custom design/styling overrides (no custom glassmorphism, HSL custom palettes, or custom animations). Support switching between dark and light mode, defaulting to the same as system settings. Auto-detect and sync with system color scheme by default. Provide a selector in the header/settings to manually override it to "Light" (Carbon `g10` / `white`) or "Dark" (Carbon `g100` / `g90`), saving this preference as a global setting in IndexedDB.
 - TypeScript: Install package `@typescript/native-preview` instead of package `typescript`.
-- Lint: `oxlint-tsgolint@latest` instead of ESLint
-  - Turn on type awared linting https://oxc.rs/docs/guide/usage/linter/type-aware.html
-  - Turn on React and Vitest plugin https://oxc.rs/docs/guide/usage/linter/plugins.html
+- Lint: `oxlint-tsgolint@latest` instead of ESLint.
+  - Turn on type-aware linting and react/vitest plugins inside `.oxlintrc.json`.
+  - The `package.json` scripts should simply call `oxlint` and `oxlint --fix` without command-line parameter overrides.
 - Formatting: `oxfmt` instead of Prettier.
 - Zod v4 for parsing/validating data.
 - Vite for bundling.
@@ -332,22 +332,6 @@ _Suggested Options:_
 
 - **Option A (Recommended):** The user can fill out any subset, click checkboxes for multi-select, and submit. Any unanswered questions are treated as skipped. If the user clicks "Refuse to Answer", it clears answers and submits a refusal payload with their optional comment.
 - **Option B:** The user must either answer all questions or explicitly click "Refuse to Answer".
-
-##### Response
-
-[UNRESOLVED]
-
-#### Question: Oxlint Type-Aware Linting Configuration
-
-Oxlint type-aware linting (`oxlint-tsgolint`) requires pointing the linter to a `tsconfig.json` to resolve types. How should we configure the `lint` and `lint:fix` commands in `package.json`?
-
-_Suggested Options:_
-
-- **Option A (Recommended):** Update the npm scripts to:
-  - `"lint": "oxlint --tsconfig tsconfig.json --react-plugin --vitest-plugin"`
-  - `"lint:fix": "oxlint --tsconfig tsconfig.json --react-plugin --vitest-plugin --fix"`
-    This ensures that both CLI runs and developer commands benefit from type-aware rules (like checking for unawaited promises).
-- **Option B:** Keep the standard fast lint command as is, and add a separate `"lint:type-aware"` script for deep checks before committing/building.
 
 ##### Response
 

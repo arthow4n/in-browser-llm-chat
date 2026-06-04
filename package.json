@@ -9,8 +9,8 @@
     "build": "tsgo --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsgo --noEmit",
-    "lint": "oxlint --react-plugin --vitest-plugin",
-    "lint:fix": "oxlint --react-plugin --vitest-plugin --fix",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
     "format": "oxfmt --write",
     "format:check": "oxfmt --check",
     "test": "vitest run"
