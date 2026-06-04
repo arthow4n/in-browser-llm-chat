@@ -88,7 +88,7 @@ We propose using the following stores in the `in-browser-llm-chat-db` database:
   - Value: `{ value: any }` or `{ encrypted: true, ciphertext: string, iv: string, salt: string }` when encryption is enabled (e.g. for `"api_keys"`).
 - **`presets`**: LLM configurations.
   - Key: `id` (UUID)
-  - Fields: `name`, `provider` (`"openrouter" | "gemini"`), `model` (string), `apiKey` (if not global, stored as a plain string or an encrypted object `{ encrypted: true, ciphertext: string, iv: string, salt: string }`), `temperature`, `maxTokens`, `reasoningLevel`, `budgetPolicy` (`{ maxStepsWithoutUser: number, maxTokensPerRun: number | null }`), `corsProxy` (null or string)
+  - Fields: `name`, `provider` (`"openrouter" | "gemini"`), `model` (string), `apiKey` (stored as a plain string, or if master-password encryption is enabled/unlocked, stored as an encrypted object `{ encrypted: true, ciphertext: string, iv: string, salt: string }`), `temperature`, `maxTokens`, `reasoningLevel`, `budgetPolicy` (`{ maxStepsWithoutUser: number, maxTokensPerRun: number | null }`), `corsProxy` (null or string)
 - **`workflows`**: Serialized LangGraph definitions.
   - Key: `id` (string/UUID)
   - Fields: `name`, `description`, `isBuiltIn` (boolean), `nodes` (Array of node definitions), `edges` (Array of transition definitions), `injectedSystemMessages` (optional Array of `{ content: string, depth: number }`)
@@ -115,11 +115,26 @@ We propose using the following stores in the `in-browser-llm-chat-db` database:
 - **`checkpoints`**: LangGraph checkpointer state to enable resuming active graph execution and supporting history rewinding/branching.
   - Key: `[threadId, checkpointNs, checkpointId]` (compound key)
   - Indices: `threadId` (indexed to support cascading cleanup on thread deletion)
-  - Fields: LangGraph checkpoint state objects (checkpoint data, metadata, parent checkpoint ID).
+  - Fields:
+    - `threadId`: `string`
+    - `checkpointNs`: `string`
+    - `checkpointId`: `string`
+    - `checkpoint`: `any` (the serialized LangGraph checkpoint state)
+    - `metadata`: `any` (serialized LangGraph checkpoint metadata, e.g. timestamp, step, source)
+    - `parentCheckpointId`: `string | null` (referenced parent checkpoint ID for lineage)
+    - `createdAt`: `number` (timestamp for sorting and rollbacks)
 - **`checkpoint_writes`**: Stores intermediate writes for LangGraph tasks.
   - Key: `[threadId, checkpointNs, checkpointId, taskId, idx]` (compound key)
   - Indices: `threadId` (indexed to support cascading cleanup on thread deletion)
-  - Fields: `channel`, `value`
+  - Fields:
+    - `threadId`: `string`
+    - `checkpointNs`: `string`
+    - `checkpointId`: `string`
+    - `taskId`: `string`
+    - `idx`: `number`
+    - `channel`: `string`
+    - `value`: `any`
+    - `createdAt`: `number`
 
 ### 2. Custom Workflow JSON Serialization
 
@@ -355,21 +370,46 @@ These tools allow LLM agents to interactively create or modify custom workflows 
 
 ### 7. Debate Workflow Execution Details
 
-- **Nodes**:
-  - `Initiator`: Sets the debate topic and seeds the conversation.
-  - `Debater_A` & `Debater_B`: Two agent nodes with conflicting stances or system messages (e.g., Pro vs. Con).
-  - `Consensus_Evaluator`: To ensure deterministic loop routing without ambiguous edges, the compiled debate workflow utilizes two evaluator nodes:
-    - `Consensus_Evaluator_A`: Evaluates consensus after `Debater_A` executes. If consensus is reached (either via tool call or LLM evaluator decision), routes to `Summarizer`. Otherwise (on no consensus), routes to `Debater_B`.
-    - `Consensus_Evaluator_B`: Evaluates consensus after `Debater_B` executes. If consensus is reached, routes to `Summarizer`. Otherwise (on no consensus), routes to `Debater_A`.
-      The consensus evaluator nodes use the thread's active preset (which defaults to the thread-level selected preset) to ensure API key compatibility.
-      The evaluation prompt template instructs the evaluator LLM to analyze the debate history, look for agreement on the core topic, and return a JSON object. The response is parsed as:
-      ```json
-      {
-        "consensusReached": boolean,
-        "reasoning": "Brief explanation of why consensus was or was not reached."
-      }
-      ```
-      The evaluator node reads the `consensusReached` state flag (which is set to `true` when a debater successfully calls the `declare_consensus` tool). Additionally, if the debaters fail to call the tool but the evaluator's LLM determines that consensus has been reached (returning `consensusReached: true`), the evaluator sets `consensusReached` to `true` in the state to terminate the loop. If the maximum loop limit is reached without consensus, the Consensus_Evaluator node sets `consensusReached` to `false` and routes the graph to the Summarizer node, which compiles a summary explicitly noting that consensus was not achieved.
+- **Graph State Variable Initialization**:
+  When starting a new debate thread:
+  - `messages`: Initialized as an empty array (the first user-provided message/topic is appended to the graph state upon start).
+  - `lastAgentId`: Initialized to `null`.
+  - `consensusReached`: Initialized to `false`.
+  - `turnCount`: Initialized to `0`.
+  - `currentRound`: Initialized to `1`.
+
+- **Nodes and Edge Routing Logic**:
+  - `Initiator`:
+    - Receives the initial topic/user input message.
+    - Invokes the active preset's LLM to generate a seeding response (introducing the topic, setting the stage, and formulating the core questions for the debaters).
+    - Appends the generated message to the history.
+    - Sets `lastAgentId` to `"Initiator"`.
+    - Increments `turnCount` by 1.
+    - Routes unconditionally (default fallback edge) to the `Debater_A` node.
+  - `Debater_A` (designated as the `loopHeader` node):
+    - When entered, the graph runner increments `currentRound` by 1 if the execution transitioned from `Consensus_Evaluator_B` (detecting a loop boundary entry).
+    - Invokes the LLM using the `Debater_A` system prompt and message history. The agent can output a response, call `ask_questions`, or call `declare_consensus`.
+    - Appends the response to the history, sets `lastAgentId` to `"Debater_A"`, and increments `turnCount` by 1.
+    - Routes unconditionally (default fallback edge) to `Consensus_Evaluator_A`.
+  - `Debater_B`:
+    - Invokes the LLM using the `Debater_B` system prompt and message history. The agent can output a response, call `ask_questions`, or call `declare_consensus`.
+    - Appends the response to the history, sets `lastAgentId` to `"Debater_B"`, and increments `turnCount` by 1.
+    - Routes unconditionally (default fallback edge) to `Consensus_Evaluator_B`.
+  - `Consensus_Evaluator_A` & `Consensus_Evaluator_B` (Consensus Check Nodes):
+    - Check if the maximum loop limit (`maxLoopLimit`, default 5 rounds) has been reached. If `currentRound >= maxLoopLimit`:
+      - Set `consensusReached` in the graph state to `false`.
+      - Bypasses LLM evaluation to conserve tokens, and routes directly to the `Summarizer` node along the `on_no_consensus` edge (acting as a loop termination override).
+    - Check if `consensusReached` is already `true` (set by a preceding `declare_consensus` tool call). If so:
+      - Bypasses LLM evaluation and routes to the `Summarizer` node along the `on_consensus` edge.
+    - Otherwise, runs an LLM evaluation call (using the active preset and its custom evaluation prompt) to analyze the debate history. If the evaluator LLM returns `{"consensusReached": true}`:
+      - Sets the state's `consensusReached` to `true` and routes to `Summarizer` along the `on_consensus` edge.
+    - If the evaluator LLM returns `{"consensusReached": false}`:
+      - Routes to the opposing debater (`Consensus_Evaluator_A` routes to `Debater_B`, and `Consensus_Evaluator_B` routes to `Debater_A`) along the `on_no_consensus` edge.
+  - `Summarizer`:
+    - Invokes a specialized summarization LLM node to analyze the entire debate history.
+    - Appends the compiled final summary message to the history.
+    - Sets `lastAgentId` to `"Summarizer"`, increments `turnCount` by 1, and terminates the workflow execution (transitions graph status to `"inactive"`).
+
 - **Safety / Cost Control & Loop Controls**:
   - Max loop limit (default: 5 rounds of debate / 10 turns) to prevent infinite loops and runaway API costs.
   - The debaters themselves must call a `declare_consensus` tool when they agree, which terminates the loop.
@@ -389,7 +429,89 @@ These tools allow LLM agents to interactively create or modify custom workflows 
   - **Cost and Token Tracking Details**: Each LLM request response stores usage statistics (e.g., `prompt_tokens`, `completion_tokens`) inside the message's `metadata` field under `metadata.usage`. The LangGraph runner updates the `loopControl.tokenStats` context property in real-time by summing up the usage statistics from new messages generated during the current execution run, tracking both `promptTokens` and `completionTokens` separately, and persists these updated stats to the active thread's record in IndexedDB at the completion of each execution step. The token statistics in `loopControl.tokenStats` are cumulative for the entire thread. When loading a thread, the stats are populated from the thread's persisted `tokenStats` in IndexedDB. During execution, the runner actor updates these stats by adding the tokens consumed in each new step, and the updated cumulative stats are written back to the thread record in IndexedDB. If a thread is truncated or edited (such as when editing/deleting messages or branching), the thread's cumulative tokenStats are dynamically recalculated by summing the token usage in the metadata of all remaining messages in the thread, ensuring the stats remain accurate and synchronized.
   - **Streaming Buffer & Performance**: To prevent performance bottlenecks during real-time streaming, text tokens and reasoning tokens are buffered within the `graphRunnerActor`'s local state and sent to the parent machine's context via throttled events (e.g., every 100ms) for UI display. The cumulative stream content is only written to the IndexedDB `messages` store upon completion of the active node execution step, rather than on every individual token received. This prevents excessive database write transactions and UI re-renders.
 
-### 8. System Message Injection Details
+### 8. LangGraph Runner and Checkpointer Integration Details
+
+To run orchestration graphs directly in the browser, the application integrates `@langchain/langgraph/web` with a custom checkpointer class and a dedicated runner lifecycle.
+
+#### IndexedDB Checkpointer Mapping to LangGraph Saver
+
+A custom checkpointer class extending `@langchain/langgraph`'s `BaseCheckpointSaver` maps LangGraph's internal persistence protocol to the `checkpoints` and `checkpoint_writes` IndexedDB stores.
+
+The checkpointer implements the following core API mapping:
+
+- **`getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined>`**
+  1. Retrieves the `thread_id` and `checkpoint_id` (and optionally `checkpoint_ns`) from the `config.configurable` object.
+  2. If `checkpoint_id` is not specified, it queries the `checkpoints` store to retrieve the latest checkpoint record for the matching `threadId` and `checkpointNs` (sorted by `createdAt` descending).
+  3. If no matching checkpoint is found in IndexedDB, it returns `undefined`, prompting LangGraph to initialize the graph state from scratch.
+  4. Retrieves the checkpoint record using the compound key `[threadId, checkpointNs, checkpointId]`.
+  5. Queries the `checkpoint_writes` store to retrieve all intermediate writes matching `threadId`, `checkpointNs`, and `checkpointId`.
+  6. Maps and returns the retrieved values as a `CheckpointTuple` containing:
+     - `config`: The associated thread configuration.
+     - `checkpoint`: The parsed checkpoint state (containing the `GraphState` variables).
+     - `metadata`: The checkpoint metadata (timestamps, step number, parent links).
+     - `pendingWrites`: Reconstructed write tasks from the retrieved `checkpoint_writes`.
+     - `parentConfig`: A configuration object pointing to the parent checkpoint ID (stored in `metadata.parent_checkpoint_id`).
+
+- **`put(config: RunnableConfig, checkpoint: Checkpoint, metadata: CheckpointMetadata): Promise<RunnableConfig>`**
+  1. Extracts `threadId` and `checkpointNs` from `config.configurable`. Generates or extracts `checkpointId` for the new checkpoint.
+  2. Writes a complete record to the `checkpoints` store in IndexedDB:
+     ```typescript
+     {
+       threadId: string,
+       checkpointNs: string,
+       checkpointId: string,
+       checkpoint: any, // LangGraph state values (messages, consensusReached, etc.)
+       metadata: any,
+       parentCheckpointId: string | null, // extracted from metadata
+       createdAt: number // Date.now()
+     }
+     ```
+  3. Updates the `threads` store record for the corresponding thread, setting `latestCheckpointId` and `latestCheckpointNs` to point to this new checkpoint.
+  4. Returns the updated `RunnableConfig` containing the new `checkpoint_id`.
+
+- **`putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void>`**
+  1. Extracts `threadId`, `checkpointNs`, and `checkpointId` from `config.configurable`.
+  2. For each write in the `writes` array at index `idx`, saves a record to the `checkpoint_writes` store in IndexedDB:
+     ```typescript
+     {
+       threadId: string,
+       checkpointNs: string,
+       checkpointId: string,
+       taskId: string,
+       idx: number,
+       channel: string,
+       value: any,
+       createdAt: number // Date.now()
+     }
+     ```
+
+- **`list(config: RunnableConfig, limit?: number, before?: RunnableConfig): AsyncGenerator<CheckpointTuple>`**
+  1. Extracts `threadId` and `checkpointNs` from `config.configurable`.
+  2. Queries the `checkpoints` store to retrieve all checkpoint records matching the thread and namespace, sorted by `createdAt` descending.
+  3. If `before` is provided (containing a `checkpoint_id`), filters out all checkpoints created at or after the timestamp of that checkpoint.
+  4. Yields a stream of `CheckpointTuple` objects up to the optional `limit`.
+
+#### Rollback and Resubmission Sequence
+
+When a user deletes or edits a message at sequence index `idx`, or branches a thread, the thread's execution checkpoint is rolled back:
+
+1. **Find Target Checkpoint**: Find the database message preceding the target message (i.e. message at sequence `idx - 1`). Extract its stored `checkpointId` and `checkpointNs` fields. If no preceding message exists, the rollback target is `null` (resets the thread to the beginning).
+2. **Truncate Messages Store**: Perform a transaction on the `messages` store to delete all records for the active thread where `sequence >= idx` (for deletions) or `sequence > idx` (for inline editing).
+3. **Purge Descendant Checkpoints**: Query the `checkpoints` store using the `threadId` index. Delete all checkpoints (and matching writes in `checkpoint_writes`) where `createdAt` is strictly greater than the target checkpoint's `createdAt` timestamp.
+4. **Update Thread Reference**: Update the active thread record in the `threads` store:
+   - Set `latestCheckpointId` and `latestCheckpointNs` to those of the target checkpoint (or `null` if resetting to start).
+   - Recalculate the cumulative `tokenStats` by summing up the token usage fields in the `metadata` of all remaining messages in the thread, and update the thread's `tokenStats` record.
+5. **Execution Resumption & Message Appending**:
+   - If the user resubmitted an edited user message:
+     - Save the new message to the `messages` store with `sequence = idx` and with its `checkpointId`/`checkpointNs` set to the target checkpoint's values.
+     - Re-compile the `StateGraph` and initialize the runner config with `{ configurable: { thread_id: threadId, checkpoint_ns: latestCheckpointNs || "", checkpoint_id: latestCheckpointId || undefined } }`.
+     - Prior to starting the graph execution stream, the runner calls `await graph.updateState(config, { messages: [newEditedUserMessage] })` (passing the target config and edited message). This updates the checkpointer state and appends the edited message to the state graph's message history.
+     - Invoke `graph.stream(null, config)` to resume execution. The graph starts from the target checkpoint, incorporates the appended message, and flows to the next scheduled node.
+   - If resuming a paused execution without new user input (e.g. resuming after clicking Resume on a loop control card):
+     - Initialize the runner config with `{ configurable: { thread_id: threadId, checkpoint_ns: latestCheckpointNs || "", checkpoint_id: latestCheckpointId || undefined } }`.
+     - Invoke `graph.stream(null, config)` directly to resume execution from the last persisted checkpoint.
+
+### 9. System Message Injection Details
 
 - System messages to automatically inject are configured per workflow or globally.
 - **Insertion Depth**:
@@ -634,7 +756,7 @@ To support rich user interactions and manage complex local UI lifecycle, several
 
 #### A. Master Password Unlock Modal State Machine
 
-Manages the modal overlay displayed when the user attempts to run a workflow or view/edit keys while the database keys are encrypted and locked.
+Manages the modal overlay displayed when the user attempts to run a workflow, view/edit keys in the Preset Editor or Global Settings while the database keys are encrypted and locked.
 
 - **Context**:
   - `passwordInput`: `string`
@@ -645,7 +767,7 @@ Manages the modal overlay displayed when the user attempts to run a workflow or 
     - `opened.idle`: Waiting for the user to input the master password. Upon entry, both `passwordInput` and `errorMessage` are reset and cleared to avoid state leakage.
     - `opened.deriving`: Deriving the AES-GCM key from the password using PBKDF2 in the Web Crypto API.
     - `opened.decrypting`: Attempting to decrypt the static verification token using the derived key.
-    - `opened.success`: Verification succeeded. The derived key is stored in memory, the modal transitions to `closed`, and the parent machine is notified via `UNLOCK_SUCCESS`.
+    - `opened.success`: Verification succeeded. The derived key is stored in memory, the modal transitions to `closed`, and the parent machine/context is notified via `UNLOCK_SUCCESS`.
     - `opened.error`: Verification failed (incorrect password). Displays an error message inline and remains in the modal.
 - **Transitions / Events**:
   - `TRIGGER_UNLOCK`: Transitions `closed` to `opened.idle`.
@@ -654,7 +776,7 @@ Manages the modal overlay displayed when the user attempts to run a workflow or 
   - `DERIVE_SUCCESS`: Transitions `opened.deriving` to `opened.decrypting`.
   - `DECRYPT_SUCCESS`: Transitions `opened.decrypting` to `opened.success`.
   - `DECRYPT_FAILURE`: Transitions `opened.decrypting` to `opened.error` (updates `errorMessage`).
-  - `CANCEL_UNLOCK`: Transitions any `opened` state to `closed` (sends `CANCEL_UNLOCK` to parent machine, halting execution).
+  - `CANCEL_UNLOCK`: Transitions any `opened` state to `closed` (sends `CANCEL_UNLOCK` to parent machine, halting the action/execution).
 
 #### B. Preset Connection Tester State Machine
 
@@ -945,6 +1067,64 @@ Governs the JSON editor interface used to inspect or build custom agent orchestr
     - If `isDirty` is `true`, transitions to `promptingDiscard`.
   - `CONFIRM_DISCARD`: Transitions to workflow list view.
   - `ABORT_DISCARD`: Transitions back to `editing.dirty`.
+
+#### N. Master Password Setup / Toggle State Machine
+
+Governs toggling master-password encryption on or off in the Global Settings panel.
+
+- **Context**:
+  - `action`: `"enable" | "disable"`
+  - `passwordInput`: `string`
+  - `confirmPasswordInput`: `string`
+  - `errorMessage`: `string | null`
+- **States**:
+  - `idle`: Toggling is inactive.
+  - `promptingEnable`: Modal open to enter and confirm new master password.
+    - `promptingEnable.idle`: Waiting for input.
+    - `promptingEnable.validating`: Verifying that password is at least 8 characters and matches the confirmation password.
+  - `promptingDisable`: Modal open to enter current master password to disable encryption.
+  - `processing`: Performing batch database transaction (encrypting or decrypting all keys in `settings` and `presets` stores, and writing/deleting verification tokens).
+  - `success`: Toggle complete.
+  - `error`: Failed to toggle, displaying error inline.
+- **Transitions / Events**:
+  - `TOGGLE_ENCRYPTION` (contains action):
+    - If `action` is `"enable"`, transition to `promptingEnable.idle`.
+    - If `action` is `"disable"`, transition to `promptingDisable`.
+  - `SUBMIT_ENABLE` (guard: inputs match and are valid): Transition to `processing`.
+  - `SUBMIT_DISABLE`: Transition to `processing` (after verifying entered password decrypts the verification token).
+  - `PROCESS_SUCCESS`: Transition to `success` (clears password inputs).
+  - `PROCESS_FAILURE` (contains error): Transition to `error`.
+  - `CANCEL`: Transition back to `idle`.
+  - `DISMISS`: Transition from `success` or `error` back to `idle`.
+
+#### O. Graph Runner Actor State Machine
+
+Governs the lifecycle of the LangGraph background execution runner, which runs as a spawned child actor.
+
+- **Context**:
+  - `threadId`: `string`
+  - `workflowSnapshot`: `any`
+  - `presetConfig`: `any`
+  - `abortController`: `AbortController | null`
+  - `currentStepIndex`: `number`
+- **States**:
+  - `initializing`: Compiles the `StateGraph` using the `workflowSnapshot`, instantiates the custom checkpointer, and prepares the runner.
+  - `running`: Actively invoking `graph.stream()` or resuming the stream generator step-by-step.
+    - `running.requesting`: Sending request to LLM API (direct client call or through CORS proxy).
+    - `running.streaming`: Buffering text and reasoning tokens in real-time, throttling UI updates.
+  - `paused`: Suspended, persisting state and waiting for further instructions.
+  - `interrupted`: Suspended at an `input` node, or due to a tool interrupt (such as `ask_questions` or manual database approval).
+  - `completed`: Workflow has finished execution successfully.
+  - `failed`: An unhandled execution or connection error occurred.
+- **Transitions / Events**:
+  - `START`: Transition from `initializing` to `running.requesting`.
+  - `RECEIVE_TOKEN` (contains token, reasoning, and delta): Updates buffering state, emits throttled event to parent.
+  - `STEP_COMPLETE` (contains message, checkpointId, and usage): Writes message and token usage to database, persists checkpoint, updates `currentStepIndex`, and routes to next node.
+  - `PAUSE`: Aborts active API requests via `abortController`, persists checkpoint, transitions to `paused` (notifies parent machine).
+  - `INTERRUPT` (contains interrupt details/form schema): Persists checkpoint, transitions to `interrupted` (notifies parent machine).
+  - `SUBMIT_TOOL_RESPONSE` (contains tool response): Transition from `interrupted` back to `running.requesting` (passes tool response to graph state).
+  - `COMPLETE`: Persists final state, updates thread status to `"inactive"`, transitions to `completed`.
+  - `ERROR` (contains error details): Transitions to `failed` (updates thread status to `"error"`, notifies parent machine).
 
 ## Open questions
 
