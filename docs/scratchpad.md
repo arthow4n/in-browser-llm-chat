@@ -106,7 +106,7 @@ We propose using the following stores in the `in-browser-llm-chat-db` database:
     2. **Assign Roles**:
        - The active agent's own previous messages are kept as `assistant` role.
        - The active agent's own tool calls/results are kept in their native roles (`assistant` for tool calls, `tool` for results) and kept in sequence.
-       - All other messages (actual user messages, other agents' messages, and other agents' tool calls/results) are mapped to the `user` role.
+       - All other messages (actual user messages, historical system messages, other agents' messages, and other agents' tool calls/results) are mapped to the `user` role.
     3. **On-the-fly Context Pruning**: If the agent node specifies `maxHistoryMessages`, the compiler truncates the base history on-the-fly before preparing the API payload. It traverses the compiled messages backward from the latest message, keeping up to `maxHistoryMessages` messages.
     4. **Pruning Boundary Adjustment**: If the cutoff point falls within a tool call/response transaction (i.e., a tool result is kept but its preceding tool call is excluded, or vice versa), the compiler adjusts the cutoff boundary backward to include the complete tool transaction. The compiler must never split a tool call and its corresponding tool result. Let the resulting list of pruned messages be `H`.
     5. **Compile and Inject System Messages (Conflict Resolution & Merging Rules)**:
@@ -206,7 +206,7 @@ During graph compilation, the factory function maps conditional routes by creati
 
 - **Agent Routing**: If an `agent` node has tools, the graph needs to check if the agent produced a tool call. The compiled graph evaluates whether the state's last message is a tool call request. If yes, it routes along the edge with `condition: "on_tool_call"` (typically to a `tool` node). If no, it routes along the direct/unconditional edge (typically to a user input or another agent node).
 - **Tool Node Routing**: A `tool` node routes back to the agent node that triggered the tool call. The routing logic inspects `lastAgentId` in the `GraphState` and routes along the outgoing edge whose destination (`to`) matches `lastAgentId` with `condition: "on_tool_result"`.
-- **Consensus Routing**: A `consensus_check` node returns a state flag (e.g. `consensusReached: boolean`). The routing function evaluates this flag: if `true`, it routes to the destination defined in the edge with `condition: "on_consensus"`; if `false`, it routes to the edge with `condition: "on_no_consensus"`.
+- **Consensus Routing**: A `consensus_check` node routes to the next node based on the evaluation of loop termination conditions. The compiled router function evaluates whether the loop should terminate (i.e. `consensusReached` is `true`, `forceSummarize` is `true`, or `currentRound >= maxLoopLimit`). If any of these conditions are met, the router function returns `"on_consensus"` to route along the edge with `condition: "on_consensus"` (typically to the `summary` node). Otherwise, it returns `"on_no_consensus"` to route along the edge with `condition: "on_no_consensus"` (typically to the opposing agent/debater node).
 - **Default Fallback**: If a node has multiple outbound edges and none of the specific conditions match the node execution outcome, the compiler uses the unconditional edge (i.e. where `condition` is omitted) as the default fallback target. If no fallback is defined, execution throws an error.
 
 #### Custom Workflow Structural Validation Rules
@@ -428,11 +428,11 @@ These tools allow LLM agents to interactively create or modify custom workflows 
   - `Consensus_Evaluator_A` & `Consensus_Evaluator_B` (Consensus Check Nodes):
     - Check if the maximum loop limit (`maxLoopLimit`, default 5 rounds) has been reached. If `currentRound >= maxLoopLimit`:
       - Set `consensusReached` in the graph state to `false`.
-      - Bypasses LLM evaluation to conserve tokens, and routes directly to the `Summarizer` node along the `on_no_consensus` edge (acting as a loop termination override).
+      - Bypasses LLM evaluation to conserve tokens, and routes directly to the `Summarizer` node along the `on_consensus` edge (acting as a loop termination override, where the router function returns `"on_consensus"` to exit the loop, while leaving `consensusReached` as `false` in the state).
     - Check if `consensusReached` is already `true` (set by a preceding `declare_consensus` tool call). If so:
       - Bypasses LLM evaluation and routes to the `Summarizer` node along the `on_consensus` edge.
     - Check if `forceSummarize` is `true` (set by a preceding manual override `FORCE_SUMMARIZE` action). If so:
-      - Bypasses LLM evaluation and routes to the `Summarizer` node along the `on_no_consensus` edge (acting as a manual early exit override).
+      - Bypasses LLM evaluation and routes to the `Summarizer` node along the `on_consensus` edge (acting as a manual early exit override, where the router function returns `"on_consensus"` to exit the loop, while leaving `consensusReached` as `false` unless actual consensus was already declared).
     - Otherwise, runs an LLM evaluation call (using the active preset and its custom evaluation prompt) to analyze the debate history. If the evaluator LLM returns `{"consensusReached": true}`:
       - Sets the state's `consensusReached` to `true` and routes to `Summarizer` along the `on_consensus` edge.
     - If the evaluator LLM returns `{"consensusReached": false}`:
@@ -721,7 +721,11 @@ The application layout is built using the Carbon Design System (`@carbon/react`)
   - A main auto-resizing text input area.
   - **Role Selector Dropdown**: Next to the text input (defaulting to "User"), allowing the user to select "Assistant" or "System" to manually insert/prefill messages at the end of the history.
   - Send button.
-  - **Input Blocking**: The main chat input field is blocked/disabled while the workflow is executing, waiting for tool answers (e.g. from `ask_questions` interrupts), waiting for manual approval, or paused/inactive, unless the graph is explicitly interrupted at an `input` node (or the thread is brand new and has not yet started execution). This prevents users from entering arbitrary messages that violate the graph state. All form controls are sized with a minimum of 44x44px touch targets.
+  - **Input Blocking**: To prevent users from entering arbitrary messages that violate the graph state, the main chat input field is managed dynamically:
+    - **Enabled**: When the parent coordinator's `ExecutionState` is `inactive` (allowing users to submit messages to start/resume runs), or when it is in `awaitingHumanInput` and the active interrupt is an `input` node.
+    - **Disabled**: When the parent coordinator's `ExecutionState` is `executing` or `checkingStatus`, or when it is in `awaitingHumanInput` and the active interrupt is NOT an `input` node (e.g. waiting for `ask_questions` form submission, database approval, or budget overrides), or when it is in `error`.
+    - **Onboarding blocker**: Also disabled when the `ViewState` is in `onboarding` due to missing API keys.
+    - All form controls are sized with a minimum of 44x44px touch targets.
 - **New Chat Selection Panel**:
   - When no thread is active (i.e. the `ViewState` is in `idle`), the main content area displays a "New Chat" panel. This panel includes a dropdown selector to choose a Workflow (defaulting to the standard 1-agent workflow), a dropdown selector to choose a Preset (defaulting to the global default preset), and a text input for the initial message/topic. Submitting this form creates a new thread in IndexedDB with a copy of the selected workflow in `workflowSnapshot`, updates the URL to sync with the new thread ID, and initiates the execution.
 
@@ -869,6 +873,7 @@ The parent coordinator state machine context maintains the following variables:
 
 - **`initializing`**: Reads the configuration settings, API keys, presets, custom workflows, and active thread ID from the database.
   - _Interactive Controls_: None. A global page skeleton loader is displayed.
+  - _Database Startup Sweep_: Upon entry, the machine executes a sweep transaction that automatically updates any thread records with `status == "executing"` to `"inactive"` in IndexedDB (resolving abrupt browser closure), and restarts the Asynchronous Batched Deletion Pipeline for any threads with `status == "deleting"`.
 - **`onboarding`**: A blocker state when API keys are not yet configured.
   - _Interactive Controls_:
     - Global Warning Banner: Clickable, triggers `OPEN_SETTINGS` to open the Global Settings view.
@@ -1146,7 +1151,7 @@ Triggered from Thread Settings to synchronize a thread's workflow snapshot with 
   - `errorMessage`: `string | null`
 - **States**:
   - `idle`: Initial state. Button visible in thread settings.
-    - _Sync Button_: Enabled.
+    - _Sync Button_: Enabled when the parent coordinator `ExecutionState` is not `executing` or `checkingStatus`. Otherwise, disabled.
   - `analyzing`: Diffing `workflowSnapshot` against the latest database workflow.
     - _Sync Button_: Disabled, displays loading spinner.
   - `promptingSoftSync`: Prompts confirmation to update prompts/presets without clearing messages/checkpoints.
@@ -1227,7 +1232,7 @@ Triggered in Global Settings or Thread Settings to purge old checkpoints of a th
   - `errorMessage`: `string | null`
 - **States**:
   - `idle`: Button visible.
-    - _Compact Button_: Enabled.
+    - _Compact Button_: Enabled when the parent coordinator `ExecutionState` is not `executing` or `checkingStatus`. Otherwise, disabled.
   - `confirming`: Displaying warning dialog.
     - _Modal_: Visible.
     - _Confirm Compact Button_: Enabled, colored red (Carbon danger button). Focused.
@@ -1275,7 +1280,7 @@ Governs the lifecycle of editing, deleting, and branching a single message in th
       - _Message Content_: Rendered as markdown.
       - _Overflow Menu Trigger Button_: Enabled. Focused.
     - `viewing.menuOpen`: Message overflow options menu is open, displaying action choices.
-      - _Edit / Delete / Branch options in OverflowMenu_: Enabled (subject to checkpoint availability). Focused.
+      - _Edit / Delete / Branch options in OverflowMenu_: Enabled (subject to checkpoint availability, and only when the parent coordinator `ExecutionState` is `inactive` or `error`). Focused.
   - `editing`: Textarea input is active.
     - `editing.idle`: User is editing the content.
       - _Text Area Field_: Enabled, focused.
@@ -1434,9 +1439,9 @@ Manages the active thread list loading, searching, and thread-level cascading de
   - `LOAD_MORE_FAILURE` (contains error): Transitions `loadingMore` to `idle` (updates `errorMessage`).
   - `FILTER_THREADS` (contains query): Updates `searchQuery`, resets `page` to 1, and transitions to `loadingInitial` to perform a filtered database query.
   - `TRIGGER_DELETE` (contains threadId): Sets `deletingThreadId` and transitions to `confirmingDelete`.
-  - `CONFIRM_DELETE`: Transitions `confirmingDelete` to `deleting` (triggers optimistic UI updates and schedules background async chunked deletion).
+  - `CONFIRM_DELETE`: Transitions `confirmingDelete` to `deleting` (triggers optimistic UI updates by setting the thread status to `"deleting"`, immediately navigates the URL route to root or another thread if the deleted thread was active, and schedules background async chunked deletion).
   - `CANCEL_DELETE`: Transitions `confirmingDelete` back to `idle` (clears `deletingThreadId`).
-  - `DELETE_SUCCESS`: Transitions `deleting` back to `idle` (clears `deletingThreadId`, dispatches URL navigate to root or another thread if the deleted thread was active).
+  - `DELETE_SUCCESS`: Transitions `deleting` back to `idle` (clears `deletingThreadId`).
   - `DELETE_FAILURE` (contains error): Transitions `deleting` to `idle` (sets `errorMessage` and displays sidebar error warning, clears `deletingThreadId`).
 - **Database Reads/Writes**:
   - **Loading Threads**: Queries the `threads` store. Orders threads by `updatedAt` descending, skipping any records where `status == "deleting"`. Uses cursors to paginate. Supports keyword filters by matching against the thread title.
@@ -1878,7 +1883,7 @@ Governs the lifecycle of editing, validating, and saving fields in the Global Se
   - `DISMISS_ERROR`: Transitions `error` to `idle` (clears `errorMessage`).
 - **Database Reads/Writes**:
   - **Reads**: During `loading`, loads `"api_keys"`, `"ui_config"`, and `"injected_system_messages"` setting keys from the `settings` store.
-  - **Writes**: On `saving`, opens a read-write transaction on the `settings` store and overwrites the records for these keys, then commits.
+  - **Writes**: On `saving`, opens a read-write transaction on the `settings` store and overwrites the records for these keys. If this is saving API keys (OpenRouter or Gemini) for the first time (i.e. API keys were empty and no presets exist in the `presets` store), the transaction also seeds the default presets ("Default Gemini Flash" using `gemini-2.5-flash` and "Default OpenRouter Flash" using `google/gemini-2.5-flash`) and sets `default_preset_id` in the settings store, then commits.
 - **API Request/Response Sequence**: None.
 
 #### S. New Chat Form State Machine
@@ -1938,8 +1943,8 @@ Governs renaming a thread, switching thread-specific presets, syncing workflows,
     - `opened.idle`: Waiting for user action.
       - _Rename input field_: Read-only by default (shows edit icon), editable when `isEditingTitle` is true. Focused when editable.
       - _Preset selection dropdown_: Enabled.
-      - _Sync Workflow button_: Enabled.
-      - _Compact Checkpoints button_: Enabled.
+      - _Sync Workflow button_: Enabled when the parent coordinator `ExecutionState` is not `executing` or `checkingStatus`. Otherwise, disabled.
+      - _Compact Checkpoints button_: Enabled when the parent coordinator `ExecutionState` is not `executing` or `checkingStatus`. Otherwise, disabled.
       - _Delete Thread button_: Enabled.
       - _Save/Close buttons_: Enabled. Focused when not editing title.
     - `opened.saving`: Running database transaction to update title or preset.
