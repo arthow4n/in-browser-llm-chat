@@ -644,6 +644,14 @@ The application layout is built using the Carbon Design System (`@carbon/react`)
 
 ## State Machine Specification
 
+### UI State Machine Detail Policy
+
+All UI elements, interactive controls, buttons, fields, forms, and modals that possess any form of dynamic behavior must have their state management fully and explicitly driven by XState state machines. This policy mandates that:
+
+- Every interactive element (e.g., each button's disabled/active/loading/focused state, each form field's validation/dirty status, and each modal's transition states) must map directly to states, events, and transitions defined in the respective component's state machine.
+- Micro-interactions, loading indicators, API request phases, retry actions, and inline error states must be explicitly modeled in the machine definitions.
+- The state machines must not omit transition rules for edge cases, error recovery, or cancel actions, ensuring the UI remains robust, predictable, and fully testable under all conditions.
+
 The application state is managed by a central XState machine configured with parallel state regions. This design decouples UI view navigation from LangGraph background execution, allowing background workflows to run concurrently while the user navigates settings or configurations.
 
 ### State Transition Graph
@@ -836,11 +844,13 @@ Governs the "Test Connection" button lifecycle within the LLM Preset Configurati
   - `abortController`: `AbortController | null` (used to abort in-flight requests)
 - **States**:
   - `idle`: Initial state. Displays the "Test Connection" button.
-  - `testing`: Asynchronously executing a lightweight dummy request (e.g. model listing or 1-token request) using the configured API Key, Endpoint, and CORS proxy. A 10-second timeout timer is started upon entry.
+  - `testing`: Asynchronously executing a lightweight dummy request (e.g. model listing or 1-token request) using the configured API Key, Endpoint, and CORS proxy. A 10-second timeout timer is started upon entry. During the `testing` state, the preset input fields and the test button are disabled in the UI to prevent concurrent configuration changes and duplicate test requests.
   - `success`: Test succeeded. Displays a green badge showing the latency and model info.
   - `failure`: Test failed. Displays a red banner detailing status codes, CORS block warnings, or network errors.
 - **Transitions / Events**:
-  - `TEST_CONNECTION` (contains config): Aborts any active in-flight request via `abortController`, instantiates a new `AbortController`, updates context with parameters, and transitions `idle`, `success`, or `failure` to `testing`.
+  - `TEST_CONNECTION` (contains config):
+    - If the preset's API key is stored encrypted in the database and the keys are currently locked, clicking "Test Connection" with the stored key will first dispatch a `TRIGGER_UNLOCK` event to the Master Password Unlock Modal. If the user successfully unlocks the keys (`UNLOCK_SUCCESS`), the Connection Tester proceeds to the `testing` state. If the user cancels (`CANCEL_UNLOCK`), the tester returns to the `idle` state.
+    - Otherwise, aborts any active in-flight request via `abortController`, instantiates a new `AbortController`, updates context with parameters, and transitions `idle`, `success`, or `failure` to `testing`.
   - `TEST_SUCCESS` (contains latency and metadata): Transitions `testing` to `success` (updates context).
   - `TEST_FAILURE` (contains error details): Transitions `testing` to `failure` (updates context).
   - `TIMEOUT`: Triggered if the 10-second test request timer expires. Aborts the request via `abortController` and transitions `testing` to `failure` (updates `errorMessage` to "Connection test timed out after 10s").
@@ -849,33 +859,35 @@ Governs the "Test Connection" button lifecycle within the LLM Preset Configurati
 
 #### C. `ask_questions` Tool Form State Machine
 
-Governs the lifecycle of the inline form rendered in the chat feed when execution is interrupted by the `ask_questions` tool.
+Governs the lifecycle of the inline form rendered in the chat feed when execution is interrupted by the `ask_questions` tool. All events are dispatched to the parent coordinator machine, which handles routing/forwarding events to the active `graphRunnerActor`.
 
 - **Context**:
+  - `toolCallId`: `string`
   - `questions`: `Array<Question>`
   - `answers`: `Record<QuestionId, { selected?: string[]; text?: string }>`
   - `isValid`: `boolean`
+  - `validationErrors`: `Record<QuestionId, string>` (field name mapping to error descriptions)
   - `refusalReason`: `string`
   - `errorMessage`: `string | null`
 - **States**:
   - `active`: The form card is rendered and editable.
     - `active.editing`: User is interacting with form controls. On entry and on `UPDATE_ANSWER`, the current state of `answers` is persisted to the thread's record in IndexedDB under `draftAnswers` to ensure it survives page reloads or switching threads.
     - `active.validating`: Auto-checking if all required/non-optional questions have been answered.
-  - `submitting`: Sending responses back to the LangGraph runner actor (dispatches `SUBMIT_TOOL_RESPONSE` to the runner actor).
+  - `submitting`: Sending responses back to the parent coordinator machine (dispatches `SUBMIT_TOOL_RESPONSE` containing the compiled `AskQuestionsResponse` JSON payload to the parent coordinator machine, which forwards it to the active runner actor).
   - `submitted`: Response successfully submitted. Form controls become disabled/read-only. Clears the `draftAnswers` field from the thread's database record.
-  - `refused`: User clicked "Refuse to Answer". Form controls become disabled/read-only, showing the refusal reason. Dispatches `REFUSE_TOOL_RESPONSE` with reason to runner actor. Clears the `draftAnswers` field from the thread's database record.
+  - `refused`: User clicked "Refuse to Answer". Form controls become disabled/read-only, showing the refusal reason. Clears the `draftAnswers` field from the thread's database record.
 - **Transitions / Events**:
-  - `LOAD_QUESTIONS` (contains questions and optional draftAnswers): Transitions to `active.editing` (populates `questions` and initializes `answers` with `draftAnswers` if available).
+  - `LOAD_QUESTIONS` (contains toolCallId, questions, and optional draftAnswers): Transitions to `active.editing` (populates `toolCallId` and `questions`, and initializes `answers` with `draftAnswers` if available).
   - `UPDATE_ANSWER` (contains questionId and answer): Transitions to `active.validating` (updates the `answers` record).
-  - `VALIDATION_RESULT` (contains isValid): Transitions back to `active.editing` (updates `isValid` context).
+  - `VALIDATION_RESULT` (contains isValid and validationErrors): Transitions back to `active.editing` (updates `isValid` and `validationErrors` context).
   - `SUBMIT` (guard: `isValid` is true): Transitions to `submitting`.
   - `SUBMIT_SUCCESS`: Transitions to `submitted`.
   - `SUBMIT_FAILURE` (contains error): Transitions `submitting` back to `active.editing` (updates `errorMessage` to display the submission failure).
-  - `REFUSE` (contains refusalReason): Transitions to `refused`.
+  - `REFUSE` (contains refusalReason): Transitions to `refused` (formats the refusal response, marking all questions as `refused: true` with the provided `refusalReason`, and dispatches `SUBMIT_TOOL_RESPONSE` containing the compiled `AskQuestionsResponse` JSON payload to the parent coordinator machine).
 
 #### D. Proposed Action Card (Approval Form) State Machine
 
-Governs database-modifying tool calls (like creating or updating a workflow) that require explicit user approval before execution.
+Governs database-modifying tool calls (like creating or updating a workflow) that require explicit user approval before execution. All events are dispatched to the parent coordinator machine, which handles routing/forwarding events to the active `graphRunnerActor`.
 
 - **Context**:
   - `toolCallId`: `string`
@@ -885,12 +897,12 @@ Governs database-modifying tool calls (like creating or updating a workflow) tha
   - `pending`: Active card with "Approve" and "Deny" buttons.
   - `approving`: Asynchronously executing the database modification transaction.
   - `approved`: Successfully completed. Buttons disabled, status badge shown.
-  - `denied`: User denied the action. Runner actor receives denial message (handles user denials as tool execution failures/refusals by returning a standardized "Operation denied by user" tool result and resumes execution).
+  - `denied`: User denied the action. Form controls become disabled/read-only, showing the denial message.
   - `error`: Database write failed. Shows retry button and error details.
 - **Transitions / Events**:
   - `APPROVE`: Transitions `pending` or `error` to `approving`.
-  - `DENY`: Transitions `pending` to `denied` (sends denial response to runner actor).
-  - `APPROVE_SUCCESS`: Transitions `approving` to `approved` (sends success response to runner actor).
+  - `DENY`: Transitions `pending` to `denied` (dispatches `SUBMIT_TOOL_RESPONSE` with a standardized "Operation denied by user" tool result to the parent coordinator machine to be forwarded to the active runner actor).
+  - `APPROVE_SUCCESS` (contains tool result): Transitions `approving` to `approved` (dispatches `SUBMIT_TOOL_RESPONSE` with the successful database transaction results as the tool result to the parent coordinator machine to be forwarded to the active runner actor).
   - `APPROVE_FAILURE` (contains error): Transitions `approving` to `error` (updates `errorMessage`).
   - `RETRY_APPROVE`: Transitions `error` to `approving`.
 
@@ -941,7 +953,7 @@ Triggered from Thread Settings to synchronize a thread's workflow snapshot with 
   - `ANALYSIS_FAILURE` (contains error): Transitions `analyzing` to `failure` (updates `errorMessage`).
   - `CONFIRM_SYNC` (from prompting states): Transitions to `syncing`.
   - `CANCEL_SYNC`: Transitions prompting/analyzing states back to `idle`.
-  - `SYNC_SUCCESS`: Transitions `syncing` to `success`.
+  - `SYNC_SUCCESS`: Transitions `syncing` to `success` (updates the thread record in the database, and if a Hard Sync was performed, deletes all message and checkpoint records for the thread and dispatches `INITIALIZE_CHECKPOINT` to the parent coordinator to reset the active execution state to `inactive` and reload the empty thread state).
   - `SYNC_FAILURE` (contains error): Transitions `syncing` to `failure` (updates `errorMessage`).
   - `DISMISS`: Transitions `success` or `failure` back to `idle`.
 
@@ -1014,7 +1026,7 @@ Governs editing a single message in the chat history. Note: The Edit option is d
   - `UPDATE_CONTENT` (contains content): Transitions to `editing.validating` (updates `editContent`).
   - `VALIDATION_RESULT` (contains isValid): Transitions back to `editing.idle` (updates `isValidContent` flag).
   - `SAVE` (guard: `isValidContent` is true): Transitions `editing.idle` or `error` to `saving`.
-  - `SAVE_SUCCESS`: Transitions `saving` to `viewing` (updates thread cumulative token stats).
+  - `SAVE_SUCCESS`: Transitions `saving` to `viewing` (updates thread cumulative token stats in the database and dispatches `INITIALIZE_CHECKPOINT` to the parent coordinator to reload the thread's checkpoint state and update UI execution controls).
   - `SAVE_FAILURE` (contains error): Transitions `saving` to `error` (updates `errorMessage`).
   - `CANCEL_EDIT`:
     - If `editContent === originalContent`, transitions directly to `viewing`.
@@ -1233,4 +1245,44 @@ The human user will replace the `[UNRESOLVED]` tag with their response. The huma
 
 ### Current open questions:
 
-None. All previous questions have been resolved and incorporated into the respective specification sections.
+#### Question: Handle concurrent background execution of multiple threads
+
+The application supports navigating to other views and threads while a background workflow is running. However, the active execution policy currently specifies that switching away from a thread pauses the runner actor, and the thread state in the DB is saved as paused ("Active-Only Execution Mode").
+Should we support true concurrent background execution of multiple threads in the browser (e.g. using Web Workers or multiple spawned runner actors running in parallel in the background), or is the "Active-Only Execution Mode" (which pauses the current thread runner on switch) sufficient?
+
+##### Options:
+
+1. **Option A (Active-Only Execution Mode)**: Keep the current design where only the currently visible thread can actively execute. Switching threads pauses execution of the active thread, which simplifies DB persistence and resource usage.
+2. **Option B (True Concurrent Background Execution)**: Allow multiple threads to run in parallel in the background, spawning separate runner actors. This requires complex concurrent DB write coordination and UI indicators for multiple running threads in the sidebar.
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Handling of browser tab closure during active workflow execution
+
+Since execution happens entirely client-side in the browser, closing the browser tab or window during active workflow execution will abruptly terminate the running process.
+When the app initializes or the user re-opens the app, how should it handle threads that were left in the `"executing"` status?
+
+##### Options:
+
+1. **Option A (Auto-resume)**: On app load, detect any threads with `"executing"` status and automatically trigger key checking and resume execution from their last saved checkpoints.
+2. **Option B (Mark as paused/inactive)**: On app load, automatically transition any threads with `"executing"` status to `"inactive"` or `"paused"` with a warning banner, allowing the user to manually click "Resume" to start them again.
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Master password reset and recovery policy for user-defined workflows
+
+If a user encrypts their settings using a master password and subsequently forgets it, they can use the `RESET_KEYS` action to purge all stored API keys and disable encryption.
+However, if a user-defined workflow has preset configurations with custom API key overrides, should those custom preset keys also be purged during a master password reset?
+
+##### Options:
+
+1. **Option A (Purge all key overrides)**: Yes, a master password reset must completely purge all API keys in the database, including the global settings keys and any preset-specific API key overrides, to prevent leaving un-decryptable ciphertext in the database.
+2. **Option B (Keep encrypted overrides)**: Keep the encrypted preset key overrides in the database, but show them as invalid/un-decryptable in the UI, allowing the user to manually re-enter/override them.
+
+##### Response
+
+[UNRESOLVED]

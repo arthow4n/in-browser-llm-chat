@@ -26,3 +26,7 @@ Use the following commands to run the project's quality checks and builds:
 
 - If you are only editing documents, just run formatting, don't run lint/test/build.
 - At the beginning of session, don't run tests/build/lint etc, you'll be guaranteed that the workspace is clean.
+
+## UI State Machine Policy
+
+- The UI state for every single detail, including all interactive controls, buttons, form fields, loading states, error states, and transitions, must be fully driven by XState state machines. No local component state or external state management outside of the specified state machines should be used for interactive states.
