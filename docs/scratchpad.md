@@ -48,7 +48,7 @@ Fill in anything missing.
   - Node execution sequence and underlying LLM threads should be visible in the chat feed, rendered as flatly as possible so they look like working within one single thread, including reasoning tokens.
   - To begin with, there should be a built-in debate workflow, where the user should be able to seed the debate with a topic, then let 2 agents debate infinitely in a loop until they come to consensus, the agents come to consensus by making tool call to suggest leaving the debate loop, then finally another agent summarise the debate for the user to review.
 - LLM provider preset management CRUD:
-  - Preset = combination of LLM API provider, API key, LLM model, and configs like reasoning/thinking level, API retry policy, budget policy (e.g. force asking for human approval after X steps in the workflow without human user sending an message).
+  - Preset = combination of LLM API provider, API key, LLM model, and configs like reasoning/thinking level, API retry policy, budget policy (e.g. force asking for human approval after X steps or Y tokens in the workflow execution cycle without human user sending a message).
   - When opening a new chat thread, the thread selects the default preset as the initial preset. The selected preset ID is saved per thread in the database.
   - When switching back to an old thread: if the saved preset is still available, it is used; otherwise, it falls back to the default preset.
   - Onboarding and First-Time User Experience: Guides users on first load if no presets or API keys exist. See the [Global Settings View](#5-global-settings-view) in the UI Specification for warning banner details. When the user configures and saves their API keys for the first time, the application automatically seeds a set of default presets ("Default Gemini Flash" using `gemini-2.5-flash` and "Default OpenRouter Flash" using `google/gemini-2.5-flash`) into the database.
@@ -77,14 +77,14 @@ We propose using the following stores in the `in-browser-llm-chat-db` database:
   - Value: `{ value: any }`
 - **`presets`**: LLM configurations.
   - Key: `id` (UUID)
-  - Fields: `name`, `provider` (`"openrouter" | "gemini"`), `model` (string), `apiKey` (if not global), `temperature`, `maxTokens`, `reasoningLevel`, `budgetPolicy` (`{ maxStepsWithoutUser: number }`), `corsProxy` (null or string)
+  - Fields: `name`, `provider` (`"openrouter" | "gemini"`), `model` (string), `apiKey` (if not global), `temperature`, `maxTokens`, `reasoningLevel`, `budgetPolicy` (`{ maxStepsWithoutUser: number, maxTokensPerRun: number | null }`), `corsProxy` (null or string)
 - **`workflows`**: Serialized LangGraph definitions.
   - Key: `id` (string/UUID)
   - Fields: `name`, `description`, `isBuiltIn` (boolean), `nodes` (Array of node definitions), `edges` (Array of transition definitions), `injectedSystemMessages` (optional Array of `{ content: string, depth: number }`)
 - **`threads`**: Chat sessions.
   - Key: `id` (UUID)
-  - Fields: `title`, `workflowId`, `activePresetId`, `createdAt`, `updatedAt`, `parentThreadId` (null or parent UUID for branched threads), `parentMessageId` (null or parent message UUID at which branching occurred), `status` (`"inactive" | "executing" | "awaiting_input" | "error"`), `errorMessage` (null or string), `latestCheckpointId` (null or string), `latestCheckpointNs` (null or string), `tokenStats` (`{ promptTokens: number, completionTokens: number, totalTokens: number } | null`)
-  - _Branching Behavior_: When branching a thread, the messages from the parent thread up to and including the `parentMessageId` are copied (cloned) to the new thread in the `messages` store under the new thread's ID. The checkpoint associated with the `parentMessageId` (specifically, the parent checkpoint matching `[parentThreadId, checkpointNs, checkpointId]`) must also be copied to the `checkpoints` store under the new thread's ID (`[newThreadId, checkpointNs, checkpointId]`) to serve as the initial state of the branched thread. Additionally, any corresponding `checkpoint_writes` entries matching `[parentThreadId, checkpointNs, checkpointId]` must be copied/cloned to the `checkpoint_writes` store under the `newThreadId` key: `[newThreadId, checkpointNs, checkpointId, taskId, idx]`. Subsequent checkpoints are not copied.
+  - Fields: `title`, `workflowId`, `workflowSnapshot` (null or copy of workflow configuration JSON to ensure execution stability against schema modifications), `activePresetId`, `createdAt`, `updatedAt`, `parentThreadId` (null or parent UUID for branched threads), `parentMessageId` (null or parent message UUID at which branching occurred), `status` (`"inactive" | "executing" | "awaiting_input" | "error"`), `errorMessage` (null or string), `latestCheckpointId` (null or string), `latestCheckpointNs` (null or string), `tokenStats` (`{ promptTokens: number, completionTokens: number, totalTokens: number } | null`)
+  - _Branching Behavior_: When branching a thread, the messages from the parent thread up to and including the `parentMessageId` are copied (cloned) to the new thread in the `messages` store under the new thread's ID. The `workflowSnapshot` is also copied from the parent thread to the new thread's record in the `threads` store to preserve execution consistency. The checkpoint associated with the `parentMessageId` (specifically, the parent checkpoint matching `[parentThreadId, checkpointNs, checkpointId]`) must also be copied to the `checkpoints` store under the new thread's ID (`[newThreadId, checkpointNs, checkpointId]`) to serve as the initial state of the branched thread. Additionally, any corresponding `checkpoint_writes` entries matching `[parentThreadId, checkpointNs, checkpointId]` must be copied/cloned to the `checkpoint_writes` store under the `newThreadId` key: `[newThreadId, checkpointNs, checkpointId, taskId, idx]`. Subsequent checkpoints are not copied.
 - **`messages`**: Individual messages in threads.
   - Key: `id` (UUID)
   - Fields: `threadId` (indexed for query performance), `role` (`"system" | "user" | "assistant" | "tool"`), `content`, `type` (`"text" | "reasoning" | "tool_call" | "tool_result"`), `toolCallId` (optional), `name` (agent/tool name), `createdAt`, `metadata` (reasoning tokens, raw response, etc.), `checkpointId` (null or string), `checkpointNs` (null or string)
@@ -242,8 +242,8 @@ The `declare_consensus` tool is used by debating agents to signal agreement and 
   - **Tool Exclusion Policy**: The workflow configuration must support forcing a minimum of X rounds of loop before the `declare_consensus` tool is given to the debaters (X can be set to 0 to disable this forced loop). During the first X rounds, the compiler excludes the `declare_consensus` tool from the tool bindings for the debater LLM calls, making the tool unavailable to them.
   - **General Loop Control Panel**: Any workflow with loops (including the debate workflow) should render a control card in the UI showing the current round, number of turns, and token usage, with buttons to Pause, Resume, or Force Consensus / Summarize early. On mobile viewports, the panel collapses into a compact, sticky bottom bar (or overlay) showing the round count and token statistics, where a single tap opens a full-screen control overlay detailing all stats and controls.
   - **Force Consensus / Force Summarize early**:
-    - **Force Consensus**: Sets the state's `consensusReached` flag to `true` and resumes the graph execution, causing the routing logic to bypass further debate rounds and transition straight to the summarizer node.
-    - **Force Summarize early**: Bypasses any remaining evaluation and uses a state update or routing override to transition the graph execution directly to the summarizer node.
+    - **Force Consensus**: Sets the state's `consensusReached` flag to `true` via `graph.updateState` and resumes the graph execution, causing the routing logic to bypass further debate rounds and transition straight to the summarizer node.
+    - **Force Summarize early**: Bypasses any remaining evaluation and uses a state update or routing override (via `graph.updateState` or router override logic) to transition the graph execution directly to the summarizer node.
   - **Error Recovery and Resume Policy**:
     - The application performs automatic retries with exponential backoff (up to 3 times) for transient API or network errors. If the error persists, the graph runner pauses execution, transitions the state machine to the `error` state, and displays a "Retry Step" button in the UI to allow manually resuming execution from the last successful checkpoint.
   - **Abort and Token Preservation on Interruption**:
@@ -262,6 +262,7 @@ The `declare_consensus` tool is used by debating agents to signal agreement and 
   - Depth `-N` (negative): Insert N messages from the end of the history.
   - _Note_: If the active message history length is less than the calculated injection index, the insertion index is clamped to the range of valid indices: `Math.max(0, Math.min(messages.length, targetIndex))`.
 - **Dynamic On-the-Fly Injection**: When sending context to the LLM API, these messages are injected dynamically immediately prior to calling the LLM within the agent node execution. They are **never** persisted to the IndexedDB `messages` store or stored in the LangGraph state/checkpoint history. This ensures that the message list in the checkpoint remains clean and matches the user's persisted database messages. Injected messages are invisible in the main chat feed, and can only be viewed/previewed within a "Preview API Payload" overlay or in the workflow settings panel.
+- **Merging Global & Workflow Injection**: When compiling the final prompt payload for an LLM node, the runner merges both global injected system messages and workflow-specific injected system messages based on their respective insertion depths.
 
 ## User Interface (UI) Specification
 
@@ -285,10 +286,10 @@ The application layout is built using the Carbon Design System (`@carbon/react`)
   - Displays the active thread's title.
   - Displays the active preset and active workflow.
   - **Preview API Payload Button**: Clicking it opens a Modal showing the exact JSON structure of messages (including injected system messages) that would be sent to the LLM API next. Injected messages are highlighted with a distinct background/border and marked with an `[INJECTED]` badge to assist debugging. Since a workflow may contain multiple agents, the modal includes a dropdown selector showing all agents in the current workflow (defaulting to the workflow's entry agent node if the thread is empty, or the next scheduled agent based on the graph's execution checkpoint) so the user can inspect the preview payload for any specific agent. For new or empty threads with no message history, the payload preview displays the initial system prompt configuration for the selected agent, combined with any active injected system messages. During active background execution, the preview button is disabled to prevent race conditions with running state updates.
-- **Loop Control Panel (Sticky)**:
+- **Execution & Loop Control Panel (Sticky)**:
   - **Desktop**: Rendered as a sticky control bar at the top of the chat area.
   - **Mobile**: Collapses into a compact, sticky status bar at the top or bottom of the viewport to save vertical space (avoiding custom Floating Action Buttons (FABs) to adhere strictly to Carbon layout patterns); tapping it opens a modal overlay containing detailed turn counters and control actions.
-  - **Controls**: Displays the current loop round, turn count, and token usage (prompt and completion tokens tracked separately, without currency calculation). Contains buttons to Pause, Resume, or Force Consensus / Summarize early.
+  - **Controls**: Displays the current execution stats. For workflows with loops, it shows the current loop round, turn count, and token usage. For sequential workflows, it shows the current node/step, turn count, and token usage (prompt and completion tokens tracked separately, without currency calculation). Contains buttons to Pause, Resume, or Abort execution, plus "Force Consensus" / "Summarize early" buttons specifically visible during loop workflows.
 - **Chat Feed**:
   - **Message Bubbles**: Render user and assistant/agent messages with rich markdown formatting, GitHub Flavored Markdown (e.g. tables, checkboxes), and LaTeX math support (both inline and block equations).
   - **Message Options Menu**: Each message bubble includes a small, low-profile overflow button (three-dots icon) with a minimum `44x44px` target. This button is permanently visible (with a light opacity like `0.6`) on both desktop and mobile viewports (no hover-only requirements; this no-hover, permanently visible approach is globally applied for all UI elements). Clicking/tapping it opens a Carbon `OverflowMenu` (or a native Carbon `Modal` on mobile viewports for easier touch interaction) containing "Edit", "Delete", and "Branch Thread" options.
@@ -317,7 +318,7 @@ The application layout is built using the Carbon Design System (`@carbon/react`)
 
 - **Preset List**: List of configured LLM presets with options to edit or delete.
 - **Preset Configuration Panel**:
-  - Fields for configuring Name, Provider (`"openrouter" | "gemini"`), Model ID (string), API Key (optional override), Temperature, Max Tokens, Reasoning/Thinking Level, Budget Policy (e.g. max steps without user message), and CORS Proxy URL (optional override).
+  - Fields for configuring Name, Provider (`"openrouter" | "gemini"`), Model ID (string), API Key (optional override), Temperature, Max Tokens, Reasoning/Thinking Level, Budget Policy (e.g. max steps without user message, max tokens per run limit), and CORS Proxy URL (optional override).
 
 ### 5. Global Settings View
 
@@ -326,7 +327,7 @@ The application layout is built using the Carbon Design System (`@carbon/react`)
   - **Network & Proxy Section**: Global input field for configuring an optional custom CORS proxy URL and custom request headers.
   - **Theme Override Selector**: Selector for manually forcing Light/Dark mode.
   - **Injected System Messages Section**: Global UI list configuration for system messages that apply to all workflows.
-  - **Thread Operations Section**: Includes a "Compact Thread" button to allow manual purging of older checkpoints (preserving only the latest active checkpoint) for the active thread to reclaim IndexedDB storage.
+  - **Thread Operations Section**: Includes a "Compact Thread" button to allow manual purging of older checkpoints (preserving only the latest active checkpoint) for the active thread to reclaim IndexedDB storage. A confirmation dialog warns the user that compacting deletes the execution checkpoint history, which prevents rewinding, editing, or branching from older messages.
 - **Onboarding / Warning Banner**:
   - Displays a persistent, clickable warning banner at the very top of the workspace: `"No API keys configured. Click here to configure settings."`.
   - Disables the main chat input field until a preset/API key is successfully configured in Settings.
@@ -654,11 +655,37 @@ If a user edits a custom workflow's definition while a thread using that workflo
 
 ##### Response
 
-[UNRESOLVED]
+To ensure execution stability and prevent compilation errors or state mismatches when resuming a thread, every thread will store a snapshot of its associated workflow definition directly within the `threads` database record (`workflowSnapshot`).
+
+1. **Snapshotting on Creation**: When a new thread is initialized, the active workflow definition is copied into `threads.workflowSnapshot`.
+2. **Execution from Snapshot**: The LangGraph runner compiles and executes the graph using `workflowSnapshot` rather than querying the global `workflows` store. Consequently, modifying or deleting a custom workflow in the Workflow Manager has no effect on already active or paused threads.
+3. **Updating / Syncing the Schema**: If a user wishes to apply the latest workflow edits to an active thread, they can trigger a "Sync to Latest Workflow" action in the thread settings. This updates `threads.workflowSnapshot` to the latest definition from the `workflows` store and purges all existing checkpoints and checkpoint writes for the thread, resetting its execution state to the starting node.
 
 #### Question: Token/Cost Budget Policies
 
 Should the preset and thread budget policy support a token-limit or cost-limit threshold (e.g. pause execution and ask for human approval if a single run exceeds X total tokens or Y estimated cents) to prevent runaway costs, in addition to the step-based limit?
+
+##### Response
+
+To prevent runaway API costs, the preset and thread budget policy will support both step-based and token-based limits.
+
+1. **Preset Budget Configuration**: The `budgetPolicy` object under `presets` will be extended to include `maxTokensPerRun` (e.g. `{ maxStepsWithoutUser: number, maxTokensPerRun: number | null }`).
+2. **Limit Execution**: When a workflow starts executing, a running counter tracks the total tokens (prompt + completion tokens) consumed during the active run/session.
+3. **Interrupt on Limit Exceeded**: If the token limit is exceeded mid-execution, the graph runner halts execution immediately, persists the current checkpoint, transitions the state machine to `awaitingHumanInput`, and renders an inline "Budget Exceeded" card in the chat feed.
+4. **Resolution**: The card will display the token consumption and present the user with options to "Increase Budget & Resume" (temporarily raising the token threshold for the active execution run) or "Abort".
+5. **No Currency Estimations**: We will not track cost limits in monetary cents to avoid the overhead of maintaining an up-to-date pricing database for all providers and models in a client-only frontend.
+
+#### Question: Thread-Level Parameter Overrides vs. Strict Preset Inheritance
+
+Should the application support overriding LLM settings (such as temperature, max tokens, or reasoning level) directly on a per-thread basis, or should threads strictly inherit their settings from their selected Preset?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Connectivity Testing for Custom and Local Providers
+
+For custom endpoints or local providers (like Ollama or self-hosted servers) configured via a custom CORS proxy, should the preset configuration interface provide a "Test Connection" button to verify endpoint availability and response headers prior to executing workflows?
 
 ##### Response
 
