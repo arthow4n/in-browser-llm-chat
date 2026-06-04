@@ -2216,7 +2216,29 @@ The human user will replace the `[UNRESOLVED]` tag with their response. The huma
 
 ### Current open questions:
 
-None.
+#### Question: Markdown rendering of unclosed code blocks during streaming
+
+During streaming (in the `running.streaming` state), the LLM might send markdown code blocks that are not yet closed with triple backticks. If rendered naively, this can cause the entire subsequent chat UI to break or render incorrectly as part of the code block. How should the application handle streaming markdown that contains unclosed code blocks?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Error recovery when IndexedDB quota is exceeded
+
+The application uses IndexedDB to store all chat histories, states, and checkpoints. Over time, heavy usage (especially with large context windows or deep debate loops) might exceed the browser's storage quota for IndexedDB. How should the application handle `QuotaExceededError` during critical write operations (like `STEP_COMPLETE`)?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Mobile UI for JSON workflow editor
+
+Editing complex JSON workflows on a mobile device is generally a poor UX and prone to syntax errors. Should the workflow JSON editor be disabled on mobile viewports, or should we just show a warning, or is the current plain text area sufficient?
+
+##### Response
+
+[UNRESOLVED]
 
 ### Resolved open questions:
 
