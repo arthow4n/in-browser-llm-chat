@@ -43,7 +43,7 @@ Fill in anything missing.
   - Workflow = agent orchestration graph like for LangGraph
     - Built-in workflow can be anything LangGraph supported.
     - User-defined workflow needs to be able to be serialized to/deserialized from persistence.
-    - The editing interface for custom workflows is a text-based JSON editor (no graphical/visual editor required). See the [Workflow Management CRUD View](#3-workflow-management-crud-view) section in the UI Specification for details.
+    - The editing interface for custom workflows is a text-based JSON editor (no graphical/visual editor required). See the [Workflow JSON Editor State Machine](#l-workflow-json-editor-state-machine) section for details.
     - Here is where the user can define which are the agents involved in an orchestration and their system prompts.
     - _Safety Rules_: The user cannot delete built-in workflows. Deleting a custom workflow that is currently in use by any threads is blocked, and an inline notification is displayed showing the active threads referencing it.
   - Node execution sequence and underlying LLM threads should be visible in the chat feed, rendered as flatly as possible so they look like working within one single thread, including reasoning tokens.
@@ -54,16 +54,16 @@ Fill in anything missing.
   - Preset = combination of LLM API provider, API key, LLM model, and configs like reasoning/thinking level, API retry policy, budget policy (e.g. force asking for human approval after X steps or Y tokens in the workflow execution cycle without human user sending a message).
   - When opening a new chat thread, the thread selects the default preset as the initial preset. The selected preset ID is saved per thread in the database.
   - When switching back to an old thread: if the saved preset is still available, it is used; otherwise, it falls back to the default preset.
-  - Onboarding and First-Time User Experience: Guides users on first load if no presets or API keys exist. See the [Global Settings View](#5-global-settings-view) in the UI Specification for warning banner details. When the application is launched for the first time and IndexedDB is initialized, if the `workflows` store is empty, the application automatically seeds the built-in workflows (Standard 1-agent, Debate workflow) into the `workflows` store. When the user configures and saves their API keys for the first time, the application automatically seeds a set of default presets ("Default Gemini Flash" using `gemini-2.5-flash` and "Default OpenRouter Flash" using `google/gemini-2.5-flash`) into the database, setting the `default_preset_id` in the `settings` store.
+  - Onboarding and First-Time User Experience: Guides users on first load if no presets or API keys exist. See the [Global Settings Form State Machine](#s-global-settings-form-state-machine) for warning banner details. When the application is launched for the first time and IndexedDB is initialized, if the `workflows` store is empty, the application automatically seeds the built-in workflows (Standard 1-agent, Debate workflow) into the `workflows` store. When the user configures and saves their API keys for the first time, the application automatically seeds a set of default presets ("Default Gemini Flash" using `gemini-2.5-flash` and "Default OpenRouter Flash" using `google/gemini-2.5-flash`) into the database, setting the `default_preset_id` in the `settings` store.
   - _Safety Rules_: The user cannot delete the designated global default preset (the preset whose ID matches `default_preset_id` in global settings). Deleting a custom preset that is currently set as the active preset for any threads or referenced in any workflow node definitions is blocked, and the UI displays an inline notification listing the referencing threads or workflows.
 - Thread management CRUD
   - Current thread ID is synced with the URL so refreshing leads to the same thread.
   - Thread-level presets are strictly inherited from the selected preset. The active preset is displayed as a dropdown trigger in the Chat Header, allowing quick switching. A configure icon next to it allows editing the preset in a modal panel. If a built-in preset is edited, the UI prompts the user to "Clone and Customize" to create a new custom preset copy.
-  - Cascading deletes for thread checkpoints, checkpoint writes, and messages are performed in batched transactions (deleting up to 500 records per chunk) scheduled asynchronously via `requestIdleCallback` to keep the UI responsive. See the [Asynchronous Batched Cascading Deletions](#10-asynchronous-batched-cascading-deletions) section for complete transaction and scheduling details.
+  - Cascading deletes for thread checkpoints, checkpoint writes, and messages are performed in batched transactions (deleting up to 500 records per chunk) scheduled asynchronously via `requestIdleCallback` to keep the UI responsive. See the [Left Sidebar State Machine](#j-left-sidebar-state-machine) section for complete transaction and scheduling details.
   - Active thread workflows use a snapshot (`workflowSnapshot`) stored in the thread record. If the custom workflow definition is modified in the Workflow Manager, it does not affect already active/paused threads. Users can manually sync the thread to the latest workflow definition via a "Sync to Latest Workflow" button in the thread settings. The sync feature automatically detects if the update is a simple update to system prompts or presets (i.e. identical node IDs and edges). If so, it performs a "Soft Sync" that updates the `workflowSnapshot` inline without clearing the message history or checkpoints, allowing execution to resume with the new prompts/presets. If the graph topology has changed (nodes or edges added, removed, or renamed), it performs a "Hard Sync" (destructive) which prompts the user for confirmation, updates the snapshot, and purges all checkpoints/messages for the thread. A Hard Sync purges all checkpoints and message history, resetting the thread's chat feed to an empty state, while preserving the thread's metadata (such as its title, creation date, and selected preset ID).
 - System message management CRUD for automatically inserting system message to agents upon API request, but these automatically inserted messages shouldn't be persisted in the chat history.
   - Should support insertion depth (similar to SillyTavern, should be able to specify to attach system message at the Nth message from the beginning/end of the chat messages thread).
-  - Configured via a global settings list. See the [Global Settings View](#5-global-settings-view) in the UI Specification for details.
+  - Configured via a global settings list. See the [Global Settings Form State Machine](#s-global-settings-form-state-machine) for details.
 - Render agent and user messages with rich markdown formatting, GitHub Flavored Markdown, and LaTeX math support using the specified rendering packages.
 - Render reasoning tokens (collapsed by default).
 - Render tool call message and tool result message (collapsed by default).
@@ -78,7 +78,7 @@ Fill in anything missing.
      Following any truncation, edit, or branching, the cumulative token statistics for the affected thread(s) are recalculated by summing the usage metadata of their remaining messages, and the thread record is updated in IndexedDB.
      _Note on Message Role Behaviors and State Synchronization_: For inline editing of any message role (user, assistant, or system), the database message at sequence `idx` is updated, and all subsequent messages are deleted. Since LangGraph's internal checkpoint state contains the historical messages array, editing a message requires updating the checkpoint. When execution is subsequently resumed, the runner automatically detects if the database message at sequence `idx` is newer than the latest message in the loaded preceding checkpoint. If so, it invokes `graph.updateState` passing the target config and the edited message (retaining its original message ID) to update the checkpointer state and append the edited message to the state graph's message history, creating a new checkpoint from which execution streams.
 - API Payload Preview: Allow inspecting the exact payload sent to the LLM API (including injected system messages).
-- _Note_: See the [Main Chat Interface](#2-main-chat-interface) section in the UI Specification for the exact layout and component details for all the above elements.
+- _Note_: See the UI Component State Machines section below for the exact layout and component details for all the above elements.
 
 ## Technical Architecture Proposals
 
@@ -2001,8 +2001,8 @@ Governs the form in the "New Chat" selection panel when no thread is active.
     - _Workflow Dropdown_: Enabled.
     - _Preset Dropdown_: Enabled.
     - _Initial Message Textarea_: Enabled. Focused if selections are resolved.
-    - _Submit Button_: Enabled only if `initialMessage` is non-empty.
-  - `submitting`: Creating a new thread in the database. The thread title is initialized to a truncated version of the user's `initialMessage` (e.g. first 40 characters) or the selected workflow's name. Copies the workflow snapshot to the thread record, writes the initial message, and initializes the checkpointer.
+    - _Submit Button_: Enabled. If `initialMessage` is empty, it starts the workflow without a user input message.
+  - `submitting`: Creating a new thread in the database. The thread title is initialized to a truncated version of the user's `initialMessage` (e.g. first 40 characters) or the selected workflow's name if the message is empty. Copies the workflow snapshot to the thread record, writes the initial message (if any), and initializes the checkpointer.
     - _All controls_: Disabled, shows loading spinner on Submit button.
   - `error`: Failed to load options or create thread.
     - _All controls_: Enabled. Focused.
@@ -2229,60 +2229,6 @@ Governs the display state of individual message bubbles in a multi-agent chat fe
 - **Database Reads/Writes**: None.
 - **API Request/Response Sequence**: None.
 
-#### AB. Proposed Action Card State Machine
-
-Governs the inline card shown when a tool requires explicit user approval (e.g., database-modifying tools like workflow creation).
-
-- **Context**:
-  - `toolCallId`: `string`
-  - `proposedChanges`: `any`
-  - `errorMessage`: `string | null`
-- **States**:
-  - `pending`: Waiting for user decision.
-    - _Approve Button_: Enabled. Focused.
-    - _Deny Button_: Enabled, colored red (danger).
-  - `submitting`: Dispatching the decision back to the execution runner.
-    - _Approve/Deny Buttons_: Disabled, showing loading spinner on the clicked button.
-  - `completed`: Decision recorded, card becomes read-only history.
-    - _Approve/Deny Buttons_: Hidden or displayed as static status badge ("Approved" or "Denied").
-  - `error`: Failed to dispatch the response.
-    - _Approve/Deny Buttons_: Enabled.
-    - _Error Banner_: Visible inline.
-- **Transitions / Events**:
-  - `APPROVE`: Transitions `pending` to `submitting` (dispatches `SUBMIT_TOOL_RESPONSE` with approval to parent coordinator).
-  - `DENY`: Transitions `pending` to `submitting` (dispatches `SUBMIT_TOOL_RESPONSE` with denial to parent coordinator).
-  - `SUBMIT_SUCCESS`: Transitions `submitting` to `completed`.
-  - `SUBMIT_FAILURE` (contains error): Transitions `submitting` to `error` (updates `errorMessage`).
-- **Database Reads/Writes**: None (handled by the runner actor).
-- **API Request/Response Sequence**: None.
-
-#### AC. Budget Exceeded Card State Machine
-
-Governs the inline card displayed when the execution token or step limit is exceeded.
-
-- **Context**:
-  - `currentTokens`: `number`
-  - `maxTokens`: `number | null`
-  - `stepCount`: `number`
-  - `errorMessage`: `string | null`
-- **States**:
-  - `pending`: Waiting for user decision.
-    - _Increase Budget & Resume Button_: Enabled. Focused.
-    - _Abort Button_: Enabled, colored red (danger).
-  - `submitting`: Dispatching the override limits back to the execution runner.
-    - _Buttons_: Disabled, showing loading spinner on the clicked button.
-  - `completed`: Decision recorded, card becomes read-only history.
-    - _Buttons_: Hidden or displayed as static status badge ("Budget Increased" or "Aborted").
-  - `error`: Failed to dispatch the response.
-    - _Buttons_: Enabled.
-    - _Error Banner_: Visible inline.
-- **Transitions / Events**:
-  - `INCREASE_BUDGET`: Transitions `pending` to `submitting` (dispatches `RESUME_WITH_BUDGET_OVERRIDE` to parent coordinator).
-  - `ABORT`: Transitions `pending` to `submitting` (dispatches `CANCEL_EXECUTION` to parent coordinator).
-  - `SUBMIT_SUCCESS`: Transitions `submitting` to `completed`.
-  - `SUBMIT_FAILURE` (contains error): Transitions `submitting` to `error` (updates `errorMessage`).
-- **Database Reads/Writes**: None (handled by the runner actor).
-- **API Request/Response Sequence**: None.
 
 ## Open questions
 
