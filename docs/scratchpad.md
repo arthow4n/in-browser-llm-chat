@@ -52,7 +52,7 @@ Fill in anything missing.
   - Preset = combination of LLM API provider, API key, LLM model, and configs like reasoning/thinking level, API retry policy, budget policy (e.g. force asking for human approval after X steps or Y tokens in the workflow execution cycle without human user sending a message).
   - When opening a new chat thread, the thread selects the default preset as the initial preset. The selected preset ID is saved per thread in the database.
   - When switching back to an old thread: if the saved preset is still available, it is used; otherwise, it falls back to the default preset.
-  - Onboarding and First-Time User Experience: Guides users on first load if no presets or API keys exist. See the [Global Settings View](#5-global-settings-view) in the UI Specification for warning banner details. When the user configures and saves their API keys for the first time, the application automatically seeds a set of default presets ("Default Gemini Flash" using `gemini-2.5-flash` and "Default OpenRouter Flash" using `google/gemini-2.5-flash`) into the database.
+  - Onboarding and First-Time User Experience: Guides users on first load if no presets or API keys exist. See the [Global Settings View](#5-global-settings-view) in the UI Specification for warning banner details. When the application is launched for the first time and IndexedDB is initialized, if the `workflows` store is empty, the application automatically seeds the built-in workflows (Standard 1-agent, Debate workflow) into the `workflows` store. When the user configures and saves their API keys for the first time, the application automatically seeds a set of default presets ("Default Gemini Flash" using `gemini-2.5-flash` and "Default OpenRouter Flash" using `google/gemini-2.5-flash`) into the database, setting the `default_preset_id` in the `settings` store.
   - _Safety Rules_: The user cannot delete the designated global default preset (the preset whose ID matches `default_preset_id` in global settings). Deleting a custom preset that is currently set as the active preset for any threads or referenced in any workflow node definitions is blocked, and the UI displays an inline notification listing the referencing threads or workflows.
 - Thread management CRUD
   - Current thread ID is synced with the URL so refreshing leads to the same thread.
@@ -96,7 +96,7 @@ We propose using the following stores in the `in-browser-llm-chat-db` database:
   - Fields: `name`, `description`, `isBuiltIn` (boolean), `nodes` (Array of node definitions), `edges` (Array of transition definitions), `injectedSystemMessages` (optional Array of `{ content: string, depth: number }`)
 - **`threads`**: Chat sessions.
   - Key: `id` (UUID)
-  - Fields: `title`, `workflowId`, `workflowSnapshot` (a copy of workflow configuration JSON, copied from the workflow definition upon thread creation for both built-in and custom workflows to ensure execution stability against schema modifications), `activePresetId`, `createdAt`, `updatedAt`, `parentThreadId` (null or parent UUID for branched threads), `parentMessageId` (null or parent message UUID at which branching occurred), `status` (`"inactive" | "executing" | "awaiting_input" | "error"`), `activeInterrupt` (null or object specifying active interrupt details e.g., `{ type: "ask_questions" | "approval" | "budget_exceeded", toolCallId?: string, budgetDetails?: { currentTokens: number, maxTokens: number | null, stepCount: number } }`), `errorMessage` (null or string), `latestCheckpointId` (null or string), `latestCheckpointNs` (null or string), `tokenStats` (`{ promptTokens: number, completionTokens: number, totalTokens: number } | null`)
+  - Fields: `title`, `workflowId`, `workflowSnapshot` (a copy of workflow configuration JSON, copied from the workflow definition upon thread creation for both built-in and custom workflows to ensure execution stability against schema modifications), `activePresetId`, `createdAt`, `updatedAt`, `parentThreadId` (null or parent UUID for branched threads), `parentMessageId` (null or parent message UUID at which branching occurred), `status` (`"inactive" | "executing" | "awaiting_input" | "error"`), `activeInterrupt` (null or object specifying active interrupt details e.g., `{ type: "ask_questions" | "approval" | "budget_exceeded", toolCallId?: string, budgetDetails?: { currentTokens: number, maxTokens: number | null, stepCount: number } }`), `draftAnswers` (optional Record<string, any> keyed by toolCallId mapping to draft/partial answers), `errorMessage` (null or string), `latestCheckpointId` (null or string), `latestCheckpointNs` (null or string), `tokenStats` (`{ promptTokens: number, completionTokens: number, totalTokens: number } | null`)
   - _Branching Behavior_: When branching a thread, the messages from the parent thread up to and including the `parentMessageId` are copied (cloned) to the new thread in the `messages` store under the new thread's ID (with their `sequence` order preserved). The `workflowSnapshot` is also copied from the parent thread to the new thread's record in the `threads` store to preserve execution consistency. The new thread's `latestCheckpointId` and `latestCheckpointNs` are set to the `checkpointId` and `checkpointNs` of the highest-sequence copied message that contains a non-null checkpoint reference, or `null` if no copied messages contain checkpoints. To ensure that the branched thread's history can be edited or rewound later, ALL checkpoints and `checkpoint_writes` associated with the copied messages must be copied/cloned to the `checkpoints` and `checkpoint_writes` stores under the `newThreadId`. Subsequent checkpoints are not copied. To identify the checkpoints and writes associated with the copied messages, the cloning process gathers the set of all unique non-null `[checkpointNs, checkpointId]` pairs stored in the `checkpointNs` and `checkpointId` fields of the copied messages (messages with sequence <= parent message's sequence). It then queries the `checkpoints` and `checkpoint_writes` stores for records matching the parent `threadId` and these gathered namespace/ID pairs, and clones them to the new `threadId` in IndexedDB. Child threads remain fully functional even if their parent thread is later deleted (as they hold independent clones of historical messages and checkpoints); in such cases, their `parentThreadId` is retained for provenance but resolves to null/absent in reference checks.
 - **`messages`**: Individual messages in threads.
   - Key: `id` (UUID)
@@ -971,7 +971,7 @@ The parent coordinator state machine context maintains the following variables:
     - `ExecutionState.awaitingHumanInput` (all substates: `idle`, `budgetExceeded`) -> `status: "awaiting_input"`
     - `ExecutionState.error` -> `status: "error"`
   - **Checkpoint Consistency and Thread Truncation**: Every successful execution step completes by persisting a new checkpoint to the `checkpoints` and `checkpoint_writes` stores. The thread record's `latestCheckpointId` and `latestCheckpointNs` are updated in the same write transaction. When the user edits or deletes a message in history, the rollback procedure (deleting downstream checkpoints/messages and updating `latestCheckpointId`/`latestCheckpointNs`) must be completed in a single batched database transaction before the parent coordinator is notified via `SAVE_SUCCESS` / `DELETE_SUCCESS`. Upon receiving this success event, the parent coordinator dispatches `INITIALIZE_CHECKPOINT` to query the updated checkpoint references from IndexedDB and reset the active execution state to `inactive` (with a clean, rolled-back state ready to resume).
-  - **Active-Only Execution on Route Switch**: Switching threads in the UI triggers `ROUTE_CHANGED`. If the parent coordinator is in `ExecutionState.executing`, the router event triggers an automatic pause: the parent coordinator dispatches `STOP` to the child `graphRunnerActor` (which calls `AbortController.abort()` to terminate active fetch requests), updates the active thread's `status` to `"inactive"` / `"paused"` in the database, and transitions `ExecutionState` to `inactive`. The new thread is then initialized via `checkingStatus`. This prevents multi-thread run conflicts and database write race conditions.
+  - **Active-Only Execution on Route Switch**: Switching threads in the UI triggers `ROUTE_CHANGED`. If the parent coordinator is in `ExecutionState.executing`, the router event triggers an automatic pause: the parent coordinator dispatches `STOP` to the child `graphRunnerActor` (which calls `AbortController.abort()` to terminate active fetch requests), updates the active thread's `status` to `"inactive"` in the database, and transitions `ExecutionState` to `inactive`. If the parent coordinator is in `ExecutionState.awaitingHumanInput`, the active thread's `status` in the database remains `"awaiting_input"` (preserving the pending interrupt state), but the active child runner actor is still stopped/cleaned up to prevent resource leaks. The new thread is then initialized via `checkingStatus`. This prevents multi-thread run conflicts and database write race conditions.
 
 ### 4. UI Component State Machines
 
@@ -988,18 +988,18 @@ Governs the "Test Connection" button lifecycle within the LLM Preset Configurati
   - `abortController`: `AbortController | null` (used to abort in-flight requests)
 - **States**:
   - `idle`: Initial state. Displays the "Test Connection" button.
-    - _Test Connection Button_: Enabled.
+    - _Test Connection Button_: Enabled. Focused.
     - _Cancel Button_: Hidden.
     - _Fields (API Key)_: Enabled.
-  - `testing`: Asynchronously executing a lightweight dummy request (e.g. model listing or 1-token request) using the configured API Key. A 10-second timeout timer is started upon entry.
+  - `testing`: Asynchronously executing a lightweight dummy request using the configured API Key. A 10-second timeout timer is started upon entry.
     - _Test Connection Button_: Disabled, displays loading spinner.
     - _Cancel Button_: Visible and enabled, allowing user to abort the request.
     - _Fields (API Key)_: Disabled.
   - `success`: Test succeeded. Displays a green badge showing the latency and model info.
-    - _Test Connection Button_: Enabled, label updated to "Test Connection".
+    - _Test Connection Button_: Enabled, label updated to "Test Connection". Focused.
     - _Badge_: Visible, displays latency (e.g., `120ms`) and model name.
   - `failure`: Test failed. Displays a red banner detailing status codes or network errors.
-    - _Test Connection Button_: Enabled, label updated to "Retry Test".
+    - _Test Connection Button_: Enabled, label updated to "Retry Test". Focused.
     - _Error Banner_: Visible below inputs, shows error string and recommendations.
 - **Transitions / Events**:
   - `TEST_CONNECTION` (contains config): Aborts any active in-flight request via `abortController`, instantiates a new `AbortController`, updates context with parameters, and transitions `idle`, `success`, or `failure` to `testing`.
@@ -1008,6 +1008,10 @@ Governs the "Test Connection" button lifecycle within the LLM Preset Configurati
   - `TIMEOUT`: Triggered if the 10-second test request timer expires. Aborts the request via `abortController` and transitions `testing` to `failure` (updates `errorMessage` to "Connection test timed out after 10s").
   - `INPUT_CHANGED` (when preset fields are modified): Transitions `success` or `failure` back to `idle`.
   - `CANCEL`: Aborts active request via `abortController` and transitions to `idle`.
+- **API Request/Response Sequence**:
+  - Gemini: `POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={apiKey}` with body `{ contents: [{ parts: [{ text: "ping" }] }], generationConfig: { maxOutputTokens: 1 } }`. Returns `candidates[0].content.parts[0].text`.
+  - OpenRouter: `POST https://openrouter.ai/api/v1/chat/completions` with headers `Authorization: Bearer {apiKey}` and body `{ model: "{model}", messages: [{ role: "user", content: "ping" }], max_tokens: 1 }`. Returns `choices[0].message.content`.
+- **Database Reads/Writes**: None (reads key and config directly from active memory form context).
 
 #### B. `ask_questions` Tool Form State Machine
 
@@ -1025,12 +1029,12 @@ Governs the lifecycle of the inline form rendered in the chat feed when executio
   - `active`: The form card is rendered and editable.
     - `active.editing`: User is interacting with form controls. On entry and on `UPDATE_ANSWER`, the current state of `answers` is persisted to the thread's record in IndexedDB under a `draftAnswers` dictionary keyed by `toolCallId` to ensure it survives page reloads or switching threads without conflicts.
       - _Form inputs (Radio, Checkbox, Text Area)_: Enabled.
-      - _Submit Button_: Disabled if `isValid` is false.
+      - _Submit Button_: Disabled if `isValid` is false. Focused if valid.
       - _Refuse to Answer Button_: Enabled.
     - `active.validating`: Auto-checking validation constraints. For each question in `questions`, if `required` is true, verifies that `answers[questionId]` is defined and non-empty (i.e. has at least one selected option or non-empty text input). If `required` is false, it is treated as optional.
       - _Form inputs (Radio, Checkbox, Text Area)_: Disabled.
       - _Submit/Refuse Buttons_: Disabled.
-  - `submitting`: Sending responses back to the parent coordinator machine (dispatches `SUBMIT_TOOL_RESPONSE` containing the compiled `AskQuestionsResponse` JSON payload to the parent coordinator machine, which forwards it to the active runner actor).
+  - `submitting`: Sending responses back to the parent coordinator machine.
     - _Form inputs_: Disabled.
     - _Submit Button_: Disabled, displays loading spinner.
     - _Refuse Button_: Disabled.
@@ -1053,6 +1057,11 @@ Governs the lifecycle of the inline form rendered in the chat feed when executio
   - `SUBMIT_SUCCESS`: Transitions to `submitted`.
   - `SUBMIT_FAILURE` (contains error): Transitions `submitting` back to `active.editing` (updates `errorMessage` to display the submission failure).
   - `REFUSE` (contains refusalReason): Transitions to `refused` (formats the refusal response, marking all questions as `refused: true` with the provided `refusalReason`, and dispatches `SUBMIT_TOOL_RESPONSE` containing the compiled `AskQuestionsResponse` JSON payload to the parent coordinator machine).
+- **Database Reads/Writes**:
+  - **Read**: Reads `draftAnswers` dictionary from active thread record in `threads` store during `LOAD_QUESTIONS`.
+  - **Write**: On `UPDATE_ANSWER`, updates the thread's `draftAnswers[toolCallId]` object in the `threads` store via a read-write transaction.
+  - **Clear and Commit**: On submission/refusal success, removes `draftAnswers[toolCallId]` and clears `activeInterrupt` from `threads` store, and appends a tool response message to the `messages` store in a single transaction.
+- **API Request/Response Sequence**: None (local state/DB operation; compiled answers are formatted and routed to the runner actor in the parent coordinator).
 
 #### C. Proposed Action Card (Approval Form) State Machine
 
@@ -1064,7 +1073,7 @@ Governs database-modifying tool calls (like creating or updating a workflow) tha
   - `errorMessage`: `string | null`
 - **States**:
   - `pending`: Active card with "Approve" and "Deny" buttons.
-    - _Approve Button_: Enabled, triggers `APPROVE`.
+    - _Approve Button_: Enabled, triggers `APPROVE`. Focused.
     - _Deny Button_: Enabled, triggers `DENY`.
     - _Restoration on Page Load_: When rendering the chat feed, if a `"tool_call"` message for a database-modifying action is found without a corresponding `"tool"` result message, the UI initializes the card in this `pending` state. If a matching tool result message exists in the database, the card is initialized directly into the `approved` or `denied` state depending on the status stored in that result message.
   - `approving`: Asynchronously executing the database modification transaction.
@@ -1079,7 +1088,7 @@ Governs database-modifying tool calls (like creating or updating a workflow) tha
   - `error`: Database write failed. Shows retry button and error details.
     - _Approve Button_: Hidden.
     - _Deny Button_: Enabled.
-    - _Retry Button_: Visible and enabled, triggers `RETRY_APPROVE`.
+    - _Retry Button_: Visible and enabled, triggers `RETRY_APPROVE`. Focused.
     - _Error text_: Displays DB error details inline.
 - **Transitions / Events**:
   - `LOAD_CARD` (contains toolCallId, actionDetails, and optional toolResult): If a toolResult is provided, transitions directly to `approved` or `denied` matching its status. Otherwise, transitions to `pending` (populates `toolCallId` and `actionDetails`).
@@ -1088,6 +1097,10 @@ Governs database-modifying tool calls (like creating or updating a workflow) tha
   - `APPROVE_SUCCESS` (contains tool result): Transitions `approving` to `approved` (dispatches `SUBMIT_TOOL_RESPONSE` with the successful database transaction results as the tool result to the parent coordinator machine to be forwarded to the active runner actor).
   - `APPROVE_FAILURE` (contains error): Transitions `approving` to `error` (updates `errorMessage`).
   - `RETRY_APPROVE`: Transitions `error` to `approving`.
+- **Database Reads/Writes**:
+  - **Reads**: During feed load, scans messages to resolve current state.
+  - **Writes**: On approval, runs the database action (e.g. updating `workflows` store or `presets` store with the parsed content) and appends the success `"tool"` result to `messages` store, clearing `activeInterrupt` in the `threads` store. On denial, appends the denial `"tool"` result to `messages` store, clearing `activeInterrupt` in the `threads` store.
+- **API Request/Response Sequence**: None (local DB transactions).
 
 #### D. Budget Exceeded Card State Machine
 
@@ -1100,7 +1113,7 @@ Rendered inline within the chat feed when a running thread execution cycle excee
   - `errorMessage`: `string | null`
 - **States**:
   - `prompting`: Displays warning card inline. "Increase Budget & Resume" and "Abort" buttons are active.
-    - _Increase Budget Button_: Enabled, triggers `INCREASE_BUDGET`.
+    - _Increase Budget Button_: Enabled, triggers `INCREASE_BUDGET`. Focused.
     - _Abort Button_: Enabled, triggers `ABORT`.
   - `resuming`: User clicked resume; waiting for parent machine to apply override, notify the runner actor, and restart execution.
     - _Increase Budget Button_: Disabled, displays loading spinner.
@@ -1118,6 +1131,9 @@ Rendered inline within the chat feed when a running thread execution cycle excee
   - `RESUME_FAILURE` (contains error): Transitions `resuming` back to `prompting` (updates `errorMessage`).
   - `ABORT_SUCCESS`: Transitions `aborted` to `completed` (dispatched by parent machine upon terminating the run).
   - `ABORT_FAILURE` (contains error): Transitions `aborted` back to `prompting` (updates `errorMessage`).
+- **Database Reads/Writes**:
+  - **Writes**: On Resume/Abort selection, the parent coordinator machine updates the active thread's `status` to `"executing"` or `"inactive"`, and deletes the `activeInterrupt` value from the thread record in the `threads` store.
+- **API Request/Response Sequence**: None (coordinated locally).
 
 #### E. Workflow Syncing (Soft/Hard Sync) State Machine
 
@@ -1135,11 +1151,11 @@ Triggered from Thread Settings to synchronize a thread's workflow snapshot with 
     - _Sync Button_: Disabled, displays loading spinner.
   - `promptingSoftSync`: Prompts confirmation to update prompts/presets without clearing messages/checkpoints.
     - _Modal Overlay_: Visible.
-    - _Confirm Button_: Enabled.
+    - _Confirm Button_: Enabled. Focused.
     - _Cancel Button_: Enabled.
   - `promptingHardSync`: Displays destructive update warning, confirming messages/checkpoints will be purged.
     - _Modal Overlay_: Visible.
-    - _Confirm Button_: Enabled, colored red (Carbon danger button).
+    - _Confirm Button_: Enabled, colored red (Carbon danger button). Focused.
     - _Cancel Button_: Enabled.
   - `syncing`: Updating thread record and optionally purging checkpoints/messages in DB.
     - _Modal controls_: All disabled.
@@ -1150,7 +1166,7 @@ Triggered from Thread Settings to synchronize a thread's workflow snapshot with 
   - `failure`: Sync failed, showing error.
     - _Modal_: Closed.
     - _Notification_: Shows error banner with error details.
-    - _Dismiss Button_: Enabled, returns to `idle`.
+    - _Dismiss Button_: Enabled, returns to `idle`. Focused.
 - **Transitions / Events**:
   - `START_SYNC`: Transitions `idle` to `analyzing`.
   - `ANALYSIS_COMPLETE` (contains `isDestructive` and diff details):
@@ -1162,6 +1178,10 @@ Triggered from Thread Settings to synchronize a thread's workflow snapshot with 
   - `SYNC_SUCCESS`: Transitions `syncing` to `success` (updates the thread record in the database. If a Hard Sync was performed, deletes all message, checkpoint, and checkpoint write records for the thread. The deletion is performed in a single database transaction if the total message count is small (e.g., < 100 messages), or delegates to the asynchronous chunked cascading deletion pipeline if larger, to keep the UI responsive. Resets the thread's `latestCheckpointId`, `latestCheckpointNs`, and `tokenStats` to `null` in IndexedDB, and dispatches `INITIALIZE_CHECKPOINT` to the parent coordinator to reset the active execution state to `inactive` and reload the empty thread state).
   - `SYNC_FAILURE` (contains error): Transitions `syncing` to `failure` (updates `errorMessage`).
   - `DISMISS`: Transitions `success` or `failure` back to `idle`.
+- **Database Reads/Writes**:
+  - **Reads**: During `analyzing`, fetches the workflow snapshot from `threads` store and the master workflow record from `workflows` store to perform structural comparison.
+  - **Writes**: Opens transaction on `threads` to overwrite `workflowSnapshot`. If a Hard Sync is confirmed, also opens transactions on `messages`, `checkpoints`, and `checkpoint_writes` to delete all records matching `threadId`, setting checkpointer configuration references to `null`.
+- **API Request/Response Sequence**: None (coordinated locally).
 
 #### F. API Payload Preview Modal State Machine
 
@@ -1179,13 +1199,13 @@ Governs the modal displaying compiled messages and injected system messages for 
       - _Loading Status_: Skeleton screen displayed inside the modal content.
       - _Close Button_: Enabled.
     - `opened.displaying`: Displaying compiled JSON payload.
-      - _Agent Selection Dropdown_: Enabled.
+      - _Agent Selection Dropdown_: Enabled. Focused.
       - _JSON Code block view_: Rendered with scrollbars.
       - _Close Button_: Enabled.
     - `opened.error`: Fetching or compilation failed, showing error details.
       - _Agent Selection Dropdown_: Enabled.
       - _Error Banner_: Visible.
-      - _Close Button_: Enabled.
+      - _Close Button_: Enabled. Focused.
 - **Transitions / Events**:
   - `OPEN`: Transitions `closed` to `opened.loading` (sets default `selectedAgentId`).
   - `LOADED` (contains compiled payload): Transitions `opened.loading` to `opened.displaying`.
@@ -1193,10 +1213,14 @@ Governs the modal displaying compiled messages and injected system messages for 
   - `CHANGE_AGENT` (contains agentId): Transitions `opened.displaying` or `opened.error` to `opened.loading` (updates `selectedAgentId`).
   - `CLOSE`: Transitions any `opened` state to `closed` (clears context).
   - `ROUTE_CHANGED`: Transitions any `opened` state to `closed` (clears context) to prevent showing outdated payload data from a previous thread.
+- **Database Reads/Writes**:
+  - **Reads**: Queries `threads` store to load active thread snapshot and `messages` store to fetch all historical messages. Queries `presets` and `settings` stores to load configurations and injected system message presets.
+  - **Writes**: None.
+- **API Request/Response Sequence**: None (compilation is processed entirely locally).
 
 #### G. Checkpoint Compaction Dialog State Machine
 
-Triggered in Global Settings to purge old checkpoints of a thread.
+Triggered in Global Settings or Thread Settings to purge old checkpoints of a thread.
 
 - **Context**:
   - `threadId`: `string`
@@ -1206,7 +1230,7 @@ Triggered in Global Settings to purge old checkpoints of a thread.
     - _Compact Button_: Enabled.
   - `confirming`: Displaying warning dialog.
     - _Modal_: Visible.
-    - _Confirm Compact Button_: Enabled, colored red (Carbon danger button).
+    - _Confirm Compact Button_: Enabled, colored red (Carbon danger button). Focused.
     - _Cancel Button_: Enabled.
   - `compacting`: Executing database deletion of historical checkpoints.
     - _Modal buttons_: Disabled.
@@ -1214,11 +1238,11 @@ Triggered in Global Settings to purge old checkpoints of a thread.
   - `success`: Compaction complete. Displays confirmation.
     - _Modal_: Closed.
     - _Status Notification_: Inline success banner displayed.
-    - _Dismiss Button_: Enabled, returns to `idle`.
+    - _Dismiss Button_: Enabled, returns to `idle`. Focused.
   - `failure`: Compaction failed. Displays error details.
     - _Modal_: Closed.
     - _Status Notification_: Inline error banner displayed.
-    - _Dismiss Button_: Enabled, returns to `idle`.
+    - _Dismiss Button_: Enabled, returns to `idle`. Focused.
 - **Transitions / Events**:
   - `START_COMPACT`: Transitions `idle` to `confirming`.
   - `CONFIRM_COMPACT`: Transitions `confirming` to `compacting`.
@@ -1226,6 +1250,10 @@ Triggered in Global Settings to purge old checkpoints of a thread.
   - `COMPACT_SUCCESS`: Transitions `compacting` to `success`.
   - `COMPACT_FAILURE` (contains error): Transitions `compacting` to `failure` (updates `errorMessage`).
   - `DISMISS`: Transitions `success` or `failure` back to `idle`.
+- **Database Reads/Writes**:
+  - **Reads**: Reads the active thread's `latestCheckpointId` and `latestCheckpointNs` from the `threads` store.
+  - **Writes**: Opens a transaction on the `checkpoints`, `checkpoint_writes`, and `messages` stores. Deletes all checkpoints and checkpoint writes for the thread except the latest active IDs. Sets all compacted messages' `checkpointId` and `checkpointNs` references to `null` to disable branching/editing from them.
+- **API Request/Response Sequence**: None (coordinated locally).
 
 _Note on Compaction Consequences_: Once compaction deletes historical checkpoints, the message options to Edit, Delete, or Branch from those historical messages (whose associated checkpoints were purged) are disabled in the UI, and a descriptive tooltip is shown explaining that historical checkpoints have been compacted.
 
@@ -1245,9 +1273,9 @@ Governs the lifecycle of editing, deleting, and branching a single message in th
   - `viewing`: Standard rendering mode.
     - `viewing.idle`: Standard message bubble display, overflow options menu is closed.
       - _Message Content_: Rendered as markdown.
-      - _Overflow Menu Trigger Button_: Enabled.
+      - _Overflow Menu Trigger Button_: Enabled. Focused.
     - `viewing.menuOpen`: Message overflow options menu is open, displaying action choices.
-      - _Edit / Delete / Branch options in OverflowMenu_: Enabled (subject to checkpoint availability).
+      - _Edit / Delete / Branch options in OverflowMenu_: Enabled (subject to checkpoint availability). Focused.
   - `editing`: Textarea input is active.
     - `editing.idle`: User is editing the content.
       - _Text Area Field_: Enabled, focused.
@@ -1258,7 +1286,7 @@ Governs the lifecycle of editing, deleting, and branching a single message in th
       - _Save/Cancel Buttons_: Disabled.
   - `promptingDiscard`: Confirmation dialog displayed to prevent accidental loss of edits when cancelling.
     - _Confirmation Modal_: Visible.
-    - _Confirm Discard Button_: Enabled.
+    - _Confirm Discard Button_: Enabled. Focused.
     - _Cancel Discard Button_: Enabled.
   - `saving`: Truncating history/checkpoints and writing new message content in the database.
     - _Text Area Field_: Disabled.
@@ -1266,19 +1294,19 @@ Governs the lifecycle of editing, deleting, and branching a single message in th
     - _Cancel Button_: Disabled.
   - `promptingDelete`: Confirmation dialog for deleting the message.
     - _Confirmation Modal_: Visible.
-    - _Confirm Delete Button_: Enabled, colored red (Carbon danger button).
+    - _Confirm Delete Button_: Enabled, colored red (Carbon danger button). Focused.
     - _Cancel Button_: Enabled.
   - `deleting`: Truncating history/checkpoints in the database to remove this message and subsequent items.
     - _Controls/Buttons_: Disabled, shows loading spinner.
   - `promptingBranch`: Modal dialog prompting the user to name the new branched thread.
-    - _Branch Name Input Field_: Enabled, prefilled with "Branch of [Parent Thread Title]".
+    - _Branch Name Input Field_: Enabled, prefilled with "Branch of [Parent Thread Title]". Focused.
     - _Confirm Branch Button_: Enabled.
     - _Cancel Button_: Enabled.
   - `branching`: Cloning the historical messages and checkpoints up to this message in the database into a new thread.
     - _Controls/Buttons_: Disabled, shows loading spinner.
   - `error`: Action failed (saving, deleting, or branching), showing retry/error inline.
     - _Text Area Field / Modal controls_: Enabled.
-    - _Save/Confirm Buttons_: Enabled.
+    - _Save/Confirm Buttons_: Enabled. Focused.
     - _Cancel Button_: Enabled.
     - _Error text_: Displayed inline.
 - **Transitions / Events**:
@@ -1306,6 +1334,29 @@ Governs the lifecycle of editing, deleting, and branching a single message in th
   - `CANCEL_BRANCH`: Transitions `promptingBranch` to `viewing`.
   - `BRANCH_SUCCESS` (contains newThreadId): Transitions `branching` to `viewing` (triggers parent navigation to the newly branched thread).
   - `BRANCH_FAILURE` (contains error): Transitions `branching` to `error` (updates `errorMessage`).
+- **Database Reads/Writes**:
+  - **Inline Editing (Saving)**: Opens a read-write transaction on the `messages`, `checkpoints`, `checkpoint_writes`, and `threads` stores. It:
+    1. Traverses the thread's message history backward starting from the message immediately preceding the edited message (sequence index `idx - 1`) until a message with a non-null `checkpointId` and `checkpointNs` is found (or `null` if none found).
+    2. Deletes all checkpoints and checkpoint writes with `createdAt` strictly greater than this target checkpoint's `createdAt`.
+    3. Deletes all messages in the thread with `sequence > idx`.
+    4. Updates the message at `sequence = idx` in the `messages` store with `content = editContent` and sets its `checkpointId` and `checkpointNs` to `null` (since its old checkpoint was invalidated by the edit).
+    5. Updates the active thread record in `threads`, setting `latestCheckpointId` and `latestCheckpointNs` to point to the target preceding checkpoint (or `null`), and sets the thread's `status` to `"inactive"`.
+    6. Recalculates cumulative `tokenStats` from the remaining messages and updates the thread record.
+  - **Deleting a Message**: Opens a read-write transaction on the `messages`, `checkpoints`, `checkpoint_writes`, and `threads` stores. It:
+    1. Traverses backward starting from sequence index `idx - 1` to find the target preceding checkpoint.
+    2. Deletes all checkpoints and checkpoint writes with `createdAt` strictly greater than this preceding checkpoint's `createdAt`.
+    3. Deletes all messages in the thread with `sequence >= idx`.
+    4. Updates the active thread record, setting `latestCheckpointId` and `latestCheckpointNs` to point to the preceding checkpoint (or `null`), and sets the thread's `status` to `"inactive"`.
+    5. Recalculates cumulative `tokenStats` and updates the thread record.
+  - **Branching (Cloning)**: Opens a read-write transaction on the `threads`, `messages`, `checkpoints`, and `checkpoint_writes` stores. It:
+    1. Creates a new thread record in the `threads` store with a newly generated UUID `newThreadId`, cloning the parent's `workflowSnapshot`, `activePresetId`, and settings, and setting `parentThreadId = parentThreadId`, `parentMessageId = parentMessageId`, and `status = "inactive"`.
+    2. Queries the `messages` store for all messages in the parent thread where `sequence <= parentMessage.sequence`.
+    3. For each queried message, copies it into the `messages` store, updating `threadId` to `newThreadId` and keeping `sequence`.
+    4. Gathers all unique non-null `[checkpointNs, checkpointId]` pairs stored in the copied messages.
+    5. Queries the `checkpoints` and `checkpoint_writes` stores for records matching the parent `threadId` and these gathered namespace/ID pairs, and clones them under `newThreadId`.
+    6. Finds the highest-sequence copied message containing a non-null checkpoint, and sets the branched thread's `latestCheckpointId` and `latestCheckpointNs` to these values.
+    7. Recalculates `tokenStats` for the copied messages and writes them to the new thread record.
+- **API Request/Response Sequence**: None (coordinated locally).
 
 #### I. Main Application Layout State Machine
 
@@ -1318,7 +1369,7 @@ Governs the top-level application shell, responsive navigation drawer, and globa
   - `isMobile`: `boolean`
 - **States**:
   - `idle`: Layout is loaded and active. On entry, resolves the theme preference. It registers a media query listener for `(prefers-color-scheme: dark)` which dispatches `SYSTEM_THEME_CHANGED` dynamically on change. The media query listener remains active globally, but its event is ignored by the state handler if the theme is explicitly set to `"light"` or `"dark"`.
-    - _Theme Dropdown_: Enabled.
+    - _Theme Dropdown_: Enabled. Focused.
     - _Hamburger Menu Button_: Enabled (visible only on mobile viewports).
     - _Sidebar Backdrop_: Clickable if `sidebarOpen` is true and in mobile viewport.
 - **Transitions / Events**:
@@ -1329,6 +1380,14 @@ Governs the top-level application shell, responsive navigation drawer, and globa
   - `SYSTEM_THEME_CHANGED` (contains `isDark`): When in `idle` and the `theme` context is `"system"`, dynamically updates the document's applied theme classes matching `isDark` (without altering the saved `theme` context value) to ensure real-time synchronization with OS dark/light mode switches.
   - `WINDOW_RESIZED` (contains isMobile): Updates `isMobile` context. If `isMobile` transitions to `false`, forces `sidebarOpen` to `false`.
   - `ROUTE_CHANGED` (contains route): Updates `currentRoute`. If `isMobile` is `true`, sets `sidebarOpen` to `false` to close the navigation overlay.
+- **Database Reads/Writes**:
+  - **Reads**: On initialization, reads the `"ui_config"` setting record from the `settings` store to resolve the default saved theme.
+  - **Writes**: On `SET_THEME`, opens a read-write transaction on the `settings` store to write the updated `{ key: "ui_config", value: { theme: selectedTheme } }` record.
+- **Theme Class Details**:
+  - When the active theme resolves to light, the document's root element (`<html>` or `<body>`) is set to the Carbon white theme class `cds--theme--white` / `cds--theme--g10`.
+  - When it resolves to dark, the root element is set to the Carbon dark theme class `cds--theme--g100` / `cds--theme--g90`.
+  - Transitions are applied instantly to prevent flashing.
+- **API Request/Response Sequence**: None (coordinated locally).
 
 #### J. Left Sidebar State Machine
 
@@ -1351,14 +1410,14 @@ Manages the active thread list loading, searching, and thread-level cascading de
     - _Search Input Field_: Enabled.
     - _Thread list items_: Enabled, clicking triggers navigation.
     - _Delete icons_: Enabled, clicking triggers `TRIGGER_DELETE`.
-    - _New Chat button_: Enabled.
+    - _New Chat button_: Enabled. Focused.
   - `loadingMore`: Triggered when the user scrolls to the bottom of the thread list to fetch the next page of threads.
     - _Search Input Field_: Enabled.
     - _Thread list items_: Enabled.
     - _Loading indicator_: Spinner visible at the bottom of the list.
   - `confirmingDelete`: Displaying confirmation popover/modal for deleting `deletingThreadId`.
     - _Confirmation Modal_: Visible.
-    - _Confirm Delete Button_: Enabled, colored red (Carbon danger button).
+    - _Confirm Delete Button_: Enabled, colored red (Carbon danger button). Focused.
     - _Cancel Button_: Enabled.
     - _Search input / Thread list_: Blocked/disabled.
   - `deleting`: Asynchronously executing database transactions to delete the thread and its checkpoints.
@@ -1379,6 +1438,16 @@ Manages the active thread list loading, searching, and thread-level cascading de
   - `CANCEL_DELETE`: Transitions `confirmingDelete` back to `idle` (clears `deletingThreadId`).
   - `DELETE_SUCCESS`: Transitions `deleting` back to `idle` (clears `deletingThreadId`, dispatches URL navigate to root or another thread if the deleted thread was active).
   - `DELETE_FAILURE` (contains error): Transitions `deleting` to `idle` (sets `errorMessage` and displays sidebar error warning, clears `deletingThreadId`).
+- **Database Reads/Writes**:
+  - **Loading Threads**: Queries the `threads` store. Orders threads by `updatedAt` descending, skipping any records where `status == "deleting"`. Uses cursors to paginate. Supports keyword filters by matching against the thread title.
+  - **Chunked Deletion Pipeline**:
+    - **Optimistic Phase**: Opens a transaction on `threads` to set the target thread's `status` to `"deleting"`.
+    - **Cascading Loop**: Launches an asynchronous idle loop (batch size 500) scheduling tasks via `requestIdleCallback` (fallback `setTimeout`).
+      - Batch deletes child messages matching `threadId` in `messages`.
+      - Batch deletes writes matching `threadId` in `checkpoint_writes`.
+      - Batch deletes checkpoints matching `threadId` in `checkpoints`.
+      - Finally, deletes the thread record from `threads` and dispatches `DELETE_SUCCESS`.
+- **API Request/Response Sequence**: None (coordinated locally).
 
 #### K. Preset Editor State Machine
 
@@ -1397,12 +1466,12 @@ Governs the lifecycle of modifying or creating an LLM Preset Configuration.
     - `idle.clean`: Data matches `originalData`. Can exit safely.
       - _Form Fields_: Enabled.
       - _Save Button_: Disabled.
-      - _Cancel Button_: Enabled.
+      - _Cancel Button_: Enabled. Focused.
       - _Delete Button_: Enabled (if custom and not default preset).
       - _Test Connection Button_: Enabled.
     - `idle.dirty`: Data differs. Exiting requires dirty confirmation warning.
       - _Form Fields_: Enabled.
-      - _Save Button_: Enabled.
+      - _Save Button_: Enabled. Focused.
       - _Cancel Button_: Enabled.
       - _Delete Button_: Enabled.
       - _Test Connection Button_: Enabled.
@@ -1411,7 +1480,7 @@ Governs the lifecycle of modifying or creating an LLM Preset Configuration.
     - _Save/Cancel/Delete/Test buttons_: Disabled.
   - `promptingClone`: Prompting "Clone and Customize" for built-in presets when edits are submitted.
     - _Modal Overlay_: Visible.
-    - _Clone and Save Button_: Enabled, triggers `CONFIRM_CLONE`.
+    - _Clone and Save Button_: Enabled, triggers `CONFIRM_CLONE`. Focused.
     - _Cancel Button_: Enabled.
   - `saving`: Running IndexedDB transaction to insert or update the preset.
     - _Form controls / Modal buttons_: Disabled.
@@ -1422,11 +1491,11 @@ Governs the lifecycle of modifying or creating an LLM Preset Configuration.
     - _Delete Button_: Disabled, shows loading spinner.
   - `promptingDiscard`: Active modal prompting confirmation to discard unsaved edits.
     - _Confirmation Modal_: Visible.
-    - _Confirm Discard Button_: Enabled.
+    - _Confirm Discard Button_: Enabled. Focused.
     - _Cancel Discard Button_: Enabled.
   - `error`: DB transaction failed.
     - _Form controls_: Enabled.
-    - _Save Button_: Enabled.
+    - _Save Button_: Enabled. Focused.
     - _Cancel Button_: Enabled.
     - _Error Notification Banner_: Visible, displays DB transaction error.
 - **Transitions / Events**:
@@ -1447,6 +1516,11 @@ Governs the lifecycle of modifying or creating an LLM Preset Configuration.
     - If `isDirty` is `true`, transitions to `promptingDiscard`.
   - `CONFIRM_DISCARD`: Closes preset editor and discards unsaved edits.
   - `ABORT_DISCARD`: Transitions back to `idle.dirty`.
+- **Database Reads/Writes**:
+  - **Loading Preset**: Reads the target preset from the `presets` store using its UUID `presetId`.
+  - **Saving Preset**: Opens a read-write transaction on the `presets` store to write the updated or new preset record, then commits.
+  - **Deleting Preset**: Opens a read-write transaction on the `presets` store. Verifies that `presetId` is not the global default preset (stored in `settings` as `default_preset_id`), is not referenced in any active `threads` as `activePresetId`, and is not referenced in any `workflows` nodes. If safe, deletes the record and commits the transaction.
+- **API Request/Response Sequence**: None (coordinated locally).
 
 #### L. Workflow JSON Editor State Machine
 
@@ -1464,17 +1538,17 @@ Governs the JSON editor interface used to inspect or build custom agent orchestr
   - `viewing`: Read-only JSON view for built-in workflows (editing disabled).
     - _Textarea_: Read-only.
     - _Save/Delete Buttons_: Hidden/Disabled.
-    - _Clipboard Copy, Export to File Buttons_: Enabled.
+    - _Clipboard Copy, Export to File Buttons_: Enabled. Focused.
     - _Import from File Button_: Disabled.
   - `editing`: Textarea input is active.
     - `editing.clean`: Text content matches `originalContent`.
-      - _Text Area Field_: Enabled.
+      - _Text Area Field_: Enabled. Focused.
       - _Save Button_: Disabled.
       - _Cancel Button_: Enabled.
       - _Delete Button_: Enabled (if custom).
       - _Clipboard / Import / Export buttons_: Enabled.
     - `editing.dirty`: Text content modified.
-      - _Text Area Field_: Enabled.
+      - _Text Area Field_: Enabled. Focused.
       - _Save Button_: Enabled.
       - _Cancel Button_: Enabled.
       - _Delete Button_: Enabled.
@@ -1492,7 +1566,7 @@ Governs the JSON editor interface used to inspect or build custom agent orchestr
     - _Confirm Discard Button_: Enabled.
     - _Cancel Discard Button_: Enabled.
   - `error`: DB transaction failed.
-    - _Text Area Field_: Enabled.
+    - _Text Area Field_: Enabled. Focused.
     - _Save Button_: Enabled.
     - _Cancel Button_: Enabled.
     - _Error Notification Banner_: Visible, displays DB transaction error.
@@ -1510,6 +1584,11 @@ Governs the JSON editor interface used to inspect or build custom agent orchestr
     - If `isDirty` is `true`, transitions to `promptingDiscard`.
   - `CONFIRM_DISCARD`: Transitions to workflow list view.
   - `ABORT_DISCARD`: Transitions back to `editing.dirty`.
+- **Database Reads/Writes**:
+  - **Loading Workflow**: Reads the target workflow from the `workflows` store using `workflowId`.
+  - **Saving Workflow**: Opens a read-write transaction on the `workflows` store to write the updated or new workflow record, then commits.
+  - **Deleting Workflow**: Opens a read-write transaction on the `workflows` store. Verifies that `workflowId` is not built-in (`isBuiltIn === false`) and is not referenced by any active/inactive `threads` (scans all threads in the database). If safe, deletes the record and commits the transaction.
+- **API Request/Response Sequence**: None (coordinated locally).
 
 #### M. Graph Runner Actor State Machine
 
@@ -1550,6 +1629,10 @@ Governs the lifecycle of the LangGraph background execution runner, which runs a
   - `RESUME_WITH_BUDGET_OVERRIDE` (contains stepOverride and tokenOverride): Transition from `interrupted.budgetExceeded` back to `running.requesting` (stores overrides in `budgetOverride` and resumes).
   - `COMPLETE`: Persists final state, updates thread status to `"inactive"`, transitions to `completed`.
   - `ERROR` (contains error details): Transitions to `failed` (updates thread status to `"error"`, notifies parent machine).
+- **Database Reads/Writes & API Request/Response Sequences**:
+  - **Reads**: During `initializing`, uses custom LangGraph checkpointer to load state from `checkpoints` and `checkpoint_writes` stores. Syncs missing DB messages.
+  - **Writes**: During `STEP_COMPLETE`, opens a read-write transaction to write the new message to `messages` store, save graph checkpoint config to `checkpoints` and `checkpoint_writes`, and update `latestCheckpointId`, `latestCheckpointNs`, and cumulative `tokenStats` in the `threads` store.
+  - **LLM API Streaming Sequence**: Directly connects to Gemini/OpenRouter endpoints using the API key read from `settings` store, streaming delta responses (tokens) via chunked transfer, buffering text and reasoning, and dispatching throttled events to the UI.
 
 #### N. Execution & Loop Control Panel State Machine
 
@@ -1569,7 +1652,7 @@ Governs the state, buttons, counters, and mobile overlay visibility of the execu
   - `visible`: Rendered in the UI.
     - **Mobile Overlay Region**:
       - `overlayClosed`: The full-screen mobile control overlay is closed. The compact sticky bottom status bar (or header bar) is visible on mobile viewports.
-      - `overlayOpened`: The full-screen mobile control overlay is open, displaying all counters and control actions.
+      - `overlayOpened`: The full-screen mobile control overlay is open, displaying all counters and control actions. Focused.
     - **Action Region**:
       - `idle`: No user action is currently in progress.
       - `requestingPause`: User clicked "Pause"; dispatches `PAUSE` to parent coordinator and disables control actions.
@@ -1590,6 +1673,11 @@ Governs the state, buttons, counters, and mobile overlay visibility of the execu
   - `CLICK_FORCE_CONSENSUS`: Transitions `idle` or `actionError` to `requestingForceConsensus`.
   - `CLICK_FORCE_SUMMARIZE`: Transitions `idle` or `actionError` to `requestingForceSummarize`.
   - `ACTION_SUCCESS` / `PARENT_STATE_CHANGED`: Transition from any `requesting*` state back to `idle`.
+  - `ACTION_FAILURE` (contains error): Transition from any `requesting*` state to `actionError` (updates `errorMessage`).
+  - `UPDATE_STATS` (contains round, turns, tokenStats): Updates the context stats in real-time.
+  - `DISMISS_ERROR`: Transition `actionError` to `idle` (clears `errorMessage`).
+- **Database Reads/Writes**: None directly (updates are triggered by the parent coordinator which modifies the execution states in IndexedDB).
+- **API Request/Response Sequence**: None.
   - `ACTION_FAILURE` (contains error): Transition from any `requesting*` state to `actionError` (updates `errorMessage`).
   - `UPDATE_STATS` (contains round, turns, tokenStats): Updates the context stats in real-time.
   - `DISMISS_ERROR`: Transition `actionError` to `idle` (clears `errorMessage`).
@@ -1623,24 +1711,24 @@ Governs copy/download actions and clipboard states for code blocks rendered in a
   - `errorMessage`: `string | null`
 - **States**:
   - `idle`: Ready for user action.
-    - _Copy Button_: Enabled. Label: `"Copy Code"`. Icon: Copy icon.
+    - _Copy Button_: Enabled. Label: `"Copy Code"`. Icon: Copy icon. Focused.
     - _Download Button_: Enabled. Label: `"Download"`. Icon: Download icon.
   - `copying`: Asynchronously writing code to the system clipboard via `navigator.clipboard.writeText`.
     - _Copy Button_: Disabled. Label: `"Copying..."`. Shows loading spinner.
     - _Download Button_: Disabled.
   - `copied`: Code successfully copied to clipboard.
     - _Copy Button_: Disabled. Label: `"Copied!"`. Shows checkmark icon.
-    - _Download Button_: Enabled.
+    - _Download Button_: Enabled. Focused.
     - An auto-reset 2-second timer is started.
   - `downloading`: Asynchronously preparing the file blob, creating a temporary object URL, and initiating browser-driven file download.
     - _Copy Button_: Disabled.
     - _Download Button_: Disabled. Label: `"Downloading..."`. Shows loading spinner.
   - `downloaded`: File download successfully initiated.
-    - _Copy Button_: Enabled.
+    - _Copy Button_: Enabled. Focused.
     - _Download Button_: Disabled. Label: `"Downloaded!"`. Shows checkmark icon.
     - An auto-reset 2-second timer is started.
   - `error`: Clipboard write or download action failed.
-    - _Copy/Download Buttons_: Enabled.
+    - _Copy/Download Buttons_: Enabled. Focused.
     - _Error Indicator/Tooltip_: Visible, displays `errorMessage`.
     - An auto-reset 4-second timer is started.
 - **Transitions / Events**:
@@ -1651,6 +1739,8 @@ Governs copy/download actions and clipboard states for code blocks rendered in a
   - `DOWNLOAD_SUCCESS`: Transitions `downloading` to `downloaded`.
   - `DOWNLOAD_FAILURE` (contains `error` details): Transitions `downloading` to `error` (updates `errorMessage`).
   - `TIMER_EXPIRED`: Transitions `copied`, `downloaded`, or `error` back to `idle` (clears `errorMessage`).
+- **Database Reads/Writes**: None.
+- **API Request/Response Sequence**: None (local browser API calls: `navigator.clipboard.writeText` and file blob creation with `URL.createObjectURL(blob)`).
 
 #### P. Preset List View State Machine
 
@@ -1670,11 +1760,11 @@ Governs the pagination, sorting, searching, loading, and deletion states in the 
   - `loading`: Querying the `presets` store in IndexedDB.
     - _UI Controls (search input, sort headers, page buttons, delete icons, create button)_: Disabled. Shows loading skeleton.
   - `idle`: Presets loaded and rendered.
-    - _UI Controls_: Enabled.
+    - _UI Controls_: Enabled. Focused.
   - `deleting`: Checking deletion safety rules and deleting in IndexedDB.
     - _UI Controls_: Disabled. Deleting row displays a loading spinner.
   - `error`: Loading or deleting failed.
-    - _Error Banner_: Visible with Retry and Dismiss buttons.
+    - _Error Banner_: Visible with Retry and Dismiss buttons. Focused.
 - **Transitions / Events**:
   - `FETCH`: Transitions `idle` or `error` to `loading`.
   - `FETCH_SUCCESS` (contains `presets` and `totalCount`): Transitions `loading` to `idle` (updates `presets`, `totalCount`, and clears `errorMessage`).
@@ -1689,6 +1779,10 @@ Governs the pagination, sorting, searching, loading, and deletion states in the 
   - `DELETE_SUCCESS`: Transitions `deleting` to `loading`.
   - `DELETE_FAILURE` (contains `error` details): Transitions `deleting` to `idle` (updates `errorMessage` and clears `deletingPresetId`).
   - `DISMISS_ERROR`: Transitions `error` to `idle` (clears `errorMessage`).
+- **Database Reads/Writes**:
+  - **Reads**: Loads and counts presets from `presets` store, filtering by name/model/provider using IndexedDB keyranges or cursor scans, and applying pagination.
+  - **Writes**: Opens transaction on `presets` store to delete the target record if it satisfies deletion validation checks.
+- **API Request/Response Sequence**: None.
 
 #### Q. Custom Workflow List View State Machine
 
@@ -1708,11 +1802,11 @@ Governs the pagination, sorting, searching, loading, and deletion states in the 
   - `loading`: Querying the `workflows` store in IndexedDB.
     - _UI Controls (search, sort, page, delete, import, create)_: Disabled. Shows loading skeleton.
   - `idle`: Workflows loaded and rendered.
-    - _UI Controls_: Enabled.
+    - _UI Controls_: Enabled. Focused.
   - `deleting`: Checking deletion safety rules and deleting in IndexedDB.
     - _UI Controls_: Disabled. Deleting workflow row displays a loading spinner.
   - `error`: Loading or deleting failed.
-    - _Error Banner_: Visible with Retry and Dismiss buttons.
+    - _Error Banner_: Visible with Retry and Dismiss buttons. Focused.
 - **Transitions / Events**:
   - `FETCH`: Transitions `idle` or `error` to `loading`.
   - `FETCH_SUCCESS` (contains `workflows` and `totalCount`): Transitions `loading` to `idle` (updates `workflows`, `totalCount`, and clears `errorMessage`).
@@ -1727,6 +1821,10 @@ Governs the pagination, sorting, searching, loading, and deletion states in the 
   - `DELETE_SUCCESS`: Transitions `deleting` to `loading`.
   - `DELETE_FAILURE` (contains `error` details): Transitions `deleting` to `idle` (updates `errorMessage` and clears `deletingWorkflowId`).
   - `DISMISS_ERROR`: Transitions `error` to `idle` (clears `errorMessage`).
+- **Database Reads/Writes**:
+  - **Reads**: Loads and counts custom workflows from the `workflows` store, filtering by query and applying sorting and pagination.
+  - **Writes**: Opens a transaction on the `workflows` store to delete the custom workflow if deletion validation checks pass.
+- **API Request/Response Sequence**: None.
 
 #### R. Global Settings Form State Machine
 
@@ -1750,17 +1848,17 @@ Governs the lifecycle of editing, validating, and saving fields in the Global Se
     - `idle.clean`: Form values match `originalSettings`.
       - _Form controls (keys, theme, injected messages)_: Enabled.
       - _Save Settings Button_: Disabled.
-      - _Reset Fields Button_: Disabled.
+      - _Reset Fields Button_: Disabled. Focused.
     - `idle.dirty`: Form values differ from `originalSettings`.
       - _Form controls (keys, theme, injected messages)_: Enabled.
-      - _Save Settings Button_: Enabled.
+      - _Save Settings Button_: Enabled. Focused.
       - _Reset Fields Button_: Enabled.
   - `validating`: Validating that message depths are valid integers.
     - _All controls_: Disabled.
   - `saving`: Running a database transaction to update the `settings` store.
     - _All controls_: Disabled, shows loading spinner on Save button.
   - `error`: Failed to load or save settings.
-    - _All controls_: Enabled.
+    - _All controls_: Enabled. Focused.
     - _Error Banner_: Visible.
 - **Transitions / Events**:
   - `LOAD`: Enters `loading`.
@@ -1778,6 +1876,10 @@ Governs the lifecycle of editing, validating, and saving fields in the Global Se
   - `SAVE_FAILURE` (contains error): Transitions to `error` (updates `errorMessage`).
   - `RESET_FIELDS`: Reverts form inputs to `originalSettings`, sets `isDirty` to false, transitions to `idle.clean`.
   - `DISMISS_ERROR`: Transitions `error` to `idle` (clears `errorMessage`).
+- **Database Reads/Writes**:
+  - **Reads**: During `loading`, loads `"api_keys"`, `"ui_config"`, and `"injected_system_messages"` setting keys from the `settings` store.
+  - **Writes**: On `saving`, opens a read-write transaction on the `settings` store and overwrites the records for these keys, then commits.
+- **API Request/Response Sequence**: None.
 
 #### S. New Chat Form State Machine
 
@@ -1796,12 +1898,12 @@ Governs the form in the "New Chat" selection panel when no thread is active.
   - `idle`: Form is interactive.
     - _Workflow Dropdown_: Enabled.
     - _Preset Dropdown_: Enabled.
-    - _Initial Message Textarea_: Enabled.
+    - _Initial Message Textarea_: Enabled. Focused if selections are resolved.
     - _Submit Button_: Enabled only if `initialMessage` is non-empty.
   - `submitting`: Creating a new thread in the database. The thread title is initialized to a truncated version of the user's `initialMessage` (e.g. first 40 characters) or the selected workflow's name. Copies the workflow snapshot to the thread record, writes the initial message, and initializes the checkpointer.
     - _All controls_: Disabled, shows loading spinner on Submit button.
   - `error`: Failed to load options or create thread.
-    - _All controls_: Enabled.
+    - _All controls_: Enabled. Focused.
     - _Error Banner_: Visible.
 - **Transitions / Events**:
   - `LOAD`: Enters `loading`.
@@ -1814,6 +1916,10 @@ Governs the form in the "New Chat" selection panel when no thread is active.
   - `SUBMIT_SUCCESS` (contains newThreadId): Transitions `submitting` to `idle` (resets message input, triggers route navigation to the new thread).
   - `SUBMIT_FAILURE` (contains error): Transitions `submitting` to `error` (updates `errorMessage`).
   - `DISMISS_ERROR`: Transitions `error` to `idle` (clears `errorMessage`).
+- **Database Reads/Writes**:
+  - **Reads**: During `loading`, reads active presets from the `presets` store and custom/built-in workflows from the `workflows` store.
+  - **Writes**: During `submitting`, opens a read-write transaction on `threads` and `messages`. Creates a new thread record (generates UUID, sets title, copies workflow snapshot, sets default active preset ID, sets `status = "inactive"`, sets `tokenStats` to `{ promptTokens: 0, completionTokens: 0, totalTokens: 0 }`). Appends the user's initial prompt message to the `messages` store under `sequence = 0`, then commits the transaction.
+- **API Request/Response Sequence**: None.
 
 #### T. Thread Settings Modal State Machine
 
@@ -1830,16 +1936,16 @@ Governs renaming a thread, switching thread-specific presets, syncing workflows,
   - `closed`: Modal is hidden.
   - `opened`: Modal is visible.
     - `opened.idle`: Waiting for user action.
-      - _Rename input field_: Read-only by default (shows edit icon), editable when `isEditingTitle` is true.
+      - _Rename input field_: Read-only by default (shows edit icon), editable when `isEditingTitle` is true. Focused when editable.
       - _Preset selection dropdown_: Enabled.
       - _Sync Workflow button_: Enabled.
       - _Compact Checkpoints button_: Enabled.
       - _Delete Thread button_: Enabled.
-      - _Save/Close buttons_: Enabled.
+      - _Save/Close buttons_: Enabled. Focused when not editing title.
     - `opened.saving`: Running database transaction to update title or preset.
       - _All controls_: Disabled.
     - `opened.error`: Database operation failed.
-      - _All controls_: Enabled.
+      - _All controls_: Enabled. Focused.
       - _Error Banner_: Visible.
 - **Transitions / Events**:
   - `OPEN` (contains threadId, threadTitle, selectedPresetId, presets): Transitions `closed` to `opened.idle` (populates context).
@@ -1855,6 +1961,10 @@ Governs renaming a thread, switching thread-specific presets, syncing workflows,
   - `TRIGGER_COMPACTION`: Dispatches `START_COMPACT` to the Checkpoint Compaction Dialog State Machine.
   - `TRIGGER_DELETE`: Dispatches `TRIGGER_DELETE` to the Left Sidebar State Machine and transitions modal to `closed`.
   - `DISMISS_ERROR`: Transitions `opened.error` to `opened.idle` (clears `errorMessage`).
+- **Database Reads/Writes**:
+  - **Reads**: Reads target thread details from the `threads` store, and active presets list from the `presets` store.
+  - **Writes**: On `SAVE`, opens a read-write transaction on the `threads` store to update the thread title and active preset ID values, then commits.
+- **API Request/Response Sequence**: None.
 
 ## Open questions
 
