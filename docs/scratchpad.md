@@ -82,13 +82,16 @@ We propose using the following stores in the `in-browser-llm-chat-db` database:
   - Fields: `name`, `description`, `isBuiltIn` (boolean), `nodes` (Array of node definitions), `edges` (Array of transition definitions)
 - **`threads`**: Chat sessions.
   - Key: `id` (UUID)
-  - Fields: `title`, `workflowId`, `activePresetId`, `createdAt`, `updatedAt`, `parentThreadId` (null or parent UUID for branched threads)
+  - Fields: `title`, `workflowId`, `activePresetId`, `createdAt`, `updatedAt`, `parentThreadId` (null or parent UUID for branched threads), `parentMessageId` (null or parent message UUID at which branching occurred)
 - **`messages`**: Individual messages in threads.
   - Key: `id` (UUID)
-  - Fields: `threadId`, `role` (`"system" | "user" | "assistant" | "tool"`), `content`, `type` (`"text" | "reasoning" | "tool_call" | "tool_result"`), `toolCallId` (optional), `name` (agent/tool name), `createdAt`, `metadata` (reasoning tokens, raw response, etc.)
+  - Fields: `threadId` (indexed for query performance), `role` (`"system" | "user" | "assistant" | "tool"`), `content`, `type` (`"text" | "reasoning" | "tool_call" | "tool_result"`), `toolCallId` (optional), `name` (agent/tool name), `createdAt`, `metadata` (reasoning tokens, raw response, etc.)
 - **`checkpoints`**: LangGraph checkpointer state to enable resuming active graph execution and supporting history rewinding/branching.
-  - Key: `[threadId, checkpointId]` (compound key)
-  - Fields: LangGraph checkpoint state objects (checkpoint data, metadata, writes, parent checkpoint ID).
+  - Key: `[threadId, checkpointNs, checkpointId]` (compound key)
+  - Fields: LangGraph checkpoint state objects (checkpoint data, metadata, parent checkpoint ID).
+- **`checkpoint_writes`**: Stores intermediate writes for LangGraph tasks.
+  - Key: `[threadId, checkpointNs, checkpointId, taskId, idx]` (compound key)
+  - Fields: `channel`, `value`
 
 ### 2. Custom Workflow JSON Serialization
 
@@ -102,6 +105,7 @@ interface WorkflowNode {
   systemPrompt?: string;
   presetId?: string; // inherits default if empty
   tools?: string[]; // e.g. ["ask_questions"]
+  loopHeader?: boolean; // designates a node where a new loop round starts
 }
 
 interface WorkflowEdge {
@@ -138,15 +142,22 @@ Before a custom workflow is compiled or saved, the editor performs structural va
 
 ### 3. XState Application States
 
-A single high-level state machine will coordinate the application:
+A single high-level state machine will coordinate the application using two parallel regions to decouple view/navigation from background graph execution:
 
-- `idle`: Ready for user actions (switching thread, editing preset, starting chat).
-- `configuringPreset`: Editing LLM presets.
-- `configuringWorkflow`: Customizing or creating workflows.
-- `chatting`: Active thread view, waiting for user input.
-- `graphExecuting`: Running LangGraph steps in-browser.
-- `awaitingHumanInput`: Graph execution paused (either via manual approval requirement or `ask_questions` tool popup).
-- `error`: Failed API requests or execution exceptions.
+- **`ViewState` (Navigation Region)**:
+  - `initializing`: Reads config, API keys, presets, workflows, and active thread from IndexedDB.
+  - `onboarding`: Blocker state active when no API keys are configured.
+  - `idle`: Main screen active with no loaded thread.
+  - `chatting`: Thread view active, showing message history and enabling input.
+  - `presetConfig`: Active when modifying or creating an LLM preset.
+  - `workflowConfig`: Active when modifying or creating workflows in the JSON editor.
+  - `globalSettings`: Active when configuring API keys, themes, and injected system messages.
+- **`ExecutionState` (Execution Region)**:
+  - `inactive`: No active workflow execution.
+  - `checkingStatus`: Asynchronously queries IndexedDB to resolve execution checkpoints and active background runner status on route/thread changes.
+  - `executing`: Running `@langchain/langgraph/web` steps in the browser.
+  - `awaitingHumanInput`: Paused/interrupted (e.g. for `ask_questions` tool input or database-modifying approvals).
+  - `error`: Active when execution or API error occurs.
 
 ### 4. `ask_questions` Tool Schema & Flow
 
@@ -224,12 +235,12 @@ The application layout is built using the Carbon Design System (`@carbon/react`)
   - **Controls**: Displays the current loop round, turn count, and token usage (prompt and completion tokens tracked separately, without currency calculation). Contains buttons to Pause, Resume, or Force Consensus / Summarize early.
 - **Chat Feed**:
   - **Message Bubbles**: Render user and assistant/agent messages with rich markdown formatting, GitHub Flavored Markdown (e.g. tables, checkboxes), and LaTeX math support (both inline and block equations).
-  - **Message Options Menu**: Each message bubble includes a small, low-profile overflow button (three-dots icon) with a minimum `44x44px` target. This button is permanently visible (with a light opacity like `0.6`) on both desktop and mobile viewports (no hover-only requirements; this no-hover, permanently visible approach is globally applied for all UI elements). Clicking/tapping it opens a menu (or slide-up bottom sheet on mobile) containing "Edit", "Delete", and "Branch Thread" options.
+  - **Message Options Menu**: Each message bubble includes a small, low-profile overflow button (three-dots icon) with a minimum `44x44px` target. This button is permanently visible (with a light opacity like `0.6`) on both desktop and mobile viewports (no hover-only requirements; this no-hover, permanently visible approach is globally applied for all UI elements). Clicking/tapping it opens a Carbon `OverflowMenu` (or a native Carbon `Modal` on mobile viewports for easier touch interaction) containing "Edit", "Delete", and "Branch Thread" options.
   - **Inline Message Editing**: Clicking "Edit" transforms the message bubble inline into a text area to save changes.
   - **Reasoning Process Accordion**: Collapsed by default under a "Reasoning Process" header inside the assistant's message. Capped at `max-height: 250px` with vertical scrollbars. Both reasoning tokens and text content are streamed in real-time. The accordion must remain collapsed by default during streaming and after response completion. Use a fallback renderer or debounced updates to handle malformed partial markdown or math blocks.
   - **Tool Call / Result Accordion**: Collapsed by default under a "Tool: [Name]" header. Expanding reveals a formatted JSON block of arguments or return outputs. Note: the `ask_questions` tool card form is rendered inline directly in the chat feed and must render/remain visible even when the tool call message itself is collapsed.
   - **Scroll Anchoring**: Expanding accordions preserves chat scroll anchoring so the user does not lose their viewing position.
-  - **`ask_questions` Tool Card Form**: Rendered inline directly in the chat feed when execution is interrupted. Sized with a minimum of `44x44px` touch targets. Includes checkboxes for multi-select, freetext comment fields, and a "Refuse to Answer" button. The user must either answer all questions in the card or explicitly click "Refuse to Answer" to submit the form. The form controls become read-only once submitted.
+  - **`ask_questions` Tool Card Form**: Rendered inline directly in the chat feed (using a Carbon `Tile` component to structure the form contents) when execution is interrupted. Sized with a minimum of `44x44px` touch targets. Includes checkboxes for multi-select, freetext comment fields, and a "Refuse to Answer" button. The user must either answer all questions in the card or explicitly click "Refuse to Answer" to submit the form. The form controls become read-only once submitted.
   - **Proposed Action Card**: Rendered inline for database-modifying tools (e.g., creating/updating a workflow). Shows a diff or description of the changes, with "Approve" or "Deny" buttons.
 - **Chat Input Area**:
   - A main auto-resizing text input area.
@@ -300,6 +311,11 @@ stateDiagram-v2
 
             globalSettings --> chatting : CLOSE_SETTINGS [If thread active]
             globalSettings --> idle : CLOSE_SETTINGS [If no thread active]
+
+            chatting --> onboarding : API_KEYS_REMOVED
+            idle --> onboarding : API_KEYS_REMOVED
+            presetConfig --> onboarding : API_KEYS_REMOVED
+            workflowConfig --> onboarding : API_KEYS_REMOVED
         }
         --
         state ExecutionState {
@@ -311,6 +327,9 @@ stateDiagram-v2
 
             awaitingHumanInput --> executing : RESUME / SUBMIT_TOOL_RESPONSE / SUBMIT_APPROVAL
             awaitingHumanInput --> inactive : CANCEL_EXECUTION
+
+            executing --> inactive : API_KEYS_REMOVED
+            awaitingHumanInput --> inactive : API_KEYS_REMOVED
 
             error --> inactive : DISMISS_ERROR
 
@@ -388,7 +407,7 @@ When a `ROUTE_CHANGED` or `INITIALIZE_CHECKPOINT` event is received, the `Execut
 - **React Router integration**: Resolved by making **React Router the single source of truth** for thread navigation. URL route changes emit a `ROUTE_CHANGED` event containing the route details (e.g. `threadId`), triggering the corresponding state machine transitions (e.g., loading the selected thread). Non-route navigation (such as opening settings modals or CRUD sub-views) is driven directly by XState events. Direct redirects initiated by XState (e.g., redirecting to settings on first-load key checking) are executed as side effects that call React Router's `navigate` function.
 - **LangGraph execution state storage**: Resolved by using the **XState Actor Model**. The state machine invokes or spawns a child actor (`graphRunnerActor`) whenever entering the `executing` state. This actor encapsulates the non-serializable LangGraph `CompiledStateGraph` instance and manages execution handles, streaming promises, and DB connections. The parent machine context only stores serializable metadata and handles state transitions by receiving events (`STEP`, `INTERRUPT`, `COMPLETE`, `ERROR`) from the child actor.
 - **View-Level Database Error Handling**: Errors occurring during CRUD operations (e.g., editing/deleting threads, presets, or workflows) do not trigger execution-level `ExecutionState.error` transitions. Instead, they write to the context's `errorMessage` property and render a transient Carbon inline notification (`InlineNotification`) in the active CRUD panel or sidebar, allowing the user to retry the action without interrupting any ongoing background execution.
-- **API Key Removal Behavior**: If API keys are removed or invalidated in settings, any active executions in `ExecutionState` must transition to `inactive` (or pause) to prevent immediate failures, and the `ViewState` transitions to `onboarding`.
+- **API Key Removal Behavior**: If API keys are removed or invalidated in settings, a global event `API_KEYS_REMOVED` is dispatched. This triggers the `ViewState` to transition to `onboarding` from any other state, and the `ExecutionState` to transition to `inactive` (pausing/terminating the current runner actor).
 
 ## Open questions
 
@@ -497,6 +516,22 @@ The current `ask_questions` schema assumes multi-select options. Should we suppo
 #### Question: Abort and Token Preservation on Thread Switch / App Pause
 
 When a thread execution is paused or the user switches threads, how should we handle the active streaming/HTTP requests? We proposed using an `AbortController` to abort the connection immediately. Should the app also discard any partially received tokens for that step, or should it save the partial message and allow resuming from the exact point of interruption?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: Workflow Resumption and Message History Mutations
+
+When editing or deleting a message in the middle of a thread's history, the current message history will deviate from the recorded checkpoints. How should the application align the LangGraph execution state when history mutations occur? We propose that editing/deleting any message before the latest checkpoint should invalidate and delete all subsequent checkpoints for that thread, forcing the graph execution to resume (or rewind) from the last matching checkpoint prior to the mutated message. Alternatively, should we prevent editing historical messages altogether once a workflow has completed?
+
+##### Response
+
+[UNRESOLVED]
+
+#### Question: CORS Proxies for Client-Side-Only API Calls
+
+The application is a client-side-only app deployed to GitHub Pages, executing direct browser-based API calls. While Gemini and OpenRouter support CORS out of the box, other LLM providers (or self-hosted local backends like Ollama/Llama.cpp) may have strict CORS policies that block browser requests. Should the preset configuration and settings page support configuring a custom CORS proxy URL or custom request headers, or should the app strictly support CORS-friendly providers?
 
 ##### Response
 
