@@ -18,9 +18,9 @@ describe("globalSettingsMachine", () => {
 
   it("loads settings on startup and transitions to idle.clean", async () => {
     vi.mocked(db.getSetting).mockImplementation(async (key: string) => {
-      if (key === "api_keys") return { value: { openRouter: "or-key", gemini: "gem-key" } };
-      if (key === "ui_config") return { value: { theme: "dark" } };
-      if (key === "injected_system_messages") return { value: [{ content: "sys", depth: 0 }] };
+      if (key === "api_keys") return { openRouter: "or-key", gemini: "gem-key" };
+      if (key === "ui_config") return { theme: "dark" };
+      if (key === "injected_system_messages") return [{ content: "sys", depth: 0 }];
       return null;
     });
 

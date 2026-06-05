@@ -248,7 +248,9 @@ export async function deletePreset(id: string): Promise<void> {
   const workflows = await tx.objectStore("workflows").getAll();
   const referencingWorkflows: string[] = [];
   for (const wf of workflows) {
-    const hasPreset = wf.nodes?.some((node: unknown) => (node as { presetId?: string }).presetId === id);
+    const hasPreset = wf.nodes?.some(
+      (node: unknown) => (node as { presetId?: string }).presetId === id,
+    );
     if (hasPreset) {
       referencingWorkflows.push(wf.name);
     }

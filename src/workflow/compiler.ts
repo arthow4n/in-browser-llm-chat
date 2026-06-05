@@ -1,7 +1,16 @@
 import { StateGraph, Annotation, END, START, interrupt } from "@langchain/langgraph";
 import type { WorkflowNode, WorkflowEdge } from "./schemas.js";
 
-export type GraphMessage = { id?: string; role?: string; content?: string; type?: string; metadata?: { tool_calls?: unknown[] }; name?: string; toolCallId?: string; createdAt?: number };
+export type GraphMessage = {
+  id?: string;
+  role?: string;
+  content?: string;
+  type?: string;
+  metadata?: { tool_calls?: unknown[] };
+  name?: string;
+  toolCallId?: string;
+  createdAt?: number;
+};
 
 export const GraphStateAnnotation = Annotation.Root({
   messages: Annotation<GraphMessage[]>({
@@ -161,7 +170,9 @@ export function compileWorkflow(
         });
 
         const content =
-          typeof userInput === "string" ? userInput : (userInput as { content?: string })?.content || "";
+          typeof userInput === "string"
+            ? userInput
+            : (userInput as { content?: string })?.content || "";
         const newMsg = {
           id: crypto.randomUUID(),
           role: "user" as const,

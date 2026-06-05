@@ -7,15 +7,17 @@ vi.mock("../db/db.js", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
-    getThread: vi.fn<(...args: [string]) => Promise<unknown>>().mockImplementation(async (id: string) => {
-      return {
-        id,
-        title: "Test Thread",
-        workflowId: "wf-1",
-        status: id === "thread-executing" ? "executing" : "inactive",
-        activeInterrupt: null,
-      };
-    }),
+    getThread: vi
+      .fn<(...args: [string]) => Promise<unknown>>()
+      .mockImplementation(async (id: string) => {
+        return {
+          id,
+          title: "Test Thread",
+          workflowId: "wf-1",
+          status: id === "thread-executing" ? "executing" : "inactive",
+          activeInterrupt: null,
+        };
+      }),
     saveThread: vi.fn<(...args: unknown[]) => unknown>(),
     getPreset: vi.fn<(...args: unknown[]) => unknown>().mockResolvedValue({
       id: "preset-1",
@@ -25,12 +27,14 @@ vi.mock("../db/db.js", async (importOriginal) => {
       temperature: 0.7,
       maxTokens: 100,
     }),
-    getSetting: vi.fn<(...args: [string]) => Promise<unknown>>().mockImplementation(async (key: string) => {
-      if (key === "api_keys") {
-        return { gemini: "test-key" };
-      }
-      return null;
-    }),
+    getSetting: vi
+      .fn<(...args: [string]) => Promise<unknown>>()
+      .mockImplementation(async (key: string) => {
+        if (key === "api_keys") {
+          return { gemini: "test-key" };
+        }
+        return null;
+      }),
     saveMessage: vi.fn<(...args: unknown[]) => unknown>(),
     sweepInitializingThreads: vi.fn<(...args: unknown[]) => unknown>().mockResolvedValue(undefined),
     sweepDeletingThreads: vi.fn<(...args: unknown[]) => unknown>().mockResolvedValue(undefined),
@@ -60,29 +64,30 @@ vi.mock("./graphRunnerActor.js", () => {
   };
 });
 
-type StateMock = { value: unknown; context: Record<string, unknown> };
+// type StateMock = { value: unknown; context: Record<string, unknown> };
 
 // Helper function to wait for a state condition safely without race conditions
-function waitForState(
-  actor: unknown,
-  predicate: (state: StateMock) => boolean,
-  _label?: string,
-): Promise<unknown> {
-  return new Promise((resolve) => {
-    let sub: { unsubscribe: () => void };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    sub = (actor as any).subscribe((state: StateMock) => {
-      if (predicate(state)) {
-        if (sub) {
-          sub.unsubscribe();
-        } else {
-          setTimeout(() => sub?.unsubscribe(), 0);
-        }
-        resolve(state);
-      }
-    });
-  });
-}
+// Helper function to wait for a state condition safely without race conditions
+// function waitForState(
+//   actor: unknown,
+//   predicate: (state: StateMock) => boolean,
+//   _label?: string,
+// ): Promise<unknown> {
+//   return new Promise((resolve) => {
+//     let sub: { unsubscribe: () => void };
+//     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+//     sub = (actor as any).subscribe((state: StateMock) => {
+//       if (predicate(state)) {
+//         if (sub) {
+//           sub.unsubscribe();
+//         } else {
+//           setTimeout(() => sub?.unsubscribe(), 0);
+//         }
+//         resolve(state);
+//       }
+//     });
+//   });
+// }
 
 describe("parentCoordinatorMachine", () => {
   beforeEach(() => {
@@ -94,11 +99,7 @@ describe("parentCoordinatorMachine", () => {
     actor.start();
 
     // Wait for the ViewState to settle into idle (async initialization)
-    await waitFor(
-      actor,
-      (state) => state.matches({ ViewState: "idle" }),
-      { timeout: 1000 },
-    );
+    await waitFor(actor, (state) => state.matches({ ViewState: "idle" }), { timeout: 1000 });
 
     const snapshot = actor.getSnapshot();
     expect(snapshot.matches({ ViewState: "idle" })).toBe(true);
@@ -111,11 +112,7 @@ describe("parentCoordinatorMachine", () => {
     actor.start();
 
     // Wait for ViewState to settle into idle
-    await waitFor(
-      actor,
-      (state) => state.matches({ ViewState: "idle" }),
-      { timeout: 1000 },
-    );
+    await waitFor(actor, (state) => state.matches({ ViewState: "idle" }), { timeout: 1000 });
 
     actor.send({ type: "ROUTE_CHANGED", threadId: "thread-inactive" });
 
@@ -147,20 +144,14 @@ describe("parentCoordinatorMachine", () => {
     actor.start();
 
     // Wait for ViewState to settle into idle
-    await waitFor(
-      actor,
-      (state) => state.matches({ ViewState: "idle" }),
-      { timeout: 1000 },
-    );
+    await waitFor(actor, (state) => state.matches({ ViewState: "idle" }), { timeout: 1000 });
 
     actor.send({ type: "ROUTE_CHANGED", threadId: "thread-executing" });
 
     // Wait for ExecutionState to settle into executing (async database status check)
-    await waitFor(
-      actor,
-      (state) => state.matches({ ExecutionState: "executing" }),
-      { timeout: 1000 },
-    );
+    await waitFor(actor, (state) => state.matches({ ExecutionState: "executing" }), {
+      timeout: 1000,
+    });
 
     // Send budget exceeded - synchronous transition
     actor.send({
@@ -172,8 +163,12 @@ describe("parentCoordinatorMachine", () => {
 
     // Assert synchronously
     const snapshot = actor.getSnapshot();
-    expect(snapshot.matches({ ExecutionState: { awaitingHumanInput: "budgetExceeded" } })).toBe(true);
-    expect(snapshot.context.loopControl.activeInterrupt).toEqual(expect.objectContaining({ type: "budget_exceeded" }));
+    expect(snapshot.matches({ ExecutionState: { awaitingHumanInput: "budgetExceeded" } })).toBe(
+      true,
+    );
+    expect(snapshot.context.loopControl.activeInterrupt).toEqual(
+      expect.objectContaining({ type: "budget_exceeded" }),
+    );
     actor.stop();
   });
 
@@ -184,11 +179,7 @@ describe("parentCoordinatorMachine", () => {
     actor.start();
 
     // Wait for ViewState to settle into onboarding (async initialization)
-    await waitFor(
-      actor,
-      (state) => state.matches({ ViewState: "onboarding" }),
-      { timeout: 1000 },
-    );
+    await waitFor(actor, (state) => state.matches({ ViewState: "onboarding" }), { timeout: 1000 });
 
     const snapshot = actor.getSnapshot();
     expect(snapshot.matches({ ViewState: "onboarding" })).toBe(true);
@@ -203,11 +194,7 @@ describe("parentCoordinatorMachine", () => {
     actor.start();
 
     // Wait for onboarding
-    await waitFor(
-      actor,
-      (state) => state.matches({ ViewState: "onboarding" }),
-      { timeout: 1000 },
-    );
+    await waitFor(actor, (state) => state.matches({ ViewState: "onboarding" }), { timeout: 1000 });
 
     // Open settings - synchronous
     actor.send({ type: "OPEN_SETTINGS" });
@@ -224,11 +211,7 @@ describe("parentCoordinatorMachine", () => {
     const actor = createActor(parentCoordinatorMachine);
     actor.start();
 
-    await waitFor(
-      actor,
-      (state) => state.matches({ ViewState: "idle" }),
-      { timeout: 1000 },
-    );
+    await waitFor(actor, (state) => state.matches({ ViewState: "idle" }), { timeout: 1000 });
 
     // Open preset edit - synchronous
     actor.send({ type: "OPEN_PRESET_EDIT", presetId: "preset-2" });
@@ -247,11 +230,7 @@ describe("parentCoordinatorMachine", () => {
     const actor = createActor(parentCoordinatorMachine);
     actor.start();
 
-    await waitFor(
-      actor,
-      (state) => state.matches({ ViewState: "idle" }),
-      { timeout: 1000 },
-    );
+    await waitFor(actor, (state) => state.matches({ ViewState: "idle" }), { timeout: 1000 });
 
     // Open workflow edit - synchronous
     actor.send({ type: "OPEN_WORKFLOW_EDIT", workflowId: "wf-2" });
@@ -270,18 +249,12 @@ describe("parentCoordinatorMachine", () => {
     const actor = createActor(parentCoordinatorMachine);
     actor.start();
 
-    await waitFor(
-      actor,
-      (state) => state.matches({ ViewState: "idle" }),
-      { timeout: 1000 },
-    );
+    await waitFor(actor, (state) => state.matches({ ViewState: "idle" }), { timeout: 1000 });
 
     actor.send({ type: "ROUTE_CHANGED", threadId: "thread-executing" });
-    await waitFor(
-      actor,
-      (state) => state.matches({ ExecutionState: "executing" }),
-      { timeout: 1000 },
-    );
+    await waitFor(actor, (state) => state.matches({ ExecutionState: "executing" }), {
+      timeout: 1000,
+    });
 
     // Trigger API key removal - synchronous
     actor.send({ type: "API_KEYS_REMOVED" });

@@ -43,14 +43,8 @@ export class IndexedDBSaver extends BaseCheckpointSaver {
 
     const ch = record.checkpoint as { type: string; value: string };
     const meta = record.metadata as { type: string; value: string };
-    const deserializedCheckpoint = await this.serde.loadsTyped(
-      ch.type,
-      ch.value,
-    );
-    const deserializedMetadata = await this.serde.loadsTyped(
-      meta.type,
-      meta.value,
-    );
+    const deserializedCheckpoint = await this.serde.loadsTyped(ch.type, ch.value);
+    const deserializedMetadata = await this.serde.loadsTyped(meta.type, meta.value);
 
     const writes = await db.getAllFromIndex("checkpoint_writes", "by-thread", threadId);
     const filteredWrites = writes.filter(
@@ -241,10 +235,7 @@ export class IndexedDBSaver extends BaseCheckpointSaver {
 
       const ch = r.checkpoint as { type: string; value: string };
       const meta = r.metadata as { type: string; value: string };
-      const deserializedCheckpoint = await this.serde.loadsTyped(
-        ch.type,
-        ch.value,
-      );
+      const deserializedCheckpoint = await this.serde.loadsTyped(ch.type, ch.value);
       const deserializedMetadata = await this.serde.loadsTyped(meta.type, meta.value);
 
       if (filter) {

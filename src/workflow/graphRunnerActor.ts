@@ -49,7 +49,10 @@ export type RunnerEvent =
   | { type: "INTERRUPTED"; details: unknown };
 
 // Helper to resolve system prompt placeholders
-function resolvePrompt(systemPrompt: string | undefined, messages: Array<{ role?: string; content?: string }>): string {
+function resolvePrompt(
+  systemPrompt: string | undefined,
+  messages: Array<{ role?: string; content?: string }>,
+): string {
   if (!systemPrompt) return "";
   const firstUserMsg = messages.find((m) => m.role === "user")?.content || "";
   return systemPrompt
@@ -58,7 +61,9 @@ function resolvePrompt(systemPrompt: string | undefined, messages: Array<{ role?
 }
 
 // Pruning helper following strict boundaries
-export function pruneHistory<T extends { role?: string; type?: string; metadata?: { tool_calls?: unknown[] } }>(messages: T[], maxHistoryMessages?: number): T[] {
+export function pruneHistory<
+  T extends { role?: string; type?: string; metadata?: { tool_calls?: unknown[] } },
+>(messages: T[], maxHistoryMessages?: number): T[] {
   if (!maxHistoryMessages || maxHistoryMessages <= 0 || messages.length <= maxHistoryMessages) {
     return messages;
   }
@@ -96,7 +101,16 @@ export function pruneHistory<T extends { role?: string; type?: string; metadata?
 // Message compilation compiler
 export function compileMessagesForLLM(params: {
   activeAgentName: string;
-  messages: Array<Record<string, unknown> & { role?: string; name?: string; content?: string; type?: string; metadata?: { tool_calls?: unknown[] }; toolCallId?: string }>;
+  messages: Array<
+    Record<string, unknown> & {
+      role?: string;
+      name?: string;
+      content?: string;
+      type?: string;
+      metadata?: { tool_calls?: unknown[] };
+      toolCallId?: string;
+    }
+  >;
   maxHistoryMessages?: number;
   injectedSystemMessages: Array<{ content: string; depth: number }>;
   isGemini: boolean;
@@ -222,7 +236,10 @@ export function compileMessagesForLLM(params: {
     if (last.role === msg.role && msg.role !== "tool") {
       last.content = last.content + "\n\n" + msg.content;
       if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
-        last.tool_calls = [...(Array.isArray(last.tool_calls) ? last.tool_calls : []), ...msg.tool_calls];
+        last.tool_calls = [
+          ...(Array.isArray(last.tool_calls) ? last.tool_calls : []),
+          ...msg.tool_calls,
+        ];
       }
     } else {
       merged.push(msg);
@@ -303,7 +320,9 @@ export const graphRunnerActor = createMachine(
           onError: {
             target: "failed.graphError",
             actions: assign({
-              errorMessage: ({ event }) => (event as { error?: { message?: string } }).error?.message || "Failed to initialize",
+              errorMessage: ({ event }) =>
+                (event as { error?: { message?: string } }).error?.message ||
+                "Failed to initialize",
             }),
           },
         },
@@ -325,7 +344,13 @@ export const graphRunnerActor = createMachine(
           requesting: {
             invoke: {
               src: fromPromise(
-                async ({ input, emit }: { input: { context: RunnerContext }; emit: (e: { type: string; [key: string]: unknown }) => void }) => {
+                async ({
+                  input,
+                  emit,
+                }: {
+                  input: { context: RunnerContext };
+                  emit: (e: { type: string; [key: string]: unknown }) => void;
+                }) => {
                   const { context } = input;
                   const abortController = new AbortController();
                   context.abortController = abortController;
@@ -380,10 +405,19 @@ export const graphRunnerActor = createMachine(
                         }
 
                         // Find active node config to resolve maxHistoryMessages
-                        const activeNode = context.workflowSnapshot?.nodes.find((n: { name?: string; systemPrompt?: string; maxHistoryMessages?: number }) => {
-                          const resolved = resolvePrompt((n as { systemPrompt?: string }).systemPrompt, messages);
-                          return resolved === systemPrompt;
-                        });
+                        const activeNode = context.workflowSnapshot?.nodes.find(
+                          (n: {
+                            name?: string;
+                            systemPrompt?: string;
+                            maxHistoryMessages?: number;
+                          }) => {
+                            const resolved = resolvePrompt(
+                              (n as { systemPrompt?: string }).systemPrompt,
+                              messages,
+                            );
+                            return resolved === systemPrompt;
+                          },
+                        );
                         const maxHistoryMessages = activeNode?.maxHistoryMessages;
 
                         // Compile messages
@@ -453,7 +487,10 @@ export const graphRunnerActor = createMachine(
                           const stream = await or.chat.send({
                             chatRequest: {
                               model: finalPreset.model,
-                              messages: compiledMessages as { role: "system" | "user" | "assistant"; content: string }[],
+                              messages: compiledMessages as {
+                                role: "system" | "user" | "assistant";
+                                content: string;
+                              }[],
                               temperature: finalPreset.temperature,
                               maxTokens: finalPreset.maxTokens,
                               stream: true,
@@ -467,10 +504,19 @@ export const graphRunnerActor = createMachine(
                             const delta = chunk.choices?.[0]?.delta?.content || "";
                             content += delta;
 
-                            if (chunk && typeof chunk === "object" && "usage" in chunk && chunk.usage) {
+                            if (
+                              chunk &&
+                              typeof chunk === "object" &&
+                              "usage" in chunk &&
+                              chunk.usage
+                            ) {
                               context.accumulatedTokensThisStep = {
-                                promptTokens: (chunk as { usage: { prompt_tokens?: number } }).usage.prompt_tokens || 0,
-                                completionTokens: (chunk as { usage: { completion_tokens?: number } }).usage.completion_tokens || 0,
+                                promptTokens:
+                                  (chunk as { usage: { prompt_tokens?: number } }).usage
+                                    .prompt_tokens || 0,
+                                completionTokens:
+                                  (chunk as { usage: { completion_tokens?: number } }).usage
+                                    .completion_tokens || 0,
                               };
                             }
 
@@ -486,7 +532,10 @@ export const graphRunnerActor = createMachine(
                           delta: "",
                         });
 
-                        return { content, tool_calls: toolCalls as { id: string; name: string; args: unknown }[] };
+                        return {
+                          content,
+                          tool_calls: toolCalls as { id: string; name: string; args: unknown }[],
+                        };
                       },
                     },
                   );
@@ -552,7 +601,12 @@ export const graphRunnerActor = createMachine(
                     // Sync messages
                     const nodeOutputs = Object.values(chunk);
                     for (const out of nodeOutputs) {
-                      if (out && typeof out === "object" && "messages" in out && Array.isArray((out as { messages: unknown[] }).messages)) {
+                      if (
+                        out &&
+                        typeof out === "object" &&
+                        "messages" in out &&
+                        Array.isArray((out as { messages: unknown[] }).messages)
+                      ) {
                         for (const msg of (out as { messages: unknown[] }).messages) {
                           await saveMessage({
                             ...(msg as unknown as MessageStore),
@@ -604,7 +658,9 @@ export const graphRunnerActor = createMachine(
                   const finalState = await compiled.getState(config);
                   if (
                     finalState.tasks &&
-                    finalState.tasks.some((t: { interrupts?: unknown[] }) => t.interrupts && t.interrupts.length > 0)
+                    finalState.tasks.some(
+                      (t: { interrupts?: unknown[] }) => t.interrupts && t.interrupts.length > 0,
+                    )
                   ) {
                     const task = finalState.tasks.find(
                       (t: { interrupts?: unknown[] }) => t.interrupts && t.interrupts.length > 0,
@@ -646,14 +702,20 @@ export const graphRunnerActor = createMachine(
               onError: [
                 {
                   guard: ({ event }) =>
-                    (event as { error?: { message?: string } }).error?.message === "BUDGET_EXCEEDED_STEPS" ||
-                    (event as { error?: { message?: string } }).error?.message === "BUDGET_EXCEEDED_TOKENS",
+                    (event as { error?: { message?: string } }).error?.message ===
+                      "BUDGET_EXCEEDED_STEPS" ||
+                    (event as { error?: { message?: string } }).error?.message ===
+                      "BUDGET_EXCEEDED_TOKENS",
                   target: "#graphRunnerActor.interrupted.budgetExceeded",
                   actions: ["saveBudgetExceededInterruptToDB"],
                 },
                 {
                   target: "#graphRunnerActor.failed.apiError",
-                  actions: assign({ errorMessage: ({ event }) => (event as { error?: { message?: string } }).error?.message || "Execution error" }),
+                  actions: assign({
+                    errorMessage: ({ event }) =>
+                      (event as { error?: { message?: string } }).error?.message ||
+                      "Execution error",
+                  }),
                 },
               ],
             },
@@ -686,11 +748,13 @@ export const graphRunnerActor = createMachine(
           checkingType: {
             always: [
               {
-                guard: ({ context }) => (context.activeInterrupt as { type?: string })?.type === "budget_exceeded",
+                guard: ({ context }) =>
+                  (context.activeInterrupt as { type?: string })?.type === "budget_exceeded",
                 target: "budgetExceeded",
               },
               {
-                guard: ({ context }) => (context.activeInterrupt as { type?: string })?.type === "approval",
+                guard: ({ context }) =>
+                  (context.activeInterrupt as { type?: string })?.type === "approval",
                 target: "awaitingApproval",
               },
               {

@@ -86,7 +86,9 @@ export const presetListMachine = createMachine(
           onError: {
             target: "error",
             actions: assign({
-              error: ({ event }) => (event as { error?: { message?: string } }).error?.message || "Failed to fetch presets",
+              error: ({ event }) =>
+                (event as { error?: { message?: string } }).error?.message ||
+                "Failed to fetch presets",
             }),
           },
         },
@@ -105,7 +107,9 @@ export const presetListMachine = createMachine(
           onError: {
             target: "idle",
             actions: assign({
-              error: ({ event }) => (event as { error?: { message?: string } }).error?.message || "Failed to delete preset",
+              error: ({ event }) =>
+                (event as { error?: { message?: string } }).error?.message ||
+                "Failed to delete preset",
               presetToDeleteId: null,
             }),
           },

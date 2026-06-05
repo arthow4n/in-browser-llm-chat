@@ -37,7 +37,12 @@ export type GlobalSettingsEvent =
   | { type: "EDIT_FIELD"; field: "openRouterApiKey" | "geminiApiKey" | "theme"; value: string }
   | { type: "TOGGLE_KEY_VISIBILITY"; provider: "openrouter" | "gemini" }
   | { type: "ADD_INJECTED_MESSAGE" }
-  | { type: "UPDATE_INJECTED_MESSAGE"; index: number; field: "content" | "depth"; value: string | number }
+  | {
+      type: "UPDATE_INJECTED_MESSAGE";
+      index: number;
+      field: "content" | "depth";
+      value: string | number;
+    }
   | { type: "REMOVE_INJECTED_MESSAGE"; index: number }
   | { type: "SAVE" }
   | { type: "VALIDATION_SUCCESS" }
@@ -54,9 +59,15 @@ export const globalSettingsMachine = setup({
   },
   actors: {
     loadSettings: fromPromise(async () => {
-      const api_keys = (await getSetting<{ openRouter?: string; gemini?: string }>("api_keys")) || { openRouter: "", gemini: "" };
-      const ui_config = (await getSetting<{ theme: "light" | "dark" | "system" }>("ui_config")) || { theme: "system" };
-      const injected_system_messages = (await getSetting<SystemMessageConfig[]>("injected_system_messages")) || [];
+      const api_keys = (await getSetting<{ openRouter?: string; gemini?: string }>("api_keys")) || {
+        openRouter: "",
+        gemini: "",
+      };
+      const ui_config = (await getSetting<{ theme: "light" | "dark" | "system" }>("ui_config")) || {
+        theme: "system",
+      };
+      const injected_system_messages =
+        (await getSetting<SystemMessageConfig[]>("injected_system_messages")) || [];
       return { api_keys, ui_config, injected_system_messages } as GlobalSettingsData;
     }),
     saveSettings: fromPromise(async ({ input }: { input: GlobalSettingsData }) => {
@@ -98,11 +109,20 @@ export const globalSettingsMachine = setup({
   },
   actions: {
     applyLoadedSettings: assign({
-      openRouterApiKey: ({ event }) => (event as Extract<GlobalSettingsEvent, { settings: GlobalSettingsData }>).settings.api_keys.openRouter || "",
-      geminiApiKey: ({ event }) => (event as Extract<GlobalSettingsEvent, { settings: GlobalSettingsData }>).settings.api_keys.gemini || "",
-      theme: ({ event }) => (event as Extract<GlobalSettingsEvent, { settings: GlobalSettingsData }>).settings.ui_config.theme,
-      injectedSystemMessages: ({ event }) => (event as Extract<GlobalSettingsEvent, { settings: GlobalSettingsData }>).settings.injected_system_messages,
-      originalSettings: ({ event }) => (event as Extract<GlobalSettingsEvent, { settings: GlobalSettingsData }>).settings,
+      openRouterApiKey: ({ event }) =>
+        (event as Extract<GlobalSettingsEvent, { settings: GlobalSettingsData }>).settings.api_keys
+          .openRouter || "",
+      geminiApiKey: ({ event }) =>
+        (event as Extract<GlobalSettingsEvent, { settings: GlobalSettingsData }>).settings.api_keys
+          .gemini || "",
+      theme: ({ event }) =>
+        (event as Extract<GlobalSettingsEvent, { settings: GlobalSettingsData }>).settings.ui_config
+          .theme,
+      injectedSystemMessages: ({ event }) =>
+        (event as Extract<GlobalSettingsEvent, { settings: GlobalSettingsData }>).settings
+          .injected_system_messages,
+      originalSettings: ({ event }) =>
+        (event as Extract<GlobalSettingsEvent, { settings: GlobalSettingsData }>).settings,
       isDirty: false,
       validationErrors: {},
       errorMessage: null,
@@ -201,10 +221,12 @@ export const globalSettingsMachine = setup({
         onDone: {
           target: "idle.clean",
           actions: assign({
-            openRouterApiKey: ({ event }) => (event.output as GlobalSettingsData).api_keys.openRouter || "",
+            openRouterApiKey: ({ event }) =>
+              (event.output as GlobalSettingsData).api_keys.openRouter || "",
             geminiApiKey: ({ event }) => (event.output as GlobalSettingsData).api_keys.gemini || "",
             theme: ({ event }) => (event.output as GlobalSettingsData).ui_config.theme,
-            injectedSystemMessages: ({ event }) => (event.output as GlobalSettingsData).injected_system_messages,
+            injectedSystemMessages: ({ event }) =>
+              (event.output as GlobalSettingsData).injected_system_messages,
             originalSettings: ({ event }) => event.output as GlobalSettingsData,
             isDirty: false,
             validationErrors: {},
@@ -290,10 +312,12 @@ export const globalSettingsMachine = setup({
         onDone: {
           target: "idle.clean",
           actions: assign({
-            openRouterApiKey: ({ event }) => (event.output as GlobalSettingsData).api_keys.openRouter || "",
+            openRouterApiKey: ({ event }) =>
+              (event.output as GlobalSettingsData).api_keys.openRouter || "",
             geminiApiKey: ({ event }) => (event.output as GlobalSettingsData).api_keys.gemini || "",
             theme: ({ event }) => (event.output as GlobalSettingsData).ui_config.theme,
-            injectedSystemMessages: ({ event }) => (event.output as GlobalSettingsData).injected_system_messages,
+            injectedSystemMessages: ({ event }) =>
+              (event.output as GlobalSettingsData).injected_system_messages,
             originalSettings: ({ event }) => event.output as GlobalSettingsData,
             isDirty: false,
             validationErrors: {},

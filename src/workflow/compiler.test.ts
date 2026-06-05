@@ -209,7 +209,9 @@ describe("Workflow Compiler and Execution", () => {
     const edges: WorkflowEdge[] = [];
     const warnMock = vi.fn<(...args: unknown[]) => unknown>();
     const context = {
-      callLLM: vi.fn<(...args: unknown[]) => unknown>().mockResolvedValue({ content: "invalid-json" }),
+      callLLM: vi
+        .fn<(...args: unknown[]) => unknown>()
+        .mockResolvedValue({ content: "invalid-json" }),
       warn: warnMock,
     } as unknown as CompilationContext;
 
