@@ -39,6 +39,19 @@ Use the following commands to run the project's quality checks and builds:
 - If you are only editing documents, just run formatting, don't run lint/test/build.
 - At the beginning of session, don't run tests/build/lint etc, you'll be guaranteed that the workspace is clean.
 
+## Tech Stack
+
+- **Frontend Framework**: React ^19.2.6
+- **State Management**: XState ^5.32.0
+- **UI Framework**: Carbon Design System ^1.108.0
+- **Routing**: React Router ^7.16.0
+- **Build Tool**: Vite ^8.0.14
+- **LLM Orchestration**: LangChain Core ^1.1.48, LangGraph ^1.3.2
+- **LLM SDKs**: Google GenAI ^2.7.0, OpenRouter SDK ^0.12.79
+- **Testing**: Vitest ^4.1.7, MSW ^2.14.6, Testing Library ^16.3.2
+- **Linting/Formatting**: Oxlint ^1.67.0, Oxfmt ^0.52.0
+- **Validation**: Zod ^4.4.3
+
 ## UI State Machine Policy
 
 - The UI state for every single detail, including all interactive controls, buttons, form fields, loading states, error states, and transitions, must be fully driven by XState state machines. No local component state or external state management outside of the specified state machines should be used for interactive states.
