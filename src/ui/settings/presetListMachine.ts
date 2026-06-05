@@ -27,30 +27,35 @@ export const presetListMachine = createMachine(
           DELETE_REQUESTED: {
             target: "confirmingDeletion",
             actions: assign({
-              presetToDeleteId: ({ event }) => (event as any).id,
+              presetToDeleteId: ({ event }) => {
+                if ((event as any).type === "DELETE_REQUESTED") return (event as any).id;
+                return null;
+              },
             }),
           },
           SORT_CHANGED: {
             actions: assign({
-              sortConfig: ({ event }) => ({
-                key: (event as any).key,
-                direction: (event as any).direction,
-              }),
+              sortConfig: ({ event }) => {
+                if ((event as any).type === "SORT_CHANGED") {
+                  return { key: (event as any).key, direction: (event as any).direction };
+                }
+                return { key: "name", direction: "asc" };
+              },
               pagination: ({ context }) => ({
                 ...context.pagination,
                 page: 1,
               }),
             }),
-            target: "loading",
           },
           PAGE_CHANGED: {
             actions: assign({
-              pagination: ({ context, event }) => ({
-                ...context.pagination,
-                page: (event as any).page,
-              }),
+              pagination: ({ context, event }) => {
+                if ((event as any).type === "PAGE_CHANGED") {
+                  return { ...context.pagination, page: (event as any).page };
+                }
+                return context.pagination;
+              },
             }),
-            target: "loading",
           },
         },
       },

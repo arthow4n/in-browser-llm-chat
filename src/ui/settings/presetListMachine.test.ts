@@ -90,19 +90,19 @@ describe("presetListMachine", () => {
     expect(actor.getSnapshot().context.presetToDeleteId).toBeNull();
   });
 
-  it("should update sortConfig and trigger fetch", () => {
+  it("should update sortConfig", () => {
     const actor = createActor(presetListMachine).start();
     actor.send({ type: "SORT_CHANGED", key: "name", direction: "desc" });
 
     expect(actor.getSnapshot().context.sortConfig).toEqual({ key: "name", direction: "desc" });
-    expect(actor.getSnapshot().value).toBe("loading");
+    expect(actor.getSnapshot().value).toBe("idle");
   });
 
-  it("should update pagination and trigger fetch", () => {
+  it("should update pagination", () => {
     const actor = createActor(presetListMachine).start();
     actor.send({ type: "PAGE_CHANGED", page: 2 });
 
     expect(actor.getSnapshot().context.pagination.page).toBe(2);
-    expect(actor.getSnapshot().value).toBe("loading");
+    expect(actor.getSnapshot().value).toBe("idle");
   });
 });
