@@ -21,7 +21,7 @@ This document contains a step-by-step checklist to build the LLM chat applicatio
 
 ## 1. Project Scaffolding & Dependencies
 
-- [ ] **Step 1.1:** Install the required dependencies specified in the scratchpad (e.g., `@langchain/langgraph/web`, `xstate`, `@xstate/react`, `@carbon/react`, `zod`, `idb`, `fake-indexeddb`, `@google/genai`, `@openrouter/sdk`, `react-markdown`, `rehype-katex`, `remark-gfm`, `remark-math`, `msw`, `@xstate/graph`). Ensure `oxlint` (specifically `oxlint-tsgolint@latest`), `oxfmt`, and `@typescript/native-preview` are configured according to `AGENTS.md` and the tech stack in `docs/scratchpad.md`.
+- [x] **Step 1.1:** Install the required dependencies specified in the scratchpad (e.g., `@langchain/langgraph/web`, `xstate`, `@xstate/react`, `@carbon/react`, `zod`, `idb`, `fake-indexeddb`, `@google/genai`, `@openrouter/sdk`, `react-markdown`, `rehype-katex`, `remark-gfm`, `remark-math`, `msw`, `@xstate/graph`). Ensure `oxlint` (specifically `oxlint-tsgolint@latest`), `oxfmt`, and `@typescript/native-preview` are configured according to `AGENTS.md` and the tech stack in `docs/scratchpad.md`.
 - [ ] **Step 1.2:** Configure Vite, import Carbon Design system styles (`@carbon/styles`), and build the basic Carbon layout shell in the main entry point (`index.tsx` or `App.tsx`). Do NOT add any glassmorphism or custom fonts.
 
 ## 2. Database Layer (IndexedDB)
