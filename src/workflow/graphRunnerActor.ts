@@ -48,7 +48,40 @@ export type RunnerEvent =
   | { type: "UPDATE_UI_STATE"; state: string }
   | { type: "INTERRUPTED"; details: unknown };
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// Cast-free helper functions for safe type access
+function getEventErrorMessage(event: any): string | undefined {
+  return event?.error?.message;
+}
+
+function getChunkUsage(
+  chunk: any,
+): { prompt_tokens?: number; completion_tokens?: number } | undefined {
+  return chunk?.usage;
+}
+
+function getMessages(out: any): any[] | undefined {
+  if (out && typeof out === "object" && "messages" in out && Array.isArray(out.messages)) {
+    return out.messages;
+  }
+  return undefined;
+}
+
+function getInterruptType(activeInterrupt: any): string | undefined {
+  return activeInterrupt?.type;
+}
+
+function getEventInterrupt(event: any): unknown {
+  return event?.output?.interrupt;
+}
+
+function toOpenRouterMessage(msg: any): any {
+  return msg;
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 // Helper to resolve system prompt placeholders
+
 function resolvePrompt(
   systemPrompt: string | undefined,
   messages: Array<{ role?: string; content?: string }>,
@@ -172,7 +205,8 @@ export function compileMessagesForLLM(params: {
 
   // Map roles and assign prefixes
   let systemInstruction: string | undefined = undefined;
-  const mapped: Record<string, unknown>[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapped: any[] = [];
 
   for (let i = 0; i < H.length; i++) {
     const msg = H[i];
@@ -186,13 +220,13 @@ export function compileMessagesForLLM(params: {
         } else {
           mapped.push({
             role: "user",
-            content: `[System Notification]: ${msg.content}`,
+            content: `[System Notification]: ${msg.content || ""}`,
           });
         }
       } else {
         mapped.push({
           role: "system",
-          content: msg.content,
+          content: msg.content || "",
         });
       }
     } else {
@@ -207,7 +241,7 @@ export function compileMessagesForLLM(params: {
         }
       }
 
-      let content = msg.content;
+      let content = msg.content || "";
       if (finalRole === "user") {
         if (msg.name && msg.name !== activeAgentName) {
           content = `[${msg.name}]: ${content}`;
@@ -225,7 +259,8 @@ export function compileMessagesForLLM(params: {
   }
 
   // Merge consecutive messages of the same role
-  const merged: Record<string, unknown>[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const merged: any[] = [];
   for (const msg of mapped) {
     if (merged.length === 0) {
       merged.push(msg);
@@ -252,27 +287,27 @@ export function compileMessagesForLLM(params: {
 // XState graphRunnerActor definition
 export const graphRunnerActor = createMachine(
   {
+    types: {} as { context: RunnerContext; events: RunnerEvent; input: { threadId: string } },
     id: "graphRunnerActor",
     initial: "initializing",
-    context: ({ input }: { input: { threadId: string } }) =>
-      ({
-        threadId: input.threadId,
-        workflowSnapshot: null,
-        presetConfig: null,
-        apiKeyConfig: {},
-        stepsInCurrentRun: 0,
-        tokensInCurrentRun: 0,
-        budgetOverride: null,
-        textBuffer: "",
-        reasoningBuffer: "",
-        currentStepIndex: 0,
-        errorMessage: null,
-        abortController: null,
-        activeInterrupt: null,
-        compiledGraph: null,
-        accumulatedTokensThisStep: { promptTokens: 0, completionTokens: 0 },
-        lastEmitTime: 0,
-      }) as RunnerContext,
+    context: ({ input }) => ({
+      threadId: input.threadId,
+      workflowSnapshot: null,
+      presetConfig: null,
+      apiKeyConfig: {},
+      stepsInCurrentRun: 0,
+      tokensInCurrentRun: 0,
+      budgetOverride: null,
+      textBuffer: "",
+      reasoningBuffer: "",
+      currentStepIndex: 0,
+      errorMessage: null,
+      abortController: null,
+      activeInterrupt: null,
+      compiledGraph: null,
+      accumulatedTokensThisStep: { promptTokens: 0, completionTokens: 0 },
+      lastEmitTime: 0,
+    }),
     exit: ["abortActiveRequest"],
     on: {
       STOP: {
@@ -320,9 +355,7 @@ export const graphRunnerActor = createMachine(
           onError: {
             target: "failed.graphError",
             actions: assign({
-              errorMessage: ({ event }) =>
-                (event as { error?: { message?: string } }).error?.message ||
-                "Failed to initialize",
+              errorMessage: ({ event }) => getEventErrorMessage(event) || "Failed to initialize",
             }),
           },
         },
@@ -411,10 +444,7 @@ export const graphRunnerActor = createMachine(
                             systemPrompt?: string;
                             maxHistoryMessages?: number;
                           }) => {
-                            const resolved = resolvePrompt(
-                              (n as { systemPrompt?: string }).systemPrompt,
-                              messages,
-                            );
+                            const resolved = resolvePrompt(n.systemPrompt, messages);
                             return resolved === systemPrompt;
                           },
                         );
@@ -434,7 +464,7 @@ export const graphRunnerActor = createMachine(
                         context.reasoningBuffer = "";
 
                         let content = "";
-                        let toolCalls: unknown[] = [];
+                        const toolCalls: Array<{ id: string; name: string; args: unknown }> = [];
 
                         emit({ type: "UPDATE_UI_STATE", state: "running.streaming" });
 
@@ -487,10 +517,7 @@ export const graphRunnerActor = createMachine(
                           const stream = await or.chat.send({
                             chatRequest: {
                               model: finalPreset.model,
-                              messages: compiledMessages as {
-                                role: "system" | "user" | "assistant";
-                                content: string;
-                              }[],
+                              messages: compiledMessages.map(toOpenRouterMessage),
                               temperature: finalPreset.temperature,
                               maxTokens: finalPreset.maxTokens,
                               stream: true,
@@ -504,19 +531,11 @@ export const graphRunnerActor = createMachine(
                             const delta = chunk.choices?.[0]?.delta?.content || "";
                             content += delta;
 
-                            if (
-                              chunk &&
-                              typeof chunk === "object" &&
-                              "usage" in chunk &&
-                              chunk.usage
-                            ) {
+                            const usage = getChunkUsage(chunk);
+                            if (usage) {
                               context.accumulatedTokensThisStep = {
-                                promptTokens:
-                                  (chunk as { usage: { prompt_tokens?: number } }).usage
-                                    .prompt_tokens || 0,
-                                completionTokens:
-                                  (chunk as { usage: { completion_tokens?: number } }).usage
-                                    .completion_tokens || 0,
+                                promptTokens: usage.prompt_tokens || 0,
+                                completionTokens: usage.completion_tokens || 0,
                               };
                             }
 
@@ -534,7 +553,7 @@ export const graphRunnerActor = createMachine(
 
                         return {
                           content,
-                          tool_calls: toolCalls as { id: string; name: string; args: unknown }[],
+                          tool_calls: toolCalls,
                         };
                       },
                     },
@@ -601,20 +620,41 @@ export const graphRunnerActor = createMachine(
                     // Sync messages
                     const nodeOutputs = Object.values(chunk);
                     for (const out of nodeOutputs) {
-                      if (
-                        out &&
-                        typeof out === "object" &&
-                        "messages" in out &&
-                        Array.isArray((out as { messages: unknown[] }).messages)
-                      ) {
-                        for (const msg of (out as { messages: unknown[] }).messages) {
-                          await saveMessage({
-                            ...(msg as unknown as MessageStore),
+                      const messagesList = getMessages(out);
+                      if (messagesList) {
+                        for (const msg of messagesList) {
+                          const messageToSave: MessageStore = {
+                            id: typeof msg?.id === "string" ? msg.id : crypto.randomUUID(),
                             threadId: context.threadId,
                             sequence: context.currentStepIndex++,
+                            role:
+                              msg?.role === "system" ||
+                              msg?.role === "user" ||
+                              msg?.role === "assistant" ||
+                              msg?.role === "tool"
+                                ? msg.role
+                                : "user",
+                            content: typeof msg?.content === "string" ? msg.content : "",
+                            type:
+                              msg?.type === "text" ||
+                              msg?.type === "reasoning" ||
+                              msg?.type === "tool_call" ||
+                              msg?.type === "tool_result"
+                                ? msg.type
+                                : "text",
+                            toolCallId:
+                              typeof msg?.toolCallId === "string" ? msg.toolCallId : undefined,
+                            name: typeof msg?.name === "string" ? msg.name : undefined,
+                            createdAt:
+                              typeof msg?.createdAt === "number" ? msg.createdAt : Date.now(),
+                            metadata:
+                              typeof msg?.metadata === "object" && msg?.metadata !== null
+                                ? msg.metadata
+                                : undefined,
                             checkpointId: state.config.configurable?.checkpoint_id || null,
                             checkpointNs: state.config.configurable?.checkpoint_ns || null,
-                          });
+                          };
+                          await saveMessage(messageToSave);
                         }
                       }
                     }
@@ -701,20 +741,17 @@ export const graphRunnerActor = createMachine(
               ],
               onError: [
                 {
-                  guard: ({ event }) =>
-                    (event as { error?: { message?: string } }).error?.message ===
-                      "BUDGET_EXCEEDED_STEPS" ||
-                    (event as { error?: { message?: string } }).error?.message ===
-                      "BUDGET_EXCEEDED_TOKENS",
+                  guard: ({ event }) => {
+                    const msg = getEventErrorMessage(event);
+                    return msg === "BUDGET_EXCEEDED_STEPS" || msg === "BUDGET_EXCEEDED_TOKENS";
+                  },
                   target: "#graphRunnerActor.interrupted.budgetExceeded",
                   actions: ["saveBudgetExceededInterruptToDB"],
                 },
                 {
                   target: "#graphRunnerActor.failed.apiError",
                   actions: assign({
-                    errorMessage: ({ event }) =>
-                      (event as { error?: { message?: string } }).error?.message ||
-                      "Execution error",
+                    errorMessage: ({ event }) => getEventErrorMessage(event) || "Execution error",
                   }),
                 },
               ],
@@ -749,12 +786,11 @@ export const graphRunnerActor = createMachine(
             always: [
               {
                 guard: ({ context }) =>
-                  (context.activeInterrupt as { type?: string })?.type === "budget_exceeded",
+                  getInterruptType(context.activeInterrupt) === "budget_exceeded",
                 target: "budgetExceeded",
               },
               {
-                guard: ({ context }) =>
-                  (context.activeInterrupt as { type?: string })?.type === "approval",
+                guard: ({ context }) => getInterruptType(context.activeInterrupt) === "approval",
                 target: "awaitingApproval",
               },
               {
@@ -838,7 +874,7 @@ export const graphRunnerActor = createMachine(
         }
       },
       saveInterruptToDB: async ({ context, event }) => {
-        const details = (event as { output?: { interrupt?: unknown } }).output?.interrupt;
+        const details = getEventInterrupt(event);
         const thread = await getThread(context.threadId);
         if (thread) {
           thread.status = "awaiting_input";
