@@ -25,10 +25,14 @@ export interface PresetConnectionTestResult {
   latency: number;
 }
 
+function isPresetConnectionTestResult(val: unknown): val is PresetConnectionTestResult {
+  return typeof val === "object" && val !== null && "latency" in val;
+}
+
 export const presetConnectionTesterMachine = setup({
-  types: {
-    context: {} as PresetConnectionTesterContext,
-    events: {} as PresetConnectionTesterEvent,
+  types: {} as {
+    context: PresetConnectionTesterContext;
+    events: PresetConnectionTesterEvent;
   },
   actors: {
     runTest: fromPromise(
@@ -167,19 +171,26 @@ export const presetConnectionTesterMachine = setup({
         }),
         onDone: {
           target: "success",
-          actions: assign({
-            latency: ({ event }) => (event.output as PresetConnectionTestResult).latency,
-            errorMessage: null,
-            abortController: null,
+          actions: assign(({ event }) => {
+            const out = event.output;
+            if (isPresetConnectionTestResult(out)) {
+              return {
+                latency: out.latency,
+                errorMessage: null,
+                abortController: null,
+              };
+            }
+            return {};
           }),
         },
         onError: {
           target: "failure",
-          actions: assign({
-            errorMessage: ({ event }) => (event.error as Error).message || "Connection test failed",
+          actions: assign(({ event }) => ({
+            errorMessage:
+              event.error instanceof Error ? event.error.message : "Connection test failed",
             latency: null,
             abortController: null,
-          }),
+          })),
         },
       },
       on: {
