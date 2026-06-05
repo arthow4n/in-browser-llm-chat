@@ -30,6 +30,7 @@ export type WorkflowListEvent =
   | { type: "DISMISS_ERROR" };
 
 export const workflowListMachine = createMachine({
+  types: {} as { context: WorkflowListContext; events: WorkflowListEvent },
   id: "workflowList",
   initial: "loading",
   context: (): WorkflowListContext => ({
@@ -46,55 +47,62 @@ export const workflowListMachine = createMachine({
   states: {
     loading: {
       invoke: {
-        src: fromPromise(async ({ input }) => {
-          const { searchQuery, sortBy, sortOrder, page, pageSize } = input as {
-            searchQuery: string;
-            sortBy: "name" | "createdAt";
-            sortOrder: "asc" | "desc";
-            page: number;
-            pageSize: number;
-          };
+        src: fromPromise(
+          async ({
+            input,
+          }: {
+            input: {
+              searchQuery: string;
+              sortBy: "name" | "createdAt";
+              sortOrder: "asc" | "desc";
+              page: number;
+              pageSize: number;
+            };
+          }) => {
+            const { searchQuery, sortBy, sortOrder, page, pageSize } = input;
 
-          const allWorkflows = (await getAllWorkflows()) as ExtendedWorkflowStore[];
+            const allWorkflows: ExtendedWorkflowStore[] = await getAllWorkflows();
 
-          // Filter
-          let filtered = allWorkflows;
-          if (searchQuery.trim()) {
-            const query = searchQuery.toLowerCase();
-            filtered = allWorkflows.filter(
-              (w) =>
-                w.name.toLowerCase().includes(query) || w.description.toLowerCase().includes(query),
-            );
-          }
-
-          // Sort
-          const sorted = [...filtered];
-          sorted.sort((a, b) => {
-            let comparison = 0;
-            if (sortBy === "name") {
-              comparison = a.name.localeCompare(b.name);
-            } else if (sortBy === "createdAt") {
-              const timeA = a.createdAt ?? 0;
-              const timeB = b.createdAt ?? 0;
-              comparison = timeA - timeB;
-              if (comparison === 0) {
-                comparison = a.name.localeCompare(b.name);
-              }
+            // Filter
+            let filtered = allWorkflows;
+            if (searchQuery.trim()) {
+              const query = searchQuery.toLowerCase();
+              filtered = allWorkflows.filter(
+                (w) =>
+                  w.name.toLowerCase().includes(query) ||
+                  w.description.toLowerCase().includes(query),
+              );
             }
-            return sortOrder === "asc" ? comparison : -comparison;
-          });
 
-          const totalCount = sorted.length;
+            // Sort
+            const sorted = [...filtered];
+            sorted.sort((a, b) => {
+              let comparison = 0;
+              if (sortBy === "name") {
+                comparison = a.name.localeCompare(b.name);
+              } else if (sortBy === "createdAt") {
+                const timeA = a.createdAt ?? 0;
+                const timeB = b.createdAt ?? 0;
+                comparison = timeA - timeB;
+                if (comparison === 0) {
+                  comparison = a.name.localeCompare(b.name);
+                }
+              }
+              return sortOrder === "asc" ? comparison : -comparison;
+            });
 
-          // Paginate
-          const startIndex = (page - 1) * pageSize;
-          const paginated = sorted.slice(startIndex, startIndex + pageSize);
+            const totalCount = sorted.length;
 
-          return {
-            workflows: paginated,
-            totalCount,
-          };
-        }),
+            // Paginate
+            const startIndex = (page - 1) * pageSize;
+            const paginated = sorted.slice(startIndex, startIndex + pageSize);
+
+            return {
+              workflows: paginated,
+              totalCount,
+            };
+          },
+        ),
         input: ({ context }) => ({
           searchQuery: context.searchQuery,
           sortBy: context.sortBy,
@@ -112,10 +120,13 @@ export const workflowListMachine = createMachine({
         },
         onError: {
           target: "error",
-          actions: assign({
-            errorMessage: ({ event }) =>
-              (event as { error?: { message?: string } }).error?.message ||
-              "Failed to load workflows",
+          actions: assign(({ event }) => {
+            const err = event.error;
+            const message =
+              err && typeof err === "object" && "message" in err && typeof err.message === "string"
+                ? err.message
+                : "Failed to load workflows";
+            return { errorMessage: message };
           }),
         },
       },
@@ -125,54 +136,55 @@ export const workflowListMachine = createMachine({
         FETCH: { target: "loading" },
         CHANGE_PAGE: {
           target: "loading",
-          actions: assign({
-            page: ({ event }) => {
-              const e = event as WorkflowListEvent;
-              return e.type === "CHANGE_PAGE" ? e.page : 1;
-            },
+          actions: assign(({ event }) => {
+            if (event.type === "CHANGE_PAGE") {
+              return { page: event.page };
+            }
+            return {};
           }),
         },
         CHANGE_SORT: {
           target: "loading",
-          actions: assign({
-            sortBy: ({ event }) => {
-              const e = event as WorkflowListEvent;
-              return e.type === "CHANGE_SORT" ? e.sortBy : "name";
-            },
-            sortOrder: ({ event }) => {
-              const e = event as WorkflowListEvent;
-              return e.type === "CHANGE_SORT" ? e.sortOrder : "asc";
-            },
-            page: () => 1,
+          actions: assign(({ event }) => {
+            if (event.type === "CHANGE_SORT") {
+              return { sortBy: event.sortBy, sortOrder: event.sortOrder, page: 1 };
+            }
+            return {};
           }),
         },
         UPDATE_SEARCH: {
           target: "loading",
-          actions: assign({
-            searchQuery: ({ event }) => {
-              const e = event as WorkflowListEvent;
-              return e.type === "UPDATE_SEARCH" ? e.query : "";
-            },
-            page: () => 1,
+          actions: assign(({ event }) => {
+            if (event.type === "UPDATE_SEARCH") {
+              return { searchQuery: event.query, page: 1 };
+            }
+            return {};
           }),
         },
         TRIGGER_DELETE: {
           target: "deleting",
-          actions: assign({
-            deletingWorkflowId: ({ event }) => {
-              const e = event as WorkflowListEvent;
-              return e.type === "TRIGGER_DELETE" ? e.workflowId : null;
-            },
+          actions: assign(({ event }) => {
+            if (event.type === "TRIGGER_DELETE") {
+              return { deletingWorkflowId: event.workflowId };
+            }
+            return {};
           }),
         },
       },
     },
     deleting: {
       invoke: {
-        src: fromPromise(async ({ input }) => {
-          const { id } = input as { id: string };
-          await deleteWorkflow(id);
-        }),
+        src: fromPromise(
+          async ({
+            input,
+          }: {
+            input: {
+              id: string;
+            };
+          }) => {
+            await deleteWorkflow(input.id);
+          },
+        ),
         input: ({ context }) => ({
           id: context.deletingWorkflowId!,
         }),
@@ -184,11 +196,13 @@ export const workflowListMachine = createMachine({
         },
         onError: {
           target: "idle",
-          actions: assign({
-            errorMessage: ({ event }) =>
-              (event as { error?: { message?: string } }).error?.message ||
-              "Failed to delete workflow",
-            deletingWorkflowId: () => null,
+          actions: assign(({ event }) => {
+            const err = event.error;
+            const message =
+              err && typeof err === "object" && "message" in err && typeof err.message === "string"
+                ? err.message
+                : "Failed to delete workflow";
+            return { errorMessage: message, deletingWorkflowId: null };
           }),
         },
       },
