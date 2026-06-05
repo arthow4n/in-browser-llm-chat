@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useLocation, Routes, Route } from "react-router-dom";
+import { useLocation, Routes, Route } from "react-router";
 import { useMachine } from "@xstate/react";
 import { Theme, Header, HeaderName, HeaderGlobalBar, Content } from "@carbon/react";
 import { parentCoordinatorMachine } from "./workflow/parentCoordinator";
