@@ -75,9 +75,9 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflowId, onCl
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      const content = event.target?.result as string;
-      if (content) {
-        send({ type: "EDIT_JSON", content });
+      const result = event.target?.result;
+      if (typeof result === "string") {
+        send({ type: "EDIT_JSON", content: result });
       }
     };
     reader.readAsText(file);
