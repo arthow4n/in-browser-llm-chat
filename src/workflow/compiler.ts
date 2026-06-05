@@ -6,7 +6,7 @@ export type GraphMessage = {
   role?: string;
   content?: string;
   type?: string;
-  metadata?: { tool_calls?: unknown[] };
+  metadata?: { tool_calls?: { id: string; name: string; args?: unknown }[] };
   name?: string;
   toolCallId?: string;
   createdAt?: number;
@@ -169,10 +169,15 @@ export function compileWorkflow(
           nodeId: node.id,
         });
 
-        const content =
-          typeof userInput === "string"
-            ? userInput
-            : (userInput as { content?: string })?.content || "";
+        let content = "";
+        if (typeof userInput === "string") {
+          content = userInput;
+        } else if (userInput && typeof userInput === "object" && "content" in userInput) {
+          const val = userInput["content"];
+          if (typeof val === "string") {
+            content = val;
+          }
+        }
         const newMsg = {
           id: crypto.randomUUID(),
           role: "user" as const,
@@ -194,7 +199,7 @@ export function compileWorkflow(
         const newMessages: GraphMessage[] = [];
         let updatedConsensus = state.consensusReached;
 
-        for (const tc of toolCalls as { id: string; name: string }[]) {
+        for (const tc of toolCalls) {
           if (tc.name === "declare_consensus") {
             updatedConsensus = true;
             newMessages.push({
@@ -252,7 +257,8 @@ export function compileWorkflow(
             }
           } catch (e: unknown) {
             if (context.warn) {
-              context.warn(`Consensus check JSON parsing failed: ${(e as Error).message}`);
+              const errMsg = e instanceof Error ? e.message : String(e);
+              context.warn(`Consensus check JSON parsing failed: ${errMsg}`);
             }
             consensusReached = false;
           }
