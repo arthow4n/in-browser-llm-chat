@@ -38,8 +38,6 @@ A detailed step-by-step implementation checklist for coding agents has been crea
     - **CORS Support**: All direct API calls are made from the browser. CORS does not need to be handled because both OpenRouter and Gemini API support CORS natively. No CORS proxy configuration, validation, or settings are supported.
 - `AGENTS.md` should be kept up-to-date to run the tool chains e.g. formatting, typecheck, lint with autofix, test, build.
 
-Fill in anything missing.
-
 ## Features and use cases to support
 
 "Be yet another poweruser LLM chat app" so the LLM chat UI basics and some features need to be there, plus:

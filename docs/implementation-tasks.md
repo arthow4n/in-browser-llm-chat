@@ -13,15 +13,16 @@ This document contains a step-by-step checklist to build the LLM chat applicatio
    - Run lint with autofix (`npm run lint:fix`)
    - Run tests (`npm run test`)
    - Ensure a successful build (`npm run build`)
-5. Create a Git commit for the step following the conventions in `AGENTS.md`.
-6. Mark the step as `[x]` in this checklist and proceed to the next step.
+5. **Code Review**: Before committing, invoke a `self` subagent to code review your work. Instruct the subagent to verify that the implementation adheres strictly to the plan in `docs/scratchpad.md` and that the tests provide meaningful coverage of actual usages. Address any issues identified during this review.
+6. Create a Git commit for the step following the conventions in `AGENTS.md`.
+7. Mark the step as `[x]` in this checklist and proceed to the next step.
 
 ---
 
 ## 1. Project Scaffolding & Dependencies
 
 - [ ] **Step 1.1:** Install the required dependencies specified in the scratchpad (e.g., `@langchain/langgraph/web`, `xstate`, `@xstate/react`, `@carbon/react`, `zod`, `idb`, `fake-indexeddb`, `@google/genai`, `@openrouter/sdk`, `react-markdown`, `rehype-katex`, `remark-gfm`, `remark-math`). Ensure `oxlint` and `oxfmt` are configured according to `AGENTS.md`.
-- [ ] **Step 1.2:** Configure Vite, Carbon Design tokens, and basic Carbon layout shell in the main entry point (`index.tsx` or `App.tsx`). Do NOT add any glassmorphism or custom fonts.
+- [ ] **Step 1.2:** Configure Vite, import Carbon Design system styles (`@carbon/styles`), and build the basic Carbon layout shell in the main entry point (`index.tsx` or `App.tsx`). Do NOT add any glassmorphism or custom fonts.
 
 ## 2. Database Layer (IndexedDB)
 
