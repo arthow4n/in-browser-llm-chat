@@ -1,10 +1,19 @@
 import { render, screen } from "@testing-library/react";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import { App } from "./App";
+
+vi.mock("@xstate/react", () => ({
+  useMachine: () => [{ value: "idle", context: {} }, vi.fn<(...args: any[]) => void>()],
+}));
 
 describe("App", () => {
   it("renders the Carbon layout shell", () => {
-    render(<App />);
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
 
     // Check for Header elements
     const header = screen.getByRole("banner", { name: /LLM Chat/i });

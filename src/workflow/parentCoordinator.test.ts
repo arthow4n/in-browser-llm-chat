@@ -7,7 +7,7 @@ vi.mock("../db/db.js", async (importOriginal) => {
   const actual = await importOriginal<any>();
   return {
     ...actual,
-    getThread: vi.fn<any>().mockImplementation(async (id: string) => {
+    getThread: vi.fn<(...args: any[]) => any>().mockImplementation(async (id: string) => {
       return {
         id,
         title: "Test Thread",
@@ -25,7 +25,7 @@ vi.mock("../db/db.js", async (importOriginal) => {
       temperature: 0.7,
       maxTokens: 100,
     }),
-    getSetting: vi.fn<any>().mockImplementation(async (key: string) => {
+    getSetting: vi.fn<(...args: any[]) => any>().mockImplementation(async (key: string) => {
       if (key === "api_keys") {
         return { gemini: "test-key" };
       }
