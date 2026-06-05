@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createActor } from "xstate";
+import { createActor, waitFor } from "xstate";
 import { parentCoordinatorMachine } from "./parentCoordinator.js";
 import { saveThread, getSetting } from "../db/db.js";
 
@@ -94,14 +94,14 @@ describe("parentCoordinatorMachine", () => {
     actor.start();
 
     // Wait for the ViewState to settle into idle (async initialization)
-    await waitForState(
+    await waitFor(
       actor,
-      (state) => (state.value as { ViewState?: string }).ViewState === "idle",
-      "initialization",
+      (state) => state.matches({ ViewState: "idle" }),
+      { timeout: 1000 },
     );
 
     const snapshot = actor.getSnapshot();
-    expect((snapshot.value as { ViewState?: string }).ViewState).toBe("idle");
+    expect(snapshot.matches({ ViewState: "idle" })).toBe(true);
     expect(snapshot.context.apiKeysConfigured).toBe(true);
     actor.stop();
   });
@@ -111,21 +111,21 @@ describe("parentCoordinatorMachine", () => {
     actor.start();
 
     // Wait for ViewState to settle into idle
-    await waitForState(
+    await waitFor(
       actor,
-      (state) => (state.value as { ViewState?: string }).ViewState === "idle",
-      "initialization",
+      (state) => state.matches({ ViewState: "idle" }),
+      { timeout: 1000 },
     );
 
     actor.send({ type: "ROUTE_CHANGED", threadId: "thread-inactive" });
 
     // Wait for ExecutionState to settle into inactive (async database query)
-    await waitForState(
+    await waitFor(
       actor,
       (state) =>
-        (state.value as { ExecutionState?: string }).ExecutionState === "inactive" &&
+        state.matches({ ExecutionState: "inactive" }) &&
         state.context.currentThreadId === "thread-inactive",
-      "route change status",
+      { timeout: 1000 },
     );
 
     // Transition execution state - synchronous transition
@@ -133,7 +133,7 @@ describe("parentCoordinatorMachine", () => {
 
     // Assert synchronously
     const snapshot = actor.getSnapshot();
-    expect((snapshot.value as { ExecutionState?: string }).ExecutionState).toBe("executing");
+    expect(snapshot.matches({ ExecutionState: "executing" })).toBe(true);
 
     // Wait a brief moment for updateThreadStatus to write to the database (fire-and-forget async action)
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -147,19 +147,19 @@ describe("parentCoordinatorMachine", () => {
     actor.start();
 
     // Wait for ViewState to settle into idle
-    await waitForState(
+    await waitFor(
       actor,
-      (state) => (state.value as { ViewState?: string }).ViewState === "idle",
-      "initialization",
+      (state) => state.matches({ ViewState: "idle" }),
+      { timeout: 1000 },
     );
 
     actor.send({ type: "ROUTE_CHANGED", threadId: "thread-executing" });
 
     // Wait for ExecutionState to settle into executing (async database status check)
-    await waitForState(
+    await waitFor(
       actor,
-      (state) => (state.value as { ExecutionState?: string }).ExecutionState === "executing",
-      "route change executing",
+      (state) => state.matches({ ExecutionState: "executing" }),
+      { timeout: 1000 },
     );
 
     // Send budget exceeded - synchronous transition
@@ -172,10 +172,8 @@ describe("parentCoordinatorMachine", () => {
 
     // Assert synchronously
     const snapshot = actor.getSnapshot();
-    expect((snapshot.value as { ExecutionState?: string }).ExecutionState).toEqual({
-      awaitingHumanInput: "budgetExceeded",
-    });
-    expect((snapshot.context.loopControl.activeInterrupt as { type?: string })?.type).toBe("budget_exceeded");
+    expect(snapshot.matches({ ExecutionState: { awaitingHumanInput: "budgetExceeded" } })).toBe(true);
+    expect(snapshot.context.loopControl.activeInterrupt).toEqual(expect.objectContaining({ type: "budget_exceeded" }));
     actor.stop();
   });
 
@@ -186,14 +184,14 @@ describe("parentCoordinatorMachine", () => {
     actor.start();
 
     // Wait for ViewState to settle into onboarding (async initialization)
-    await waitForState(
+    await waitFor(
       actor,
-      (state) => (state.value as { ViewState?: string }).ViewState === "onboarding",
-      "onboarding init",
+      (state) => state.matches({ ViewState: "onboarding" }),
+      { timeout: 1000 },
     );
 
     const snapshot = actor.getSnapshot();
-    expect((snapshot.value as { ViewState?: string }).ViewState).toBe("onboarding");
+    expect(snapshot.matches({ ViewState: "onboarding" })).toBe(true);
     expect(snapshot.context.apiKeysConfigured).toBe(false);
     actor.stop();
   });
@@ -205,19 +203,19 @@ describe("parentCoordinatorMachine", () => {
     actor.start();
 
     // Wait for onboarding
-    await waitForState(
+    await waitFor(
       actor,
-      (state) => (state.value as { ViewState?: string }).ViewState === "onboarding",
-      "onboarding init",
+      (state) => state.matches({ ViewState: "onboarding" }),
+      { timeout: 1000 },
     );
 
     // Open settings - synchronous
     actor.send({ type: "OPEN_SETTINGS" });
-    expect((actor.getSnapshot().value as { ViewState?: string }).ViewState).toBe("globalSettings");
+    expect(actor.getSnapshot().matches({ ViewState: "globalSettings" })).toBe(true);
 
     // Close settings - synchronous
     actor.send({ type: "CLOSE_SETTINGS" });
-    expect((actor.getSnapshot().value as { ViewState?: string }).ViewState).toBe("onboarding");
+    expect(actor.getSnapshot().matches({ ViewState: "onboarding" })).toBe(true);
 
     actor.stop();
   });
@@ -226,20 +224,20 @@ describe("parentCoordinatorMachine", () => {
     const actor = createActor(parentCoordinatorMachine);
     actor.start();
 
-    await waitForState(
+    await waitFor(
       actor,
-      (state) => (state.value as { ViewState?: string }).ViewState === "idle",
-      "initialization",
+      (state) => state.matches({ ViewState: "idle" }),
+      { timeout: 1000 },
     );
 
     // Open preset edit - synchronous
     actor.send({ type: "OPEN_PRESET_EDIT", presetId: "preset-2" });
-    expect((actor.getSnapshot().value as { ViewState?: string }).ViewState).toBe("presetConfig");
+    expect(actor.getSnapshot().matches({ ViewState: "presetConfig" })).toBe(true);
     expect(actor.getSnapshot().context.editingPresetId).toBe("preset-2");
 
     // Close preset edit - synchronous
     actor.send({ type: "CLOSE_PRESET_EDIT" });
-    expect((actor.getSnapshot().value as { ViewState?: string }).ViewState).toBe("idle");
+    expect(actor.getSnapshot().matches({ ViewState: "idle" })).toBe(true);
     expect(actor.getSnapshot().context.editingPresetId).toBeNull();
 
     actor.stop();
@@ -249,20 +247,20 @@ describe("parentCoordinatorMachine", () => {
     const actor = createActor(parentCoordinatorMachine);
     actor.start();
 
-    await waitForState(
+    await waitFor(
       actor,
-      (state) => (state.value as { ViewState?: string }).ViewState === "idle",
-      "initialization",
+      (state) => state.matches({ ViewState: "idle" }),
+      { timeout: 1000 },
     );
 
     // Open workflow edit - synchronous
     actor.send({ type: "OPEN_WORKFLOW_EDIT", workflowId: "wf-2" });
-    expect((actor.getSnapshot().value as { ViewState?: string }).ViewState).toBe("workflowConfig");
+    expect(actor.getSnapshot().matches({ ViewState: "workflowConfig" })).toBe(true);
     expect(actor.getSnapshot().context.editingWorkflowId).toBe("wf-2");
 
     // Close workflow edit - synchronous
     actor.send({ type: "CLOSE_WORKFLOW_EDIT" });
-    expect((actor.getSnapshot().value as { ViewState?: string }).ViewState).toBe("idle");
+    expect(actor.getSnapshot().matches({ ViewState: "idle" })).toBe(true);
     expect(actor.getSnapshot().context.editingWorkflowId).toBeNull();
 
     actor.stop();
@@ -272,17 +270,17 @@ describe("parentCoordinatorMachine", () => {
     const actor = createActor(parentCoordinatorMachine);
     actor.start();
 
-    await waitForState(
+    await waitFor(
       actor,
-      (state) => (state.value as { ViewState?: string }).ViewState === "idle",
-      "initialization",
+      (state) => state.matches({ ViewState: "idle" }),
+      { timeout: 1000 },
     );
 
     actor.send({ type: "ROUTE_CHANGED", threadId: "thread-executing" });
-    await waitForState(
+    await waitFor(
       actor,
-      (state) => (state.value as { ExecutionState?: string }).ExecutionState === "executing",
-      "route change executing",
+      (state) => state.matches({ ExecutionState: "executing" }),
+      { timeout: 1000 },
     );
 
     // Trigger API key removal - synchronous
@@ -290,8 +288,8 @@ describe("parentCoordinatorMachine", () => {
 
     // Assert synchronously
     const snapshot = actor.getSnapshot();
-    expect((snapshot.value as { ViewState?: string }).ViewState).toBe("onboarding");
-    expect((snapshot.value as { ExecutionState?: string }).ExecutionState).toBe("inactive");
+    expect(snapshot.matches({ ViewState: "onboarding" })).toBe(true);
+    expect(snapshot.matches({ ExecutionState: "inactive" })).toBe(true);
     expect(snapshot.context.apiKeysConfigured).toBe(false);
     actor.stop();
   });
