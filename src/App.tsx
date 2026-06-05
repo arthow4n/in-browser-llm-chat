@@ -3,6 +3,8 @@ import { useLocation, Routes, Route } from "react-router";
 import { useMachine } from "@xstate/react";
 import { Theme, Header, HeaderName, HeaderGlobalBar, Content } from "@carbon/react";
 import { parentCoordinatorMachine } from "./workflow/parentCoordinator";
+import { NewChatForm } from "./ui/sidebar/NewChatForm.js";
+import { LeftSidebar } from "./ui/sidebar/LeftSidebar.js";
 
 export function App() {
   const [state, send] = useMachine(parentCoordinatorMachine);
@@ -31,8 +33,17 @@ export function App() {
         </HeaderName>
         <HeaderGlobalBar>{/* Settings and other global actions will go here */}</HeaderGlobalBar>
       </Header>
-      <Content>
-        <main>
+      <Content
+        style={{
+          display: "flex",
+          flexDirection: "row",
+          padding: 0,
+          height: "calc(100vh - 3rem)",
+          overflow: "hidden",
+        }}
+      >
+        <LeftSidebar />
+        <main style={{ flex: 1, overflowY: "auto" }}>
           <Routes>
             <Route
               path="/:threadId"
@@ -43,16 +54,7 @@ export function App() {
                 </>
               }
             />
-            <Route
-              path="*"
-              element={
-                <>
-                  <h1>Welcome to LLM Chat</h1>
-                  <p>This is the basic Carbon layout shell.</p>
-                  <p>State: {JSON.stringify(state.value)}</p>
-                </>
-              }
-            />
+            <Route path="*" element={<NewChatForm />} />
           </Routes>
         </main>
       </Content>

@@ -761,3 +761,76 @@ export async function getPaginatedThreads(
     hasMore,
   };
 }
+
+// -------------------------------------------------------------
+// Thread Creation Helper
+// -------------------------------------------------------------
+
+export interface CreateNewThreadInput {
+  workflowId: string;
+  workflowSnapshot: WorkflowStore;
+  activePresetId: string;
+  initialMessage?: string;
+}
+
+export interface CreateNewThreadResult {
+  threadId: string;
+}
+
+/**
+ * Creates a new thread record and optionally its first user message in a single
+ * atomic IndexedDB transaction. Returns the new thread's UUID on success.
+ */
+export async function createNewThread(input: CreateNewThreadInput): Promise<CreateNewThreadResult> {
+  const { workflowId, workflowSnapshot, activePresetId, initialMessage } = input;
+  const db = await getDB();
+
+  const threadId = crypto.randomUUID();
+  const now = Date.now();
+
+  const title = initialMessage
+    ? initialMessage.slice(0, 40).trim() + (initialMessage.length > 40 ? "…" : "")
+    : "New Chat";
+
+  const thread: ThreadStore = {
+    id: threadId,
+    title,
+    workflowId,
+    workflowSnapshot,
+    activePresetId,
+    createdAt: now,
+    updatedAt: now,
+    parentThreadId: null,
+    parentMessageId: null,
+    status: "inactive",
+    activeInterrupt: null,
+    draftAnswers: {},
+    errorMessage: null,
+    latestCheckpointId: null,
+    latestCheckpointNs: null,
+    tokenStats: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+  };
+
+  if (initialMessage && initialMessage.trim() !== "") {
+    const tx = db.transaction(["threads", "messages"], "readwrite");
+    await tx.objectStore("threads").put(thread);
+
+    const message: MessageStore = {
+      id: crypto.randomUUID(),
+      threadId,
+      sequence: 0,
+      role: "user",
+      content: initialMessage.trim(),
+      type: "text",
+      createdAt: now,
+      checkpointId: null,
+      checkpointNs: null,
+    };
+    await tx.objectStore("messages").put(message);
+    await tx.done;
+  } else {
+    await db.put("threads", thread);
+  }
+
+  return { threadId };
+}
