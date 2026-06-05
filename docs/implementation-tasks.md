@@ -36,7 +36,7 @@ This document contains a step-by-step checklist to build the LLM chat applicatio
 
 ## 4. Execution State Machine & Runner Actor
 
-- [ ] **Step 4.1:** Implement the `graphRunnerActor` state machine. It should handle LangGraph `stream()` execution, manage API chunk buffering, handle LLM API limits/budget policies, execute tools, and handle `PAUSE`/`INTERRUPT` logic.
+- [x] **Step 4.1:** Implement the `graphRunnerActor` state machine. It should handle LangGraph `stream()` execution, manage API chunk buffering, handle LLM API limits/budget policies, execute tools, and handle `PAUSE`/`INTERRUPT` logic.
 - [ ] **Step 4.2:** Implement the `ExecutionState` parallel region of the Parent Coordinator machine. Ensure it orchestrates the `graphRunnerActor`, manages `checkingStatus`, `executing`, `awaitingHumanInput`, and `error` states, and appropriately saves execution statuses to IndexedDB.
 
 ## 5. View State Machine (Parent Coordinator) & Routing
