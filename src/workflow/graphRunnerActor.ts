@@ -251,6 +251,12 @@ export const graphRunnerActor = createMachine(
         accumulatedTokensThisStep: { promptTokens: 0, completionTokens: 0 },
         lastEmitTime: 0,
       }) as RunnerContext,
+    exit: ["abortActiveRequest"],
+    on: {
+      STOP: {
+        target: ".paused",
+      },
+    },
     states: {
       initializing: {
         invoke: {
@@ -652,6 +658,12 @@ export const graphRunnerActor = createMachine(
           PAUSE: {
             target: "#graphRunnerActor.paused",
           },
+          STEP_COMPLETE: {
+            actions: ["notifyStep"],
+          },
+          RECEIVE_TOKEN: {
+            actions: ["notifyToken"],
+          },
         },
       },
       paused: {
@@ -664,6 +676,7 @@ export const graphRunnerActor = createMachine(
       },
       interrupted: {
         initial: "checkingType",
+        entry: ["notifyInterrupt"],
         states: {
           checkingType: {
             always: [
@@ -705,6 +718,7 @@ export const graphRunnerActor = createMachine(
             },
           },
           budgetExceeded: {
+            entry: ["notifyBudgetExceeded"],
             on: {
               RESUME_WITH_BUDGET_OVERRIDE: {
                 target: "#graphRunnerActor.running.requesting",
@@ -806,6 +820,39 @@ export const graphRunnerActor = createMachine(
         ({ context }) => ({
           type: "ERROR",
           error: context.errorMessage,
+        }),
+      ),
+      notifyInterrupt: sendTo(
+        ({ self }) => self._parent!,
+        ({ context }) => ({
+          type: "INTERRUPT",
+          details: context.activeInterrupt,
+        }),
+      ),
+      notifyBudgetExceeded: sendTo(
+        ({ self }) => self._parent!,
+        ({ context }) => ({
+          type: "BUDGET_EXCEEDED",
+          currentTokens: context.tokensInCurrentRun,
+          maxTokens: context.presetConfig?.budgetPolicy?.maxTokensPerRun ?? null,
+          stepCount: context.stepsInCurrentRun,
+        }),
+      ),
+      notifyStep: sendTo(
+        ({ self }) => self._parent!,
+        ({ event }) => ({
+          type: "STEP",
+          steps: (event as any).steps,
+          tokens: (event as any).tokens,
+        }),
+      ),
+      notifyToken: sendTo(
+        ({ self }) => self._parent!,
+        ({ event }) => ({
+          type: "RECEIVE_TOKEN",
+          token: (event as any).token,
+          reasoning: (event as any).reasoning,
+          delta: (event as any).delta,
         }),
       ),
     },
