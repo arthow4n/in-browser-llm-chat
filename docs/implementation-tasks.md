@@ -27,7 +27,7 @@ This document contains a step-by-step checklist to build the LLM chat applicatio
 ## 2. Database Layer (IndexedDB)
 
 - [x] **Step 2.1:** Implement the database schema and initialization logic using `idb` inside `src/db/index.ts`. Create stores for `settings`, `presets`, `workflows`, `threads`, `messages`, `checkpoints`, and `checkpoint_writes` exactly as specified in the "Database Schema" section.
-- [ ] **Step 2.2:** Implement database helper functions for CRUD operations on all stores, ensuring to use transaction sweeps for initialization errors or cascading deletes (e.g., thread deletion batched chunks). Write integration tests using `fake-indexeddb` to verify the DB wrapper logic.
+- [x] **Step 2.2:** Implement database helper functions for CRUD operations on all stores, ensuring to use transaction sweeps for initialization errors or cascading deletes (e.g., thread deletion batched chunks). Write integration tests using `fake-indexeddb` to verify the DB wrapper logic.
 
 ## 3. LangGraph Checkpointer & Graph Factory
 
