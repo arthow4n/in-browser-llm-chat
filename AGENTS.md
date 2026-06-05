@@ -2,7 +2,7 @@
 
 ## Git/GitHub conventions
 
-- Unless otherwise instructed, commit the changes directly but don't push.
+- Unless otherwise instructed, commit the changes directly after you are done with the work, but don't push.
 - Begin the commit message and pull request title with the coding agent name.
   - Bad example
     - Add X and do Y
