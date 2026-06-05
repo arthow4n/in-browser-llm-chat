@@ -6,14 +6,15 @@ This document contains a step-by-step checklist to build the LLM chat applicatio
 
 1. Pick one step at a time. Do NOT implement multiple steps at once.
 2. Follow the exact specification from `docs/scratchpad.md` for each step. Do NOT add features not requested.
-3. After completing the implementation for a step, verify the worktree state is clean:
+3. Write tests for the logic implemented in each step, adhering to the Testing Guidelines in `docs/scratchpad.md`.
+4. After completing the implementation and tests for a step, verify the worktree state is clean:
    - Run formatting (`npm run format`)
    - Run type-check (`npm run typecheck`)
    - Run lint with autofix (`npm run lint:fix`)
    - Run tests (`npm run test`)
    - Ensure a successful build (`npm run build`)
-4. Create a Git commit for the step following the conventions in `AGENTS.md`.
-5. Mark the step as `[x]` in this checklist and proceed to the next step.
+5. Create a Git commit for the step following the conventions in `AGENTS.md`.
+6. Mark the step as `[x]` in this checklist and proceed to the next step.
 
 ---
 
