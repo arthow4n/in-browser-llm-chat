@@ -7,7 +7,7 @@ vi.mock("../db/db.js", async (importOriginal) => {
   const actual = await importOriginal<any>();
   return {
     ...actual,
-    getThread: vi.fn().mockImplementation(async (id: string) => {
+    getThread: vi.fn<any>().mockImplementation(async (id: string) => {
       return {
         id,
         title: "Test Thread",
@@ -16,8 +16,8 @@ vi.mock("../db/db.js", async (importOriginal) => {
         activeInterrupt: null,
       };
     }),
-    saveThread: vi.fn(),
-    getPreset: vi.fn().mockResolvedValue({
+    saveThread: vi.fn<any>(),
+    getPreset: vi.fn<any>().mockResolvedValue({
       id: "preset-1",
       name: "Default Flash",
       provider: "gemini",
@@ -25,21 +25,21 @@ vi.mock("../db/db.js", async (importOriginal) => {
       temperature: 0.7,
       maxTokens: 100,
     }),
-    getSetting: vi.fn().mockImplementation(async (key) => {
+    getSetting: vi.fn<any>().mockImplementation(async (key: string) => {
       if (key === "api_keys") {
         return { gemini: "test-key" };
       }
       return null;
     }),
-    saveMessage: vi.fn(),
-    sweepInitializingThreads: vi.fn().mockResolvedValue(undefined),
-    sweepDeletingThreads: vi.fn().mockResolvedValue(undefined),
-    getDB: vi.fn().mockResolvedValue({
-      getAll: vi.fn().mockResolvedValue([]),
-      transaction: vi.fn().mockReturnValue({
-        objectStore: vi.fn().mockReturnValue({
-          getAll: vi.fn().mockResolvedValue([]),
-          put: vi.fn().mockResolvedValue(undefined),
+    saveMessage: vi.fn<any>(),
+    sweepInitializingThreads: vi.fn<any>().mockResolvedValue(undefined),
+    sweepDeletingThreads: vi.fn<any>().mockResolvedValue(undefined),
+    getDB: vi.fn<any>().mockResolvedValue({
+      getAll: vi.fn<any>().mockResolvedValue([]),
+      transaction: vi.fn<any>().mockReturnValue({
+        objectStore: vi.fn<any>().mockReturnValue({
+          getAll: vi.fn<any>().mockResolvedValue([]),
+          put: vi.fn<any>().mockResolvedValue(undefined),
         }),
         done: Promise.resolve(),
       }),
