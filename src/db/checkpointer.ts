@@ -41,8 +41,8 @@ export class IndexedDBSaver extends BaseCheckpointSaver {
       return undefined;
     }
 
-    const ch = record.checkpoint as { type: string; value: string };
-    const meta = record.metadata as { type: string; value: string };
+    const ch = record.checkpoint;
+    const meta = record.metadata;
     const deserializedCheckpoint = await this.serde.loadsTyped(ch.type, ch.value);
     const deserializedMetadata = await this.serde.loadsTyped(meta.type, meta.value);
 
@@ -52,10 +52,10 @@ export class IndexedDBSaver extends BaseCheckpointSaver {
     );
 
     const pendingWrites = await Promise.all(
-      filteredWrites.map(async (w) => {
-        const v = w.value as { type: string; value: string };
+      filteredWrites.map(async (w): Promise<CheckpointPendingWrite> => {
+        const v = w.value;
         const deserializedValue = await this.serde.loadsTyped(v.type, v.value);
-        return [w.taskId, w.channel, deserializedValue] as CheckpointPendingWrite;
+        return [w.taskId, w.channel, deserializedValue];
       }),
     );
 
@@ -233,8 +233,8 @@ export class IndexedDBSaver extends BaseCheckpointSaver {
         break;
       }
 
-      const ch = r.checkpoint as { type: string; value: string };
-      const meta = r.metadata as { type: string; value: string };
+      const ch = r.checkpoint;
+      const meta = r.metadata;
       const deserializedCheckpoint = await this.serde.loadsTyped(ch.type, ch.value);
       const deserializedMetadata = await this.serde.loadsTyped(meta.type, meta.value);
 
@@ -252,10 +252,10 @@ export class IndexedDBSaver extends BaseCheckpointSaver {
         (w) => w.checkpointNs === r.checkpointNs && w.checkpointId === r.checkpointId,
       );
       const pendingWrites = await Promise.all(
-        filteredWrites.map(async (w) => {
-          const v = w.value as { type: string; value: string };
+        filteredWrites.map(async (w): Promise<CheckpointPendingWrite> => {
+          const v = w.value;
           const deserializedValue = await this.serde.loadsTyped(v.type, v.value);
-          return [w.taskId, w.channel, deserializedValue] as CheckpointPendingWrite;
+          return [w.taskId, w.channel, deserializedValue];
         }),
       );
 
