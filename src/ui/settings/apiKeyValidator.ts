@@ -18,10 +18,10 @@ export interface ApiKeyValidatorInput {
 }
 
 export const apiKeyValidatorMachine = setup({
-  types: {
-    context: {} as ApiKeyValidatorContext,
-    events: {} as ApiKeyValidatorEvent,
-    input: {} as ApiKeyValidatorInput,
+  types: {} as {
+    context: ApiKeyValidatorContext;
+    events: ApiKeyValidatorEvent;
+    input: ApiKeyValidatorInput;
   },
   actors: {
     validateKey: fromPromise(
@@ -131,7 +131,8 @@ export const apiKeyValidatorMachine = setup({
           target: "invalid",
           actions: [
             assign({
-              errorMessage: ({ event }) => (event.error as Error).message || "Validation failed",
+              errorMessage: ({ event }) =>
+                event.error instanceof Error ? event.error.message : "Validation failed",
             }),
             "clearController",
           ],
