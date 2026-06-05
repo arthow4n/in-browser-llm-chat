@@ -10,9 +10,15 @@
     - (Antigravity) Add X and do Y
     - (Jules) Add X and do Y
 
-## Environment
+## One-off scripts and inline script evaluation
 
-For Antigravity: when running Windows, your terminal commands will be evaluated with PowerShell, so for example `&&` chaining is not supported.
+If you need to run any one-off script, write it under this projects `tmp/` then run it.
+
+If you need to run any form or evaluation (including but not limited), write it as one-off script then run the script.
+
+Remove the one-off scripts at the end of session e.g. before you commit the changes.
+
+These rules are to ensure you you'll be approved to run the commands.
 
 ## Toolchains
 
