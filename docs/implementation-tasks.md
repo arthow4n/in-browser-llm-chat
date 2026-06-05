@@ -14,7 +14,7 @@ This document contains a step-by-step checklist to build the LLM chat applicatio
    - Run tests (`npm run test`)
    - Ensure a successful build (`npm run build`)
 5. **Code Review**: Before committing, invoke a `self` subagent to code review your work. Instruct the subagent to verify that the implementation adheres strictly to the plan in `docs/scratchpad.md` and that the tests provide meaningful coverage of actual usages. Address any issues identified during this review.
-6. Create a Git commit for the step following the conventions in `AGENTS.md`.
+6. Create a Git commit for the step following the conventions in `AGENTS.md`. The commit message should be a gist of what you have done, instead of the step name.
 7. Mark the step as `[x]` in this checklist and proceed to the next step.
 
 ---
