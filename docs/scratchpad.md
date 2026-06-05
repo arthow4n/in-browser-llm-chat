@@ -26,7 +26,8 @@ A detailed step-by-step implementation checklist for coding agents has been crea
 - Formatting: `oxfmt` instead of Prettier.
 - Zod v4 for parsing/validating data.
 - Vite for bundling.
-- Vitest for tests. "Write tests. Not too many. Mostly integration."
+- Vitest for tests. "Write tests. Not too many. Mostly integration." Test coverages should be configured and monitored.
+- `msw` for mocking requests (https://vitest.dev/guide/mocking/requests). In general, no mocks are allowed except for API mocks.
 - No E2E test.
 - Persistence with IndexedDB via `idb` (and `fake-indexeddb` in test) instead of localStorage/sessionStorage. This is to ensure the storage has higher quota.
 - Markdown & Math Rendering: `react-markdown`, `rehype-katex`, `remark-gfm`, and `remark-math` for rendering markdown messages and LaTeX equations.
@@ -2295,3 +2296,57 @@ Governs the debounced rendering of Markdown and LaTeX during active LLM streamin
   - `STREAM_START`: Transitions `idle` to `streaming`.
   - `TOKEN_RECEIVED`: Updates `rawText`. Triggers debouncer to eventually update `debouncedText`.
   - `STREAM_END`: Flushes the debouncer, updates `debouncedText` to match `rawText`, and transitions `streaming` to `idle`.
+
+## Testing Guidelines
+
+- **Focus on Integration Tests**: Test the full user flow and logic integration over isolated unit tests.
+- **Mocking**: No mocks are allowed except for API mocks. Use `msw` for mocking network requests.
+- **Model-Based Testing**: Use XState's graph utilities for model-based testing to automatically generate tests for state machines. Import from `xstate/graph` instead of the deprecated `@xstate/graph` package (e.g., [Stately Graph Docs](https://stately.ai/docs/graph#model-based-testing)).
+- **Test Coverage**: Track test coverage using Vitest. Ensure code is well-covered, especially critical state machines and LangGraph logic.
+
+### Examples
+
+**Bad Test (Over-mocked Unit Test)**
+```typescript
+import { vi, test, expect } from 'vitest';
+import { someLogic } from './logic';
+import { db } from './db';
+
+// BAD: Mocking the database and internal functions
+vi.mock('./db', () => ({
+  db: { save: vi.fn() }
+}));
+
+test('saves to db', () => {
+  someLogic();
+  expect(db.save).toHaveBeenCalled();
+});
+```
+
+**Good Test (Integration & API Mocking only)**
+```typescript
+import { test, expect, beforeAll, afterAll, afterEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { setupServer } from 'msw/node';
+import { http, HttpResponse } from 'msw';
+import { App } from './App';
+
+// GOOD: Mocking only the API layer with msw
+const server = setupServer(
+  http.post('https://api.openai.com/v1/chat/completions', () => {
+    return HttpResponse.json({ choices: [{ message: { content: 'mocked response' } }] });
+  })
+);
+
+beforeAll(() => server.listen());
+afterEach(() => server.resetHandlers());
+afterAll(() => server.close());
+
+test('full chat flow', async () => {
+  render(<App />);
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Hello' } });
+  fireEvent.click(screen.getByRole('button', { name: /send/i }));
+  
+  expect(await screen.findByText('mocked response')).toBeInTheDocument();
+});
+```
