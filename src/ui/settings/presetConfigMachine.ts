@@ -27,10 +27,10 @@ export type PresetConfigEvent =
   | { type: "DISMISS_ERROR" };
 
 export const presetConfigMachine = setup({
-  types: {
-    context: {} as PresetConfigContext,
-    events: {} as PresetConfigEvent,
-    input: {} as { presetId: string | null },
+  types: {} as {
+    context: PresetConfigContext;
+    events: PresetConfigEvent;
+    input: { presetId: string | null };
   },
   actors: {
     loadPreset: fromPromise(async ({ input }: { input: { presetId: string | null } }) => {
