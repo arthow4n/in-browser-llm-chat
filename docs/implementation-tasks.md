@@ -126,12 +126,12 @@ This document contains a step-by-step checklist to build the LLM chat applicatio
   - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
   - [x] Perform code review (self/subagent).
   - [x] Commit the changes following `AGENTS.md`.
-- [ ] **Step 8.2:** Build the New Chat Form State Machine and UI component, populating workflow and preset dropdowns. Ensure submitting a new chat correctly seeds the thread and routes the user.
-  - [ ] Implement the New Chat Form State Machine and UI component.
-  - [ ] Write integration and state machine tests adhering to Testing Guidelines in `docs/scratchpad.md`.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Perform code review (self/subagent).
-  - [ ] Commit the changes following `AGENTS.md`.
+- [x] **Step 8.2:** Build the New Chat Form State Machine and UI component, populating workflow and preset dropdowns. Ensure submitting a new chat correctly seeds the thread and routes the user.
+  - [x] Implement the New Chat Form State Machine and UI component.
+  - [x] Write integration and state machine tests adhering to Testing Guidelines in `docs/scratchpad.md`.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Perform code review (self/subagent).
+  - [x] Commit the changes following `AGENTS.md`.
 - [ ] **Step 8.3:** Build the Thread Settings Modal State Machine and UI for renaming, switching active presets, and invoking "Soft/Hard Sync" workflows logic or checkpoint compaction.
   - [ ] Implement the Thread Settings Modal State Machine and UI.
   - [ ] Write integration and state machine tests adhering to Testing Guidelines in `docs/scratchpad.md`.
