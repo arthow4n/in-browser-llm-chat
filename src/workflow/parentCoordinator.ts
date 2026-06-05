@@ -7,6 +7,8 @@ import {
   type ThreadStore,
   type MessageStore,
   getDB,
+  sweepInitializingThreads,
+  sweepDeletingThreads,
 } from "../db/db.js";
 import { graphRunnerActor } from "./graphRunnerActor.js";
 
@@ -120,18 +122,9 @@ export const parentCoordinatorMachine = createMachine(
             invoke: {
               src: fromPromise(async () => {
                 const keysConfigured = await checkApiKeysConfigured();
-                // Sweep initializing threads
-                const db = await getDB();
-                const tx = db.transaction("threads", "readwrite");
-                const store = tx.objectStore("threads");
-                const threads = await store.getAll();
-                for (const thread of threads) {
-                  if (thread.status === "executing") {
-                    thread.status = "inactive";
-                    await store.put(thread);
-                  }
-                }
-                await tx.done;
+                // Sweep initializing and deleting threads
+                await sweepInitializingThreads();
+                await sweepDeletingThreads();
 
                 // Load default preset if any
                 const defaultPresetId = await getSetting("default_preset_id");
@@ -395,7 +388,6 @@ export const parentCoordinatorMachine = createMachine(
               },
               CANCEL_EXECUTION: {
                 target: "inactive",
-                actions: [sendTo("graphRunnerActor", { type: "STOP" })],
               },
               FORCE_CONSENSUS: {
                 actions: [sendTo("graphRunnerActor", { type: "PAUSE" })], // or handle specifically
@@ -449,7 +441,6 @@ export const parentCoordinatorMachine = createMachine(
               ROUTE_CHANGED: {
                 target: "checkingStatus",
                 actions: [
-                  sendTo("graphRunnerActor", { type: "STOP" }),
                   assign({
                     currentThreadId: ({ event }) => (event as any).threadId,
                   }),
@@ -457,11 +448,9 @@ export const parentCoordinatorMachine = createMachine(
               },
               INITIALIZE_CHECKPOINT: {
                 target: "checkingStatus",
-                actions: [sendTo("graphRunnerActor", { type: "STOP" })],
               },
               API_KEYS_REMOVED: {
                 target: "inactive",
-                actions: [sendTo("graphRunnerActor", { type: "STOP" })],
               },
             },
           },

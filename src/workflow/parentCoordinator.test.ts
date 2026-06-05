@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createActor } from "xstate";
 import { parentCoordinatorMachine } from "./parentCoordinator.js";
-import { saveThread } from "../db/db.js";
+import { saveThread, getSetting } from "../db/db.js";
 
 vi.mock("../db/db.js", async (importOriginal) => {
   const actual = await importOriginal<any>();
@@ -25,13 +25,15 @@ vi.mock("../db/db.js", async (importOriginal) => {
       temperature: 0.7,
       maxTokens: 100,
     }),
-    getSetting: vi.fn().mockImplementation((key) => {
+    getSetting: vi.fn().mockImplementation(async (key) => {
       if (key === "api_keys") {
         return { gemini: "test-key" };
       }
       return null;
     }),
     saveMessage: vi.fn(),
+    sweepInitializingThreads: vi.fn().mockResolvedValue(undefined),
+    sweepDeletingThreads: vi.fn().mockResolvedValue(undefined),
     getDB: vi.fn().mockResolvedValue({
       getAll: vi.fn().mockResolvedValue([]),
       transaction: vi.fn().mockReturnValue({
@@ -58,6 +60,27 @@ vi.mock("./graphRunnerActor.js", () => {
   };
 });
 
+// Helper function to wait for a state condition safely without race conditions
+function waitForState(
+  actor: any,
+  predicate: (state: any) => boolean,
+  _label?: string,
+): Promise<any> {
+  return new Promise((resolve) => {
+    let sub: any;
+    sub = actor.subscribe((state: any) => {
+      if (predicate(state)) {
+        if (sub) {
+          sub.unsubscribe();
+        } else {
+          setTimeout(() => sub?.unsubscribe(), 0);
+        }
+        resolve(state);
+      }
+    });
+  });
+}
+
 describe("parentCoordinatorMachine", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -67,105 +90,76 @@ describe("parentCoordinatorMachine", () => {
     const actor = createActor(parentCoordinatorMachine);
     actor.start();
 
-    // Wait for the ViewState to settle
-    await new Promise((resolve) => {
-      const sub = actor.subscribe((state) => {
-        const val = state.value as any;
-        if (val && val.ViewState === "idle") {
-          sub.unsubscribe();
-          resolve(true);
-        }
-      });
-    });
+    // Wait for the ViewState to settle into idle (async initialization)
+    await waitForState(
+      actor,
+      (state) => (state.value as any).ViewState === "idle",
+      "initialization",
+    );
 
     const snapshot = actor.getSnapshot();
     expect((snapshot.value as any).ViewState).toBe("idle");
     expect(snapshot.context.apiKeysConfigured).toBe(true);
     actor.stop();
-  }, 30000);
+  });
 
   it("should update thread status to executing on START_EXECUTION", async () => {
     const actor = createActor(parentCoordinatorMachine);
     actor.start();
 
-    // Wait for ViewState to settle into idle (initialization complete)
-    await new Promise((resolve) => {
-      const sub = actor.subscribe((state) => {
-        const val = state.value as any;
-        if (val && val.ViewState === "idle") {
-          sub.unsubscribe();
-          resolve(true);
-        }
-      });
-    });
+    // Wait for ViewState to settle into idle
+    await waitForState(
+      actor,
+      (state) => (state.value as any).ViewState === "idle",
+      "initialization",
+    );
 
     actor.send({ type: "ROUTE_CHANGED", threadId: "thread-inactive" });
 
-    // Wait for it to settle into inactive with currentThreadId set
-    await new Promise((resolve) => {
-      const sub = actor.subscribe((state) => {
-        const val = state.value as any;
-        if (
-          val &&
-          val.ExecutionState === "inactive" &&
-          state.context.currentThreadId === "thread-inactive"
-        ) {
-          sub.unsubscribe();
-          resolve(true);
-        }
-      });
-    });
+    // Wait for ExecutionState to settle into inactive (async database query)
+    await waitForState(
+      actor,
+      (state) =>
+        (state.value as any).ExecutionState === "inactive" &&
+        state.context.currentThreadId === "thread-inactive",
+      "route change status",
+    );
 
-    // Transition execution state
+    // Transition execution state - synchronous transition
     actor.send({ type: "START_EXECUTION" });
 
-    await new Promise((resolve) => {
-      const sub = actor.subscribe((state) => {
-        const val = state.value as any;
-        if (val && val.ExecutionState === "executing") {
-          sub.unsubscribe();
-          resolve(true);
-        }
-      });
-    });
+    // Assert synchronously
+    const snapshot = actor.getSnapshot();
+    expect((snapshot.value as any).ExecutionState).toBe("executing");
 
-    // Wait for async updateThreadStatus call to trigger saveThread
+    // Wait a brief moment for updateThreadStatus to write to the database (fire-and-forget async action)
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(saveThread).toHaveBeenCalled();
-    const snapshot = actor.getSnapshot();
-    expect((snapshot.value as any).ExecutionState).toBe("executing");
     actor.stop();
-  }, 30000);
+  });
 
   it("should transition to awaitingHumanInput on BUDGET_EXCEEDED", async () => {
     const actor = createActor(parentCoordinatorMachine);
     actor.start();
 
     // Wait for ViewState to settle into idle
-    await new Promise((resolve) => {
-      const sub = actor.subscribe((state) => {
-        const val = state.value as any;
-        if (val && val.ViewState === "idle") {
-          sub.unsubscribe();
-          resolve(true);
-        }
-      });
-    });
+    await waitForState(
+      actor,
+      (state) => (state.value as any).ViewState === "idle",
+      "initialization",
+    );
 
     actor.send({ type: "ROUTE_CHANGED", threadId: "thread-executing" });
 
-    // Wait for it to settle into executing (since mock status is executing)
-    await new Promise((resolve) => {
-      const sub = actor.subscribe((state) => {
-        const val = state.value as any;
-        if (val && val.ExecutionState === "executing") {
-          sub.unsubscribe();
-          resolve(true);
-        }
-      });
-    });
+    // Wait for ExecutionState to settle into executing (async database status check)
+    await waitForState(
+      actor,
+      (state) => (state.value as any).ExecutionState === "executing",
+      "route change executing",
+    );
 
+    // Send budget exceeded - synchronous transition
     actor.send({
       type: "BUDGET_EXCEEDED",
       currentTokens: 100,
@@ -173,25 +167,129 @@ describe("parentCoordinatorMachine", () => {
       stepCount: 5,
     });
 
-    await new Promise((resolve) => {
-      const sub = actor.subscribe((state) => {
-        const val = state.value as any;
-        if (
-          val &&
-          val.ExecutionState &&
-          val.ExecutionState.awaitingHumanInput === "budgetExceeded"
-        ) {
-          sub.unsubscribe();
-          resolve(true);
-        }
-      });
-    });
-
+    // Assert synchronously
     const snapshot = actor.getSnapshot();
     expect((snapshot.value as any).ExecutionState).toEqual({
       awaitingHumanInput: "budgetExceeded",
     });
     expect(snapshot.context.loopControl.activeInterrupt?.type).toBe("budget_exceeded");
     actor.stop();
-  }, 30000);
+  });
+
+  it("should transition ViewState to onboarding if API keys are not configured", async () => {
+    vi.mocked(getSetting).mockResolvedValueOnce(null);
+
+    const actor = createActor(parentCoordinatorMachine);
+    actor.start();
+
+    // Wait for ViewState to settle into onboarding (async initialization)
+    await waitForState(
+      actor,
+      (state) => (state.value as any).ViewState === "onboarding",
+      "onboarding init",
+    );
+
+    const snapshot = actor.getSnapshot();
+    expect((snapshot.value as any).ViewState).toBe("onboarding");
+    expect(snapshot.context.apiKeysConfigured).toBe(false);
+    actor.stop();
+  });
+
+  it("should navigate to globalSettings from onboarding and back", async () => {
+    vi.mocked(getSetting).mockResolvedValueOnce(null);
+
+    const actor = createActor(parentCoordinatorMachine);
+    actor.start();
+
+    // Wait for onboarding
+    await waitForState(
+      actor,
+      (state) => (state.value as any).ViewState === "onboarding",
+      "onboarding init",
+    );
+
+    // Open settings - synchronous
+    actor.send({ type: "OPEN_SETTINGS" });
+    expect((actor.getSnapshot().value as any).ViewState).toBe("globalSettings");
+
+    // Close settings - synchronous
+    actor.send({ type: "CLOSE_SETTINGS" });
+    expect((actor.getSnapshot().value as any).ViewState).toBe("onboarding");
+
+    actor.stop();
+  });
+
+  it("should navigate to presetConfig from idle and back", async () => {
+    const actor = createActor(parentCoordinatorMachine);
+    actor.start();
+
+    await waitForState(
+      actor,
+      (state) => (state.value as any).ViewState === "idle",
+      "initialization",
+    );
+
+    // Open preset edit - synchronous
+    actor.send({ type: "OPEN_PRESET_EDIT", presetId: "preset-2" });
+    expect((actor.getSnapshot().value as any).ViewState).toBe("presetConfig");
+    expect(actor.getSnapshot().context.editingPresetId).toBe("preset-2");
+
+    // Close preset edit - synchronous
+    actor.send({ type: "CLOSE_PRESET_EDIT" });
+    expect((actor.getSnapshot().value as any).ViewState).toBe("idle");
+    expect(actor.getSnapshot().context.editingPresetId).toBeNull();
+
+    actor.stop();
+  });
+
+  it("should navigate to workflowConfig from idle and back", async () => {
+    const actor = createActor(parentCoordinatorMachine);
+    actor.start();
+
+    await waitForState(
+      actor,
+      (state) => (state.value as any).ViewState === "idle",
+      "initialization",
+    );
+
+    // Open workflow edit - synchronous
+    actor.send({ type: "OPEN_WORKFLOW_EDIT", workflowId: "wf-2" });
+    expect((actor.getSnapshot().value as any).ViewState).toBe("workflowConfig");
+    expect(actor.getSnapshot().context.editingWorkflowId).toBe("wf-2");
+
+    // Close workflow edit - synchronous
+    actor.send({ type: "CLOSE_WORKFLOW_EDIT" });
+    expect((actor.getSnapshot().value as any).ViewState).toBe("idle");
+    expect(actor.getSnapshot().context.editingWorkflowId).toBeNull();
+
+    actor.stop();
+  });
+
+  it("should handle API_KEYS_REMOVED by transitioning ViewState to onboarding and ExecutionState to inactive", async () => {
+    const actor = createActor(parentCoordinatorMachine);
+    actor.start();
+
+    await waitForState(
+      actor,
+      (state) => (state.value as any).ViewState === "idle",
+      "initialization",
+    );
+
+    actor.send({ type: "ROUTE_CHANGED", threadId: "thread-executing" });
+    await waitForState(
+      actor,
+      (state) => (state.value as any).ExecutionState === "executing",
+      "route change executing",
+    );
+
+    // Trigger API key removal - synchronous
+    actor.send({ type: "API_KEYS_REMOVED" });
+
+    // Assert synchronously
+    const snapshot = actor.getSnapshot();
+    expect((snapshot.value as any).ViewState).toBe("onboarding");
+    expect((snapshot.value as any).ExecutionState).toBe("inactive");
+    expect(snapshot.context.apiKeysConfigured).toBe(false);
+    actor.stop();
+  });
 });
