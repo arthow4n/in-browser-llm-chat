@@ -534,8 +534,7 @@ export const parentCoordinatorMachine = createMachine(
               ROUTE_CHANGED: {
                 target: "checkingStatus",
                 actions: assign({
-                  currentThreadId: ({ event }) =>
-                    (event as Extract<CoordinatorEvent, { type: "ROUTE_CHANGED" }>).threadId,
+                  currentThreadId: ({ event }) => event.threadId,
                 }),
               },
               INITIALIZE_CHECKPOINT: {
@@ -564,8 +563,7 @@ export const parentCoordinatorMachine = createMachine(
               ROUTE_CHANGED: {
                 target: "checkingStatus",
                 actions: assign({
-                  currentThreadId: ({ event }) =>
-                    (event as Extract<CoordinatorEvent, { type: "ROUTE_CHANGED" }>).threadId,
+                  currentThreadId: ({ event }) => event.threadId,
                 }),
               },
               INITIALIZE_CHECKPOINT: {
