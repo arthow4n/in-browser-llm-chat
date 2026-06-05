@@ -44,6 +44,16 @@ export async function updateThreadStatus(
   }
 }
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function getEventErrorMessage(event: any): string | undefined {
+  return event?.error?.message;
+}
+
+function getInterruptType(activeInterrupt: any): string | undefined {
+  return activeInterrupt?.type;
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 export interface CoordinatorContext {
   currentThreadId: string | null;
   activeWorkflowId: string | null;
@@ -95,25 +105,25 @@ export type CoordinatorEvent =
 
 export const parentCoordinatorMachine = createMachine(
   {
+    types: {} as { context: CoordinatorContext; events: CoordinatorEvent },
     id: "parentCoordinator",
     type: "parallel",
-    context: () =>
-      ({
-        currentThreadId: null,
-        activeWorkflowId: null,
-        activePresetId: null,
-        editingPresetId: null,
-        editingWorkflowId: null,
-        loopControl: {
-          currentRound: 0,
-          turnCount: 0,
-          tokenStats: null,
-          activeInterrupt: null,
-        },
-        errorMessage: null,
-        apiKeysConfigured: false,
-        graphRunnerActorRef: null,
-      }) as CoordinatorContext,
+    context: () => ({
+      currentThreadId: null,
+      activeWorkflowId: null,
+      activePresetId: null,
+      editingPresetId: null,
+      editingWorkflowId: null,
+      loopControl: {
+        currentRound: 0,
+        turnCount: 0,
+        tokenStats: null,
+        activeInterrupt: null,
+      },
+      errorMessage: null,
+      apiKeysConfigured: false,
+      graphRunnerActorRef: null,
+    }),
     states: {
       ViewState: {
         initial: "initializing",
@@ -141,8 +151,7 @@ export const parentCoordinatorMachine = createMachine(
                 target: "error",
                 actions: assign({
                   errorMessage: ({ event }) =>
-                    (event as { error?: { message?: string } }).error?.message ||
-                    "Failed to initialize DB",
+                    getEventErrorMessage(event) || "Failed to initialize DB",
                 }),
               },
             },
@@ -173,22 +182,19 @@ export const parentCoordinatorMachine = createMachine(
               OPEN_PRESET_EDIT: {
                 target: "presetConfig",
                 actions: assign({
-                  editingPresetId: ({ event }) =>
-                    (event as Extract<CoordinatorEvent, { type: "OPEN_PRESET_EDIT" }>).presetId,
+                  editingPresetId: ({ event }) => event.presetId,
                 }),
               },
               OPEN_WORKFLOW_EDIT: {
                 target: "workflowConfig",
                 actions: assign({
-                  editingWorkflowId: ({ event }) =>
-                    (event as Extract<CoordinatorEvent, { type: "OPEN_WORKFLOW_EDIT" }>).workflowId,
+                  editingWorkflowId: ({ event }) => event.workflowId,
                 }),
               },
               ROUTE_CHANGED: {
                 target: "checkingKeys",
                 actions: assign({
-                  currentThreadId: ({ event }) =>
-                    (event as Extract<CoordinatorEvent, { type: "ROUTE_CHANGED" }>).threadId,
+                  currentThreadId: ({ event }) => event.threadId,
                 }),
               },
             },
@@ -199,22 +205,19 @@ export const parentCoordinatorMachine = createMachine(
               OPEN_PRESET_EDIT: {
                 target: "presetConfig",
                 actions: assign({
-                  editingPresetId: ({ event }) =>
-                    (event as Extract<CoordinatorEvent, { type: "OPEN_PRESET_EDIT" }>).presetId,
+                  editingPresetId: ({ event }) => event.presetId,
                 }),
               },
               OPEN_WORKFLOW_EDIT: {
                 target: "workflowConfig",
                 actions: assign({
-                  editingWorkflowId: ({ event }) =>
-                    (event as Extract<CoordinatorEvent, { type: "OPEN_WORKFLOW_EDIT" }>).workflowId,
+                  editingWorkflowId: ({ event }) => event.workflowId,
                 }),
               },
               ROUTE_CHANGED: {
                 target: "checkingKeys",
                 actions: assign({
-                  currentThreadId: ({ event }) =>
-                    (event as Extract<CoordinatorEvent, { type: "ROUTE_CHANGED" }>).threadId,
+                  currentThreadId: ({ event }) => event.threadId,
                 }),
               },
               API_KEYS_REMOVED: {
@@ -232,8 +235,7 @@ export const parentCoordinatorMachine = createMachine(
               ROUTE_CHANGED: {
                 target: "checkingKeys",
                 actions: assign({
-                  currentThreadId: ({ event }) =>
-                    (event as Extract<CoordinatorEvent, { type: "ROUTE_CHANGED" }>).threadId,
+                  currentThreadId: ({ event }) => event.threadId,
                 }),
               },
               API_KEYS_REMOVED: {
@@ -251,8 +253,7 @@ export const parentCoordinatorMachine = createMachine(
               ROUTE_CHANGED: {
                 target: "checkingKeys",
                 actions: assign({
-                  currentThreadId: ({ event }) =>
-                    (event as Extract<CoordinatorEvent, { type: "ROUTE_CHANGED" }>).threadId,
+                  currentThreadId: ({ event }) => event.threadId,
                 }),
               },
               API_KEYS_REMOVED: {
@@ -269,8 +270,7 @@ export const parentCoordinatorMachine = createMachine(
               ROUTE_CHANGED: {
                 target: "checkingKeys",
                 actions: assign({
-                  currentThreadId: ({ event }) =>
-                    (event as Extract<CoordinatorEvent, { type: "ROUTE_CHANGED" }>).threadId,
+                  currentThreadId: ({ event }) => event.threadId,
                 }),
               },
               API_KEYS_REMOVED: {
@@ -305,8 +305,7 @@ export const parentCoordinatorMachine = createMachine(
                 target: "executing",
                 actions: [
                   async ({ event }) => {
-                    const message = (event as Extract<CoordinatorEvent, { type: "SUBMIT_MESSAGE" }>)
-                      .message;
+                    const message = event.message;
                     await saveMessage(message);
                   },
                 ],
@@ -321,8 +320,7 @@ export const parentCoordinatorMachine = createMachine(
                 guard: ({ context }) => context.apiKeysConfigured,
                 target: "checkingStatus",
                 actions: assign({
-                  currentThreadId: ({ event }) =>
-                    (event as Extract<CoordinatorEvent, { type: "ROUTE_CHANGED" }>).threadId,
+                  currentThreadId: ({ event }) => event.threadId,
                 }),
               },
               INITIALIZE_CHECKPOINT: {
@@ -376,8 +374,7 @@ export const parentCoordinatorMachine = createMachine(
                 target: "error",
                 actions: assign({
                   errorMessage: ({ event }) =>
-                    (event as { error?: { message?: string } }).error?.message ||
-                    "Failed to check status",
+                    getEventErrorMessage(event) || "Failed to check status",
                 }),
               },
             },
@@ -399,8 +396,7 @@ export const parentCoordinatorMachine = createMachine(
               onError: {
                 target: "error",
                 actions: assign({
-                  errorMessage: ({ event }) =>
-                    (event as { error?: { message?: string } }).error?.message || "Execution error",
+                  errorMessage: ({ event }) => getEventErrorMessage(event) || "Execution error",
                 }),
               },
             },
@@ -423,9 +419,7 @@ export const parentCoordinatorMachine = createMachine(
               ERROR: {
                 target: "error",
                 actions: assign({
-                  errorMessage: ({ event }) =>
-                    (event as Extract<CoordinatorEvent, { type: "ERROR" }>).error ||
-                    "Execution failed",
+                  errorMessage: ({ event }) => event.error || "Execution failed",
                 }),
               },
               INTERRUPT: {
@@ -433,8 +427,7 @@ export const parentCoordinatorMachine = createMachine(
                 actions: assign({
                   loopControl: ({ context, event }) => ({
                     ...context.loopControl,
-                    activeInterrupt: (event as Extract<CoordinatorEvent, { type: "INTERRUPT" }>)
-                      .details,
+                    activeInterrupt: event.details,
                   }),
                 }),
               },
@@ -446,13 +439,9 @@ export const parentCoordinatorMachine = createMachine(
                     activeInterrupt: {
                       type: "budget_exceeded",
                       budgetDetails: {
-                        currentTokens: (
-                          event as Extract<CoordinatorEvent, { type: "BUDGET_EXCEEDED" }>
-                        ).currentTokens,
-                        maxTokens: (event as Extract<CoordinatorEvent, { type: "BUDGET_EXCEEDED" }>)
-                          .maxTokens,
-                        stepCount: (event as Extract<CoordinatorEvent, { type: "BUDGET_EXCEEDED" }>)
-                          .stepCount,
+                        currentTokens: event.currentTokens,
+                        maxTokens: event.maxTokens,
+                        stepCount: event.stepCount,
                       },
                     },
                   }),
@@ -462,7 +451,7 @@ export const parentCoordinatorMachine = createMachine(
                 actions: assign({
                   loopControl: ({ context, event }) => ({
                     ...context.loopControl,
-                    currentRound: (event as Extract<CoordinatorEvent, { type: "STEP" }>).steps,
+                    currentRound: event.steps,
                     // we can update cumulative tokenStats if passed, or manage internally
                   }),
                 }),
@@ -471,8 +460,7 @@ export const parentCoordinatorMachine = createMachine(
                 target: "checkingStatus",
                 actions: [
                   assign({
-                    currentThreadId: ({ event }) =>
-                      (event as Extract<CoordinatorEvent, { type: "ROUTE_CHANGED" }>).threadId,
+                    currentThreadId: ({ event }) => event.threadId,
                   }),
                 ],
               },
@@ -496,8 +484,7 @@ export const parentCoordinatorMachine = createMachine(
                 always: [
                   {
                     guard: ({ context }) =>
-                      (context.loopControl.activeInterrupt as { type?: string })?.type ===
-                      "budget_exceeded",
+                      getInterruptType(context.loopControl.activeInterrupt) === "budget_exceeded",
                     target: "budgetExceeded",
                   },
                   {
