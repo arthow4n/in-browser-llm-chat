@@ -58,7 +58,8 @@ A detailed step-by-step implementation checklist for coding agents has been crea
     - Tool calls made by a specific agent should be nested or visibly linked to that agent's message block, so users know which agent initiated the tool call.
   - To begin with, there should be a built-in debate workflow, where the user should be able to seed the debate with a topic, then let 2 agents debate infinitely in a loop until they come to consensus, the agents come to consensus by making tool call to suggest leaving the debate loop, then finally another agent summarize the debate for the user to review.
 - LLM provider preset management CRUD:
-  - Preset = combination of LLM API provider, API key, LLM model, and configs like reasoning/thinking level, API retry policy, budget policy (e.g. force asking for human approval after X steps or Y tokens in the workflow execution cycle without human user sending a message).
+  - Preset = combination of LLM API provider, API key, LLM model, and configs like reasoning/thinking level, API retry policy, budget policy (e.g. `maxStepsWithoutUser` and `maxTokensPerRun`).
+  - **Budget Policy Enforcement**: The background runner tracks the number of autonomous agent steps and total tokens consumed in the current continuous execution run (since the last human user message). If the step count exceeds `maxStepsWithoutUser` or the token count exceeds `maxTokensPerRun`, the runner interrupts execution and saves a `budget_exceeded` active interrupt. The UI renders a Budget Exceeded Card; upon user approval, the runner resets these counters for the current run and resumes execution.
   - When opening a new chat thread, the thread selects the default preset as the initial preset. The selected preset ID is saved per thread in the database.
   - When switching back to an old thread: if the saved preset is still available, it is used; otherwise, it falls back to the default preset.
   - Onboarding and First-Time User Experience: Guides users on first load if no presets or API keys exist. See the [Global Settings Form State Machine](#s-global-settings-form-state-machine) for warning banner details. When the application is launched for the first time and IndexedDB is initialized, if the `workflows` store is empty, the application automatically seeds the built-in workflows (Standard 1-agent, Debate workflow) into the `workflows` store. When the user configures and saves their API keys for the first time, the application automatically seeds a set of default presets ("Default Gemini Flash" using `gemini-2.5-flash` and "Default OpenRouter Flash" using `google/gemini-2.5-flash`) into the database, setting the `default_preset_id` in the `settings` store.
@@ -78,7 +79,7 @@ A detailed step-by-step implementation checklist for coding agents has been crea
   - There should be a built-in "ask_questions" tool which LLM can invoke to render a specific form directly in the chat feed to let users answer questions with check-boxes and comments.
   - There should be built-in tools for creating/updating custom workflows interactively via LLM chat. Any database-modifying tools (like custom workflow creation) require explicit user confirmation via an inline approval card.
 - Manual history edit and branching: Allow editing/deleting any message in history, inserting new messages with selectable roles (prefill), and branching threads. Editing or deleting a message (say, message M at sequence `idx`) in-place in a thread's history truncates the history and rolls back the LangGraph state using these steps:
-  1. Identify the preceding checkpoint by traversing backward starting from the message immediately preceding the edited/deleted message (i.e. from sequence index `idx - 1`) until a message is found whose `checkpointId` is both non-null AND different from the `checkpointId` of the edited/deleted message itself. If no such message exists (e.g., we reach a message with a null checkpoint or the beginning of the thread), the target checkpoint is set to `null` (resets the thread to the beginning). This ensures that if a single execution step produced multiple messages sharing the same checkpoint ID, the rollback reverts to the checkpoint created at the end of the _previous_ execution step (before the current step started).
+  1. Identify the preceding checkpoint by traversing backward starting from the message immediately preceding the edited/deleted message (i.e. from sequence index `idx - 1`) until a message is found whose `checkpointId` is both non-null AND its `[checkpointNs, checkpointId]` pair is different from the pair of the edited/deleted message itself. If no such message exists (e.g., we reach a message with a null checkpoint or the beginning of the thread), the target checkpoint is set to `null` (resets the thread to the beginning). This ensures that if a single execution step produced multiple messages sharing the same checkpoint ID, the rollback reverts to the checkpoint created at the end of the _previous_ execution step (before the current step started).
   2. Set the thread's `latestCheckpointId` and `latestCheckpointNs` to those of the preceding checkpoint.
   3. Delete all checkpoints and checkpoint writes whose creation timestamp is greater than the preceding checkpoint's creation timestamp, or that descend from it in parent-child lineage traversal.
   4. Truncate the message history by deleting all messages in that thread where `sequence >= idx` (for deletion) or `sequence > idx` (for inline editing).
@@ -2305,23 +2306,25 @@ Governs the debounced rendering of Markdown and LaTeX during active LLM streamin
 ### Examples
 
 **Bad Test (Over-mocked Unit Test)**
+
 ```typescript
-import { vi, test, expect } from 'vitest';
-import { someLogic } from './logic';
-import { db } from './db';
+import { vi, test, expect } from "vitest";
+import { someLogic } from "./logic";
+import { db } from "./db";
 
 // BAD: Mocking the database and internal functions
-vi.mock('./db', () => ({
-  db: { save: vi.fn() }
+vi.mock("./db", () => ({
+  db: { save: vi.fn() },
 }));
 
-test('saves to db', () => {
+test("saves to db", () => {
   someLogic();
   expect(db.save).toHaveBeenCalled();
 });
 ```
 
 **Good Test (Integration & API Mocking only)**
+
 ```typescript
 import { test, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -2344,7 +2347,7 @@ test('full chat flow', async () => {
   render(<App />);
   fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Hello' } });
   fireEvent.click(screen.getByRole('button', { name: /send/i }));
-  
+
   expect(await screen.findByText('mocked response')).toBeInTheDocument();
 });
 ```
