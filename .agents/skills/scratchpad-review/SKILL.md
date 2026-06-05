@@ -6,7 +6,7 @@ description: Shouldn't be invoked unless explicitly requested by the user. Criti
 Repeat the task below for X times (X is 3 unless otherwise specified by user), this is to get individual reviews and fixes, don't do things yourself, jump directly into dispatching subagent and don't think yourself, don't mention to the subagent about iteration.
 
 <task>
-Dispatch an isolated subagent to critically review the DB, state and UI designs in the scratchpad. The subagent should then try based on the review to improve the scratchpad, mark things as unresolved or try resolve open questions, then git commit the changes where the commit message is the gist of changes, then finally the subagent exits.
+Dispatch an isolated subagent to critically review the DB, state and UI designs in the scratchpad. The subagent should then try based on the review to improve the scratchpad, mark things as unresolved or try resolve open questions by incorparating the resolution back to the scratchpad and remove the open questions after resolution, then git commit the changes where the commit message is the gist of changes, then finally the subagent exits.
 
 Here are some example review focus areas for the subagent:
 

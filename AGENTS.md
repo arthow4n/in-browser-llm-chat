@@ -30,3 +30,8 @@ Use the following commands to run the project's quality checks and builds:
 ## UI State Machine Policy
 
 - The UI state for every single detail, including all interactive controls, buttons, form fields, loading states, error states, and transitions, must be fully driven by XState state machines. No local component state or external state management outside of the specified state machines should be used for interactive states.
+
+## UI Aesthetics Policy
+
+- Use ONLY the Carbon Design System.
+- Do NOT use "premium design aesthetics" like glassmorphism, custom micro-animations, or custom typography (like Inter/Outfit). Adhere strictly to the Carbon Design System defaults and tokens.

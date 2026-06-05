@@ -2,7 +2,10 @@
 
 This is a scratchpad for writing down vague ideas for building this LLM chat app for personal use. The goal is to provide a clear specification so that the coding agent can later build the app with minimal human intervention while still aligning with the user's vision.
 
-This file will be collaboratively updated by the human user and the coding agent, by default the coding agent should ask open questions before editing this scratchpad as per the [Open questions](#open-questions) section, don't jump into editing the other parts of this scratchpad directly.
+This file will be collaboratively updated by the human user and the coding agent. It serves as the single source of truth for the project specification.
+
+## Review Status
+**Final Review Complete:** The Database Schema, XState UI definitions, and UX guidelines have been critically reviewed and finalized. All previous open questions have been resolved and incorporated directly into the specifications below. The specifications are now comprehensive and ready for implementation.
 
 ## Tech stack
 
@@ -10,7 +13,7 @@ This file will be collaboratively updated by the human user and the coding agent
 - LangGraph.js `@langchain/langgraph/web` for LLM agent orchestraion in-browser.
 - React frontend.
 - XState and `@xstate/react`, all the application and UI states should be fully driven by state machine(s).
-- Carbon Design System `@carbon/react` as is without custom design/styling overrides (no custom glassmorphism, HSL custom palettes, or custom animations). Support switching between dark and light mode, defaulting to the same as system settings. Auto-detect and sync with system color scheme by default. Provide a selector in the header/settings to manually override it to "Light" (Carbon `g10` / `white`) or "Dark" (Carbon `g100` / `g90`), saving this preference as a global setting in IndexedDB.
+- Carbon Design System `@carbon/react` as the base component library. Do NOT add custom "premium aesthetics" like glassmorphism, custom micro-animations, or external fonts. Adhere strictly to Carbon Design System components and tokens. Support switching between dark and light mode, defaulting to system settings. Provide a selector in the Global Settings to manually override it to "Light" or "Dark", saving this preference as a global setting in IndexedDB.
 - TypeScript: Install package `@typescript/native-preview` instead of package `typescript`.
 - Lint: `oxlint-tsgolint@latest` instead of ESLint.
   - Turn on type-aware linting and react/vitest plugins inside `.oxlintrc.json`.
@@ -107,7 +110,7 @@ We propose using the following stores in the `in-browser-llm-chat-db` database:
   - _Branching Behavior_: When branching a thread, the messages from the parent thread up to and including the `parentMessageId` are copied (cloned) to the new thread in the `messages` store under the new thread's ID (with their `sequence` order preserved). The `workflowSnapshot` is also copied from the parent thread to the new thread's record in the `threads` store to preserve execution consistency. The new thread's `latestCheckpointId` and `latestCheckpointNs` are set to the `checkpointId` and `checkpointNs` of the highest-sequence copied message that contains a non-null checkpoint reference, or `null` if no copied messages contain checkpoints. To ensure that the branched thread's history can be edited or rewound later, ALL checkpoints and `checkpoint_writes` associated with the copied messages must be copied/cloned to the `checkpoints` and `checkpoint_writes` stores under the `newThreadId`. Subsequent checkpoints are not copied. To identify the checkpoints and writes associated with the copied messages, the cloning process gathers the set of all unique non-null `[checkpointNs, checkpointId]` pairs stored in the `checkpointNs` and `checkpointId` fields of the copied messages (messages with sequence <= parent message's sequence). It then queries the `checkpoints` and `checkpoint_writes` stores for records matching the parent `threadId` and these gathered namespace/ID pairs, and clones them to the new `threadId` in IndexedDB. Child threads remain fully functional even if their parent thread is later deleted (as they hold independent clones of historical messages and checkpoints); in such cases, their `parentThreadId` is retained for provenance but resolves to null/absent in reference checks.
 - **`messages`**: Individual messages in threads.
   - Key: `id` (UUID)
-  - Fields: `threadId` (indexed for query performance), `sequence` (integer index within thread for deterministic sorting and truncation), `role` (`"system" | "user" | "assistant" | "tool"`), `content`, `type` (`"text" | "reasoning" | "tool_call" | "tool_result"`), `toolCallId` (optional), `name` (agent/tool name), `createdAt`, `metadata` (reasoning tokens, raw response, etc.), `checkpointId` (null or string), `checkpointNs` (null or string)
+  - Fields: `threadId` (indexed for query performance, ideally using a compound index `[threadId, sequence]`), `sequence` (integer index within thread for deterministic sorting and truncation), `role` (`"system" | "user" | "assistant" | "tool"`), `content`, `type` (`"text" | "reasoning" | "tool_call" | "tool_result"`), `toolCallId` (optional), `name` (agent/tool name), `createdAt`, `metadata` (reasoning tokens, raw response, etc.), `checkpointId` (null or string), `checkpointNs` (null or string)
   - _Message Compilation for LLM APIs_: To ensure compatibility with strict LLM API providers (like Gemini, Anthropic, or OpenRouter) that enforce strictly alternating user/assistant message roles and forbid consecutive messages of the same role, the compiler compiles the history for any given active agent node's LLM call using these rules:
     1. **Identify the Active Agent**: Identify the specific agent node making the LLM call.
     2. **Assign Roles**:
@@ -754,7 +757,7 @@ The application layout is built using the Carbon Design System (`@carbon/react`)
   - **Mobile**: Collapses into a compact, sticky status bar at the top or bottom of the viewport to save vertical space (avoiding custom Floating Action Buttons (FABs) to adhere strictly to Carbon layout patterns); tapping it opens a modal overlay containing detailed turn counters and control actions.
   - **Controls**: Displays the current execution stats. For workflows with loops, it shows the current loop round, turn count, and token usage. For sequential workflows, it shows the current node/step, turn count, and token usage (prompt and completion tokens tracked separately, without currency calculation). Contains buttons to Pause, Resume, or Abort execution, plus "Force Consensus" / "Summarize early" buttons specifically visible during loop workflows.
 - **Chat Feed**:
-  - **Message Bubbles**: Render user and assistant/agent messages with rich markdown formatting, GitHub Flavored Markdown (e.g. tables, checkboxes), and LaTeX math support (both inline and block equations).
+  - **Message Bubbles**: Render user and assistant/agent messages with rich markdown formatting, GitHub Flavored Markdown (e.g. tables, checkboxes), and LaTeX math support (both inline and block equations). During active streaming, the rendering of Markdown and LaTeX will be debounced by 100ms. A lightweight streaming text renderer will display incoming text immediately without full Markdown/LaTeX compilation. When the 100ms debounce interval is reached, or when the stream naturally completes a chunk, the full `react-markdown` compilation is triggered. This maintains smooth 60fps scrolling while ensuring math and formatted text appear promptly. Before passing the streamed string to `react-markdown`, the rendering layer checks the count of triple backticks (` ``` `). If the count is odd (meaning a block is open), it automatically appends `\n``` ` to the end of the streaming text to handle unclosed code blocks safely.
     - **Multi-Agent Distinction**: To ensure multi-agent orchestrations are readable, assistant messages MUST clearly display the name of the agent (e.g. "Debater A", "Summarizer") in a header above the message text. If multiple agents participate, assign a subtle, distinct background tint or left-border color to each agent's message bubble, making the conversation easy to follow even on small mobile screens.
   - **Performance & Virtualization**: The message feed uses standard browser rendering. Virtualization (only rendering messages in the viewport) is deferred unless performance benchmarks degrade for threads exceeding 200+ messages.
   - **Message Options Menu**: Each message bubble includes a small, low-profile overflow button (three-dots icon) with a minimum `44x44px` target. This button is permanently visible (with a light opacity like `0.6`) on both desktop and mobile viewports (no hover-only requirements; this no-hover, permanently visible approach is globally applied for all UI elements). Clicking/tapping it opens a Carbon `OverflowMenu` (or a native Carbon `Modal` on mobile viewports for easier touch interaction) containing "Edit", "Delete", and "Branch Thread" options.
@@ -762,7 +765,7 @@ The application layout is built using the Carbon Design System (`@carbon/react`)
   - **Reasoning Process Accordion**: Collapsed by default under a "Reasoning Process" header inside the assistant's message. Capped at `max-height: 250px` with vertical scrollbars. Both reasoning tokens and text content are streamed in real-time. The accordion must remain collapsed by default during streaming and after response completion. Use a fallback renderer or debounced updates to handle malformed partial markdown or math blocks.
   - **Tool Call / Result Accordion**: Collapsed by default under a "Tool: [Name]" header. Expanding reveals a formatted JSON block of arguments or return outputs. The accordion MUST also clearly indicate which agent triggered the tool (e.g. "Agent A called Tool X"). Note: the `ask_questions` tool card form is rendered inline directly in the chat feed and must render/remain visible even when the tool call message itself is collapsed.
   - **Scroll Anchoring**: Expanding accordions preserves chat scroll anchoring so the user does not lose their viewing position.
-  - **`ask_questions` Tool Card Form**: Rendered inline directly in the chat feed (using a Carbon `Tile` component to structure the form contents) when execution is interrupted. Sized with a minimum of `44x44px` touch targets. The form displays options using Carbon `RadioButtonGroup`/`RadioButton` for `single-select` questions, `Checkbox` for `multi-select` questions, and `TextArea`/`TextInput` fields for `free-text` comments and inputs. Includes a "Refuse to Answer" button. The user must either answer all questions in the card or explicitly click "Refuse to Answer" to submit the form. The form controls become read-only once submitted.
+  - **`ask_questions` Tool Card Form**: Rendered inline directly in the chat feed (using a Carbon `Tile` component to structure the form contents) when execution is interrupted. Sized with a minimum of `44x44px` touch targets. The form displays options using Carbon `RadioButtonGroup`/`RadioButton` for `single-select` questions, `Checkbox` for `multi-select` questions, and `TextArea`/`TextInput` fields for `free-text` comments and inputs. Includes a "Refuse to Answer" button. The user must either answer all questions in the card or explicitly click "Refuse to Answer" to submit the form. The form controls become read-only once submitted. The Chat Feed layout dynamically calculates the height of the sticky Chat Input Area and Execution Control Panel (e.g., using a `ResizeObserver`) and assigns this value to the `padding-bottom` of the chat feed container. Furthermore, when an inline form enters the `active.editing` state, the Chat Feed Auto-Scroll State Machine is triggered to smoothly scroll the top of the form element to the vertical center of the viewport, ensuring it is never obscured on mobile viewports.
   - **Budget Exceeded Card**: Rendered inline directly in the chat feed if the cumulative execution token limit is exceeded. Shows token usage and options to "Increase Budget & Resume" (temporarily raising the token threshold for the active execution run) or "Abort".
   - **Proposed Action Card**: Rendered inline for database-modifying tools (e.g., creating/updating a workflow). Shows a diff or description of the changes, with "Approve" or "Deny" buttons.
 - **Chat Input Area**:
@@ -814,6 +817,16 @@ All UI elements, interactive controls, buttons, fields, forms, and modals that p
 - Micro-interactions, loading indicators, API request phases, retry actions, and inline error states must be explicitly modeled in the machine definitions.
 - The state machines must not omit transition rules for edge cases, error recovery, or cancel actions, ensuring the UI remains robust, predictable, and fully testable under all conditions.
 
+### Global UX/UI Guidelines
+
+To ensure the application UI is readable and clearly understandable on both desktop and mobile, all UI components must adhere to the following rules:
+- **Mobile Readability**: To prevent iOS auto-zoom on focus, all input elements (text inputs, textareas, dropdowns, and form fields in inline tools like `ask_questions`) MUST use a minimum font-size of 16px.
+- **Touch Targets**: All interactive elements (buttons, links, form controls, accordion toggles) MUST have a minimum tap target size of 44x44px.
+- **Viewport Constraints**: Modals and off-canvas elements (like the Left Sidebar) must never exceed `100vw` or `100vh`. Use appropriate `max-height` and `overflow-y: auto` for internal content to allow scrolling within the bounds of the viewport.
+- **Loading & Transitions**: Skeleton loaders, spinners, or localized "Thinking..." text should always replace or overlay empty views when executing API calls or database operations to give the user immediate feedback and prevent confusing "dead" states.
+- **Empty States**: All lists (threads, presets, workflows) MUST have beautifully designed empty states with a clear call-to-action (e.g., "Create your first thread") and explanatory text, rather than just showing a blank table or list.
+- **Dynamic Input Resizing**: Chat input textareas should dynamically grow in height as the user types (up to a maximum height constraint) to ensure visibility of long prompts before submitting.
+
 The application state is managed by a central XState machine (the Parent Coordinator Machine) configured with parallel state regions. This design decouples UI view navigation from LangGraph background execution, allowing background workflows to run concurrently (in active-only execution mode) while the user navigates settings or configurations.
 
 ### State Transition Graph
@@ -826,6 +839,9 @@ stateDiagram-v2
             initializing --> onboarding : [No API Keys]
             initializing --> idle : [API Keys Configured & No Active Thread]
             initializing --> chatting : [API Keys Configured & Active Thread]
+            initializing --> error : INIT_FAILURE [IndexedDB Inaccessible]
+
+            error --> initializing : RETRY_INIT
 
             onboarding --> globalSettings : OPEN_SETTINGS
             globalSettings --> onboarding : CLOSE_SETTINGS [Still No Keys]
@@ -922,6 +938,8 @@ The parent coordinator state machine context maintains the following variables:
 - **`initializing`**: Reads the configuration settings, API keys, presets, custom workflows, and active thread ID from the database.
   - _Interactive Controls_: None. A global page skeleton loader is displayed.
   - _Database Startup Sweep_: Upon entry, the machine executes a sweep transaction that automatically updates any thread records with `status == "executing"` to `"inactive"` in IndexedDB (resolving abrupt browser closure), and restarts the Asynchronous Batched Deletion Pipeline for any threads with `status == "deleting"`.
+- **`error`**: Blocked state when initialization fails (e.g., IndexedDB is blocked or inaccessible).
+  - _Interactive Controls_: Global error banner with a "Retry" button (triggers `RETRY_INIT`).
 - **`onboarding`**: A blocker state when API keys are not yet configured.
   - _Interactive Controls_:
     - Global Warning Banner: Clickable, triggers `OPEN_SETTINGS` to open the Global Settings view.
@@ -934,7 +952,7 @@ The parent coordinator state machine context maintains the following variables:
       - Workflow Dropdown Selector: Enabled.
       - Preset Dropdown Selector: Enabled.
       - Initial message/topic input field: Enabled.
-      - Submit Button: Disabled if initial message input is empty. Shows loader if submitting.
+      - Submit Button: Enabled. If initial message input is empty, it starts the workflow without a user input message. Shows loader if submitting.
 - **`chatting`**: Viewing an active thread. The main input is enabled and ready to accept user messages.
   - _Interactive Controls_:
     - Main Chat Input: Enabled (unless blocked by `ExecutionState` executing/awaiting approval).
@@ -948,7 +966,7 @@ The parent coordinator state machine context maintains the following variables:
     - Save / Cancel / Delete buttons: Enabled.
 - **`workflowConfig`**: Modifying or creating custom workflows in the JSON `TextArea` editor.
   - _Interactive Controls_:
-    - JSON text area input, Clipboard copy/paste, Import/Export buttons: Enabled.
+    - JSON text area input, Clipboard copy/paste, Import/Export buttons: Enabled. The JSON editor will remain accessible on mobile for power users, but a dismissible warning banner is displayed at the top: "Editing complex workflows on mobile devices is not recommended and may lead to syntax errors."
     - Save / Cancel / Delete buttons: Enabled.
 - **`globalSettings`**: Modifying API keys, manual theme override, and injected system messages.
   - _Interactive Controls_:
@@ -961,7 +979,7 @@ The parent coordinator state machine context maintains the following variables:
 
 - **`inactive`**: No background workflow execution is running for the active thread.
   - _Interactive Controls_:
-    - Send button: Triggers `SUBMIT_MESSAGE` when clicked.
+    - Send button: Triggers `SUBMIT_MESSAGE` when clicked. The parent coordinator is responsible for the explicit database write. When `SUBMIT_MESSAGE` is received, the parent coordinator generates a new UUID and sequence number, writes the user's message to the `messages` store in IndexedDB, and appends it to the thread's state using `graph.updateState(config, { messages: [new_message] })` to create a checkpoint. Only after this checkpoint is persisted does it transition to `executing` and spawn the runner actor to continue the graph.
     - "Run Workflow" / "Resume" buttons in execution control panel: Enabled.
 - **`checkingStatus`**: A transient state that queries IndexedDB asynchronously to load the active thread's execution checkpoint and status. Checks the thread record's `status` and `activeInterrupt` fields. If `activeInterrupt` is not null, it transitions to `awaitingHumanInput` (substates `idle` or `budgetExceeded` based on the interrupt type) and restores the pending form states.
   - _Interactive Controls_:
@@ -1439,6 +1457,8 @@ Governs the top-level application shell, responsive navigation drawer, and globa
   - `SET_THEME` (contains theme): Updates `theme` in context. If theme is `"light"` or `"dark"`, it forces the document element to that theme class immediately, bypassing OS settings. If theme is `"system"`, it queries the active system color scheme and applies it. Writes setting to IndexedDB settings.
   - `SYSTEM_THEME_CHANGED` (contains `isDark`): When in `idle` and the `theme` context is `"system"`, dynamically updates the document's applied theme classes matching `isDark` (without altering the saved `theme` context value) to ensure real-time synchronization with OS dark/light mode switches.
   - `WINDOW_RESIZED` (contains isMobile): Updates `isMobile` context. If `isMobile` transitions to `false`, forces `sidebarOpen` to `false`.
+  - `SWIPE_RIGHT`: On mobile touch surfaces, sets `sidebarOpen` to `true`.
+  - `SWIPE_LEFT`: On mobile touch surfaces, sets `sidebarOpen` to `false`.
   - `ROUTE_CHANGED` (contains route): Updates `currentRoute`. If `isMobile` is `true`, sets `sidebarOpen` to `false` to close the navigation overlay.
 - **Database Reads/Writes**:
   - **Reads**: On initialization, reads the `"ui_config"` setting record from the `settings` store to resolve the default saved theme.
@@ -1598,6 +1618,7 @@ Governs the JSON editor interface used to inspect or build custom agent orchestr
   - `viewing`: Read-only JSON view for built-in workflows (editing disabled).
     - _Textarea_: Read-only.
     - _Save/Delete Buttons_: Hidden/Disabled.
+    - _Clone Workflow Button_: Enabled. Triggers `CLONE_WORKFLOW`.
     - _Clipboard Copy, Export to File Buttons_: Enabled. Focused.
     - _Import from File Button_: Disabled.
   - `editing`: Textarea input is active.
@@ -1606,6 +1627,7 @@ Governs the JSON editor interface used to inspect or build custom agent orchestr
       - _Save Button_: Disabled.
       - _Cancel Button_: Enabled.
       - _Delete Button_: Enabled (if custom).
+      - _Clone Workflow Button_: Enabled. Triggers `CLONE_WORKFLOW`.
       - _Clipboard / Import / Export buttons_: Enabled.
     - `editing.dirty`: Text content modified.
       - _Text Area Field_: Enabled. Focused.
@@ -1632,6 +1654,7 @@ Governs the JSON editor interface used to inspect or build custom agent orchestr
     - _Error Notification Banner_: Visible, displays DB transaction error.
 - **Transitions / Events**:
   - `LOAD_WORKFLOW` (contains id, content, and isBuiltIn): Sets `workflowId`, `jsonContent`, `originalContent`, `isBuiltIn`, `isDirty` to `false`, and transitions to `viewing` (if `isBuiltIn` is true) or `editing.clean` (if `isBuiltIn` is false).
+  - `CLONE_WORKFLOW`: Sets `workflowId` to `null` (treats as new), sets `isBuiltIn` to `false`, sets `isDirty` to `true`, prefixes the workflow name in the JSON with `"Copy of "`, and transitions to `editing.dirty`.
   - `EDIT_JSON` (contains content): Updates `jsonContent` in context, sets `isDirty` to `true`, and transitions to `editing.dirty`.
   - `SAVE`: Transitions `editing.dirty` or `error` to `validating`.
   - `VALIDATE_SUCCESS`: Transitions to `saving`.
@@ -1668,6 +1691,7 @@ Governs the lifecycle of the LangGraph background execution runner, which runs a
   - `initializing`: Compiles the `StateGraph` using the `workflowSnapshot`, instantiates the custom checkpointer, and prepares the runner. Loads the thread's latest checkpoint config. Queries the `messages` store for any messages with `sequence` higher than the sequence of the latest message in the loaded checkpoint. If newer messages exist in the database, applies them to the graph state via `graph.updateState(config, { messages: newerMessages })`, updating the latest checkpoint references.
   - `running`: Actively invoking `graph.stream()` or resuming the stream generator step-by-step.
     - `running.requesting`: Sending request to LLM API (direct client call).
+      - _UX Note_: While in this state, the UI should render a temporary "Thinking..." or "Evaluating..." skeleton bubble at the bottom of the chat feed to provide visual feedback that execution is actively in progress before streaming begins.
     - `running.streaming`: Buffering text and reasoning tokens in real-time, throttling UI updates.
   - `paused`: Suspended, persisting state and waiting for further instructions.
   - `interrupted`: Suspended awaiting human action, response, or decisions.
@@ -1877,7 +1901,8 @@ Governs the state of the main text area, role selector, and send button, coordin
   - `DISABLE`: Transitions from any `ready` state to `disabled`.
   - `INPUT_CHANGED` (contains text): Transitions between `ready.empty` and `ready.hasText` based on whether text is empty. Updates `inputText`.
   - `ROLE_CHANGED` (contains role): Updates `selectedRole`.
-  - `SUBMIT`: (Triggered by Send Button or Enter key without Shift)
+  - `SUBMIT`: (Triggered by Send Button, or Enter key without Shift on desktop viewports)
+    - _UX Note_: On mobile viewports, the Enter key should default to inserting a newline instead of submitting the message, to accommodate virtual keyboards. Submission on mobile is strictly via the Send Button.
     - Guard: only if `inputText` is non-empty.
     - Action: Dispatches the message to the parent coordinator machine.
     - Transitions to `submitting`.
@@ -1949,12 +1974,17 @@ Governs the lifecycle of editing, validating, and saving fields in the Global Se
   - `idle`: Form is interactive.
     - `idle.clean`: Form values match `originalSettings`.
       - _Form controls (keys, theme, injected messages)_: Enabled.
+      - _Test Connection Button_: Enabled if keys are present.
       - _Save Settings Button_: Disabled.
       - _Reset Fields Button_: Disabled. Focused.
     - `idle.dirty`: Form values differ from `originalSettings`.
       - _Form controls (keys, theme, injected messages)_: Enabled.
+      - _Test Connection Button_: Enabled if keys are present.
       - _Save Settings Button_: Enabled. Focused.
       - _Reset Fields Button_: Enabled.
+  - `testingConnection`: Testing API keys against provider endpoints.
+    - _All controls_: Disabled.
+    - _Test Connection Button_: Displays loading spinner.
   - `validating`: Validating that message depths are valid integers.
     - _All controls_: Disabled.
   - `saving`: Running a database transaction to update the `settings` store.
@@ -1971,6 +2001,9 @@ Governs the lifecycle of editing, validating, and saving fields in the Global Se
   - `ADD_INJECTED_MESSAGE`: Appends a default system message placeholder to `injectedSystemMessages` list, sets `isDirty` to true, transitions to `idle.dirty`.
   - `UPDATE_INJECTED_MESSAGE` (contains index, field, value): Modifies the injected message at the given index, sets `isDirty` to true, transitions to `idle.dirty`.
   - `REMOVE_INJECTED_MESSAGE` (contains index): Deletes the injected message at the given index, sets `isDirty` to true, transitions to `idle.dirty`.
+  - `TEST_CONNECTION`: Transitions `idle.clean` or `idle.dirty` to `testingConnection`.
+  - `TEST_CONNECTION_SUCCESS`: Transitions `testingConnection` back to previous idle state, displaying a temporary success banner.
+  - `TEST_CONNECTION_FAILURE` (contains error): Transitions `testingConnection` back to previous idle state, displaying an error message about connection failure.
   - `SAVE`: Transitions `idle.dirty` or `error` to `validating`.
   - `VALIDATION_SUCCESS`: Transitions to `saving`.
   - `VALIDATION_FAILURE` (contains errors): Transitions to `idle.dirty` (populates `validationErrors` to display inline).
@@ -1981,7 +2014,8 @@ Governs the lifecycle of editing, validating, and saving fields in the Global Se
 - **Database Reads/Writes**:
   - **Reads**: During `loading`, loads `"api_keys"`, `"ui_config"`, and `"injected_system_messages"` setting keys from the `settings` store.
   - **Writes**: On `saving`, opens a read-write transaction on the `settings` store and overwrites the records for these keys. If this is saving API keys (OpenRouter or Gemini) for the first time (i.e. API keys were empty and no presets exist in the `presets` store), the transaction also seeds the default presets ("Default Gemini Flash" using `gemini-2.5-flash` and "Default OpenRouter Flash" using `google/gemini-2.5-flash`) and sets `default_preset_id` in the settings store, then commits.
-- **API Request/Response Sequence**: None.
+- **API Request/Response Sequence**:
+  - On `TEST_CONNECTION`, makes a lightweight request to the Gemini/OpenRouter models list or a tiny prompt generation to verify the API key is authorized.
 
 #### T. New Chat Form State Machine
 
@@ -2061,7 +2095,7 @@ Governs renaming a thread, switching thread-specific presets, syncing workflows,
   - `SAVE_FAILURE` (contains error): Transitions to `opened.error` (updates `errorMessage`).
   - `TRIGGER_SYNC`: Dispatches `START_SYNC` to the Workflow Syncing State Machine.
   - `TRIGGER_COMPACTION`: Dispatches `START_COMPACT` to the Checkpoint Compaction Dialog State Machine.
-  - `TRIGGER_DELETE`: Dispatches `TRIGGER_DELETE` to the Left Sidebar Navigation State Machine and transitions modal to `closed`.
+  - `TRIGGER_DELETE`: Dispatches `TRIGGER_DELETE` to the Left Sidebar State Machine and transitions modal to `closed`.
   - `DISMISS_ERROR`: Transitions `opened.error` to `opened.idle` (clears `errorMessage`).
 - **Database Reads/Writes**:
   - **Reads**: Reads target thread details from the `threads` store, and active presets list from the `presets` store.
@@ -2171,46 +2205,6 @@ Governs the lightweight asynchronous validation indicator displayed next to the 
 - **API Request/Response Sequence**:
   - Same dummy API request implementation as the Preset Connection Tester State Machine (using the provider's /models endpoint or a 1-token dummy prompt).
 
-#### Z. Left Sidebar Navigation State Machine
-
-Governs the visibility and toggle state of the left sidebar, which contains the list of threads, on both mobile and desktop viewports, as well as handling thread deletion.
-
-- **Context**:
-  - `isMobile`: `boolean` (updated via window resize listener)
-  - `threads`: `Array<Thread>`
-  - `deletingThreadId`: `string | null`
-  - `errorMessage`: `string | null`
-- **States**:
-  - `desktop`: Desktop viewport active.
-    - _Sidebar_: Always visible (docked to the left).
-    - _Mobile Hamburger Button_: Hidden.
-  - `mobile`: Mobile viewport active.
-    - `mobile.closed`:
-      - _Sidebar_: Hidden (off-canvas).
-      - _Mobile Hamburger Button_: Visible and enabled. Focused.
-      - _Overlay_: Hidden.
-    - `mobile.open`:
-      - _Sidebar_: Visible (sliding in from the left).
-      - _Mobile Hamburger Button_: Hidden or shown as a close button.
-      - _Overlay_: Visible (clicking it closes the sidebar).
-  - `deletingThread`: Checking deletion safety and orchestrating the database deletion.
-    - _Sidebar Controls_: Disabled. Deleting thread row displays a loading spinner.
-  - `deleteError`: Thread deletion failed.
-    - _Error Banner_: Visible within the sidebar with Retry and Dismiss buttons.
-- **Transitions / Events**:
-  - `VIEWPORT_CHANGED` (contains isMobile): Transitions between `desktop` and `mobile` states.
-  - `TOGGLE_SIDEBAR`: Transitions between `mobile.closed` and `mobile.open`.
-  - `CLOSE_SIDEBAR`: Transitions `mobile.open` to `mobile.closed`.
-  - `ROUTE_CHANGED`: Transitions `mobile.open` to `mobile.closed` (auto-closes on navigation).
-  - `TRIGGER_DELETE` (contains threadId): Transitions `desktop` or `mobile.open` to `deletingThread` (sets `deletingThreadId`).
-  - `DELETE_SUCCESS`: Transitions `deletingThread` to `desktop` or `mobile.open` depending on viewport. If the deleted thread was the currently active thread, dispatches a route change to the home/idle screen.
-  - `DELETE_FAILURE` (contains error): Transitions `deletingThread` to `deleteError` (updates `errorMessage`).
-  - `DISMISS_ERROR`: Transitions `deleteError` to previous idle state.
-- **Database Reads/Writes**:
-  - **Reads**: Subscribes to the `threads` store to list active threads.
-  - **Writes**: On `TRIGGER_DELETE`, triggers the asynchronous batched cascading deletion pipeline for the specified thread ID, updating its status to `"deleting"`.
-- **API Request/Response Sequence**: None.
-
 #### AA. Message Bubble (Multi-Agent) Render State
 
 Governs the display state of individual message bubbles in a multi-agent chat feed, ensuring the UX clearly communicates which agent is speaking or executing tools.
@@ -2229,81 +2223,69 @@ Governs the display state of individual message bubbles in a multi-agent chat fe
 - **Database Reads/Writes**: None.
 - **API Request/Response Sequence**: None.
 
+#### AB. Storage & Data Management State Machine
 
-## Open questions
+Governs the lifecycle of the Storage Management and Data Backup/Restore Modal, accessed from Global Settings.
 
-### Process of handling open questions
+- **Context**:
+  - `storageUsage`: `number | null` (in bytes)
+  - `threadsList`: `Array<{ id: string, title: string, tokenStats: any }>`
+  - `selectedThreads`: `Array<string>`
+  - `exportBlobUrl`: `string | null`
+  - `errorMessage`: `string | null`
+- **States**:
+  - `loading`: Querying IndexedDB metadata and threads for usage metrics.
+    - _Modal Controls_: Disabled. Shows skeleton loader.
+  - `idle`: Displaying storage stats, large threads, and backup/reset options.
+    - _Export DB Button_: Enabled.
+    - _Import DB Button_: Enabled.
+    - _Delete Selected Threads Button_: Enabled if `selectedThreads` is not empty.
+    - _Factory Reset Button_: Enabled.
+  - `exporting`: Generating a JSON blob of all DB stores.
+    - _All controls_: Disabled, Export button shows spinner.
+  - `importing`: Parsing JSON and inserting records into IndexedDB stores.
+    - _All controls_: Disabled, Import button shows spinner.
+  - `confirmingFactoryReset`: Displaying red-warning modal for wiping all data.
+    - _Reset Input Field_: Required to type "RESET".
+    - _Confirm Reset Button_: Disabled until input matches.
+    - _Cancel Button_: Enabled.
+  - `factoryResetting`: Wiping DB and reloading page.
+    - _All controls_: Disabled.
+  - `error`: Failed to export, import, or load storage.
+    - _Error Banner_: Visible.
+- **Transitions / Events**:
+  - `LOAD`: Enters `loading`.
+  - `LOAD_SUCCESS` (contains usage and threads): Transitions to `idle`.
+  - `TOGGLE_THREAD_SELECTION` (contains threadId): Updates `selectedThreads` array.
+  - `BULK_DELETE_THREADS`: Triggers batched cascading deletion pipeline for `selectedThreads` and refreshes list.
+  - `EXPORT_DATA`: Transitions `idle` to `exporting`.
+  - `EXPORT_SUCCESS` (contains Blob URL): Transitions back to `idle`, triggering automatic file download.
+  - `IMPORT_DATA` (contains file): Transitions `idle` to `importing`.
+  - `IMPORT_SUCCESS`: Closes modal and triggers a full page reload to apply imported state.
+  - `IMPORT_FAILURE` (contains error): Transitions to `error`.
+  - `TRIGGER_FACTORY_RESET`: Transitions `idle` to `confirmingFactoryReset`.
+  - `CANCEL_FACTORY_RESET`: Transitions `confirmingFactoryReset` back to `idle`.
+  - `CONFIRM_FACTORY_RESET`: Transitions `confirmingFactoryReset` to `factoryResetting`. Triggers `idb.deleteDB()`, then reloads the page.
+- **Database Reads/Writes**:
+  - **Exporting**: Reads all records from `settings`, `presets`, `workflows`, `threads`, `messages`, `checkpoints`, and `checkpoint_writes` and packages them into a JSON structure.
+  - **Importing**: Clears all existing stores, then performs batched inserts of the provided JSON structure.
+  - **Factory Reset**: Invokes IndexedDB API to delete the entire database.
+- **API Request/Response Sequence**: None.
 
-When updating this file with open questions, please only add to the current open questions list below.
+#### AC. Streaming Message Bubble State Machine
 
-Each distinct decision or sub-question must be structured as its own separate `#### Question: <title>` section with its own suggested options and response placeholder. Do not group multiple distinct questions or decisions under a single question header, as this makes it difficult to respond to them one by one.
+Governs the debounced rendering of Markdown and LaTeX during active LLM streaming.
 
-Always use the following format:
-
-```md
-#### Question: <short title of question here>
-
-<Description of the question and the suggested options>
-
-##### Response
-
-[UNRESOLVED]
-```
-
-The human user will replace the `[UNRESOLVED]` tag with their response. The human user will then prompt the coding agent to incorporate the responses into this scratchpad file, and remove those already incorporated open questions, along with any questions that are no longer relevant.
-
-### Current open questions:
-
-#### Question: Throttling Markdown/LaTeX Rendering
-
-Since Markdown and LaTeX rendering can be computationally expensive, rendering it on every new token might cause UI jank. How should the application throttle or debounce the rendering during streaming to ensure a smooth UX?
-
-##### Response
-
-[RESOLVED] The rendering of Markdown and LaTeX will be debounced by 100ms during active streaming. A lightweight streaming text renderer will display incoming text immediately without full Markdown/LaTeX compilation. When the 100ms debounce interval is reached, or when the stream naturally completes a chunk, the full `react-markdown` compilation is triggered. This maintains smooth 60fps scrolling while ensuring math and formatted text appear promptly.
-
-### Resolved open questions:
-
-#### Question: Markdown rendering of unclosed code blocks during streaming
-
-During streaming (in the `running.streaming` state), the LLM might send markdown code blocks that are not yet closed with triple backticks. If rendered naively, this can cause the entire subsequent chat UI to break or render incorrectly as part of the code block. How should the application handle streaming markdown that contains unclosed code blocks?
-
-##### Response
-
-[RESOLVED] Before passing the streamed string to `react-markdown`, the rendering layer checks the count of triple backticks (` ``` `). If the count is odd (meaning a block is open), it automatically appends `\n``` ` to the end of the streaming text.
-
-#### Question: Error recovery when IndexedDB quota is exceeded
-
-The application uses IndexedDB to store all chat histories, states, and checkpoints. Over time, heavy usage (especially with large context windows or deep debate loops) might exceed the browser's storage quota for IndexedDB. How should the application handle `QuotaExceededError` during critical write operations (like `STEP_COMPLETE`)?
-
-##### Response
-
-[RESOLVED] When a `QuotaExceededError` is caught during execution, the system transitions to `ExecutionState.error` and renders a specialized "Storage Quota Exceeded" error bubble. The bubble provides actionable buttons to either open the "Storage Management" modal (to bulk-delete old threads) or perform a "Hard Sync/Compact" on the current thread to free up space.
-
-#### Question: Mobile UI for JSON workflow editor
-
-Editing complex JSON workflows on a mobile device is generally a poor UX and prone to syntax errors. Should the workflow JSON editor be disabled on mobile viewports, or should we just show a warning, or is the current plain text area sufficient?
-
-##### Response
-
-[RESOLVED] The JSON editor will remain accessible on mobile for power users, but a dismissible warning banner is displayed at the top: "Editing complex workflows on mobile devices is not recommended and may lead to syntax errors."
-
-#### Question: Handle concurrent background execution of multiple threads
-
-The application supports navigating to other views and threads while a background workflow is running. However, the active execution policy currently specifies that switching away from a thread pauses the runner actor, and the thread state in the DB is saved as paused ("Active-Only Execution Mode").
-Should we support true concurrent background execution of multiple threads in the browser (e.g. using Web Workers or multiple spawned runner actors running in parallel in the background), or is the "Active-Only Execution Mode" (which pauses the current thread runner on switch) sufficient?
-
-##### Response
-
-[RESOLVED] Option A (Active-Only Execution Mode) is selected.
-Running multiple concurrent graph execution threads in a single browser window can lead to rapid resource exhaustion, API rate limits, and complex concurrent write conflicts in the IndexedDB checkpointer. Limiting active execution to the currently open thread provides a reliable, secure user experience, matching standard multi-agent interfaces.
-
-#### Question: Handling of browser tab closure during active workflow execution
-
-Since execution happens entirely client-side in the browser, closing the browser tab or window during active workflow execution will abruptly terminate the running process.
-When the app initializes or the user re-opens the app, how should it handle threads that were left in the `"executing"` status?
-
-##### Response
-
-[RESOLVED] Option B (Mark as paused/inactive) is selected.
-Upon application load, any thread records with `"executing"` status are automatically transitioned to `"inactive"` / `"paused"` in the database. When the thread is subsequently opened, a warning banner is displayed offering a manual "Resume" option. This is necessary because closing the browser tab abruptly terminates the in-memory graph runner. The runner cannot automatically recover active in-memory state on reload without user initiation, so marking it as inactive/paused is the most robust approach.
+- **Context**:
+  - `rawText`: `string` (the accumulated raw text string)
+  - `debouncedText`: `string` (the text string currently passed to the markdown renderer)
+  - `isStreaming`: `boolean`
+- **States**:
+  - `idle`: Not actively streaming. Renders `rawText` through the full React Markdown/LaTeX pipeline.
+  - `streaming`: Actively receiving tokens.
+    - _Lightweight text view_: Renders incoming tokens directly as unformatted text immediately.
+    - _Debounced compiler_: Every 100ms, or when a code block completes, updates `debouncedText` and triggers a full markdown render of the accumulated content in the background. Note: To prevent LaTeX rendering crashes during streaming, the debounced compiler must explicitly detect incomplete LaTeX blocks (e.g., matching unclosed `$$` or `\\[` markers) and defer rendering them as math until the block is closed, falling back to plain text rendering for that segment.
+- **Transitions / Events**:
+  - `STREAM_START`: Transitions `idle` to `streaming`.
+  - `TOKEN_RECEIVED`: Updates `rawText`. Triggers debouncer to eventually update `debouncedText`.
+  - `STREAM_END`: Flushes the debouncer, updates `debouncedText` to match `rawText`, and transitions `streaming` to `idle`.
