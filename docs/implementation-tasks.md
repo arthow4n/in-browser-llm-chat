@@ -32,7 +32,7 @@ This document contains a step-by-step checklist to build the LLM chat applicatio
 ## 3. LangGraph Checkpointer & Graph Factory
 
 - [x] **Step 3.1:** Implement the custom IndexedDB checkpointer class for LangGraph that extends `BaseCheckpointSaver`. Ensure it correctly maps to the `checkpoints` and `checkpoint_writes` stores.
-- [ ] **Step 3.2:** Implement the Workflow Schema parsing logic (using Zod) and the dynamic `StateGraph` compilation factory function. Implement the routing rules (e.g., `on_tool_call`, `on_consensus`) and the execution logic for `agent`, `input`, `tool`, `consensus_check`, and `summary` nodes as outlined in the "Custom Workflow JSON Serialization" section. Write tests for graph compilation.
+- [x] **Step 3.2:** Implement the Workflow Schema parsing logic (using Zod) and the dynamic `StateGraph` compilation factory function. Implement the routing rules (e.g., `on_tool_call`, `on_consensus`) and the execution logic for `agent`, `input`, `tool`, `consensus_check`, and `summary` nodes as outlined in the "Custom Workflow JSON Serialization" section. Write tests for graph compilation.
 
 ## 4. Execution State Machine & Runner Actor
 
