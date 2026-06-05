@@ -39,3 +39,9 @@ Use the following commands to run the project's quality checks and builds:
 
 - Use ONLY the Carbon Design System.
 - Do NOT use "premium design aesthetics" like glassmorphism, custom micro-animations, or custom typography (like Inter/Outfit). Adhere strictly to the Carbon Design System defaults and tokens.
+
+## Code Architecture & Conventions
+
+- **NO Default Exports**: Use only named exports and imports. `export default` is explicitly banned as it causes refactoring issues and confusion (exception: configuration files that strictly require it like `vite.config.ts`).
+- **NO Barrel Files**: Do not use `index.ts` or `index.tsx` files to re-export modules. They lead to circular dependencies and bloated imports. Explicitly import from the specific file.
+- **File Naming**: Do not name files `index.ts` or `index.tsx`. Name them descriptively based on their contents.

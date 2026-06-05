@@ -1,6 +1,6 @@
 import { Theme, Header, HeaderName, HeaderGlobalBar, Content } from "@carbon/react";
 
-export default function App() {
+export function App() {
   return (
     <Theme theme="g100">
       <Header aria-label="LLM Chat">
