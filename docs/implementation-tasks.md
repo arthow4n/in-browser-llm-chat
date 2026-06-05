@@ -41,7 +41,7 @@ This document contains a step-by-step checklist to build the LLM chat applicatio
 
 ## 5. View State Machine (Parent Coordinator) & Routing
 
-- [ ] **Step 5.1:** Implement the `ViewState` parallel region of the Parent Coordinator machine, covering `initializing`, `onboarding`, `idle`, `chatting`, `presetConfig`, `workflowConfig`, and `globalSettings` states. Utilize `@xstate/graph` for testing where appropriate.
+- [x] **Step 5.1:** Implement the `ViewState` parallel region of the Parent Coordinator machine, covering `initializing`, `onboarding`, `idle`, `chatting`, `presetConfig`, `workflowConfig`, and `globalSettings` states. Utilize `@xstate/graph` for testing where appropriate.
 - [ ] **Step 5.2:** Integrate the Parent Coordinator machine into the root React layout. Set up React Router, binding route changes to `ROUTE_CHANGED` events sent to the Parent Coordinator machine to decouple view navigation from background execution.
 
 ## 6. Global Settings & Presets Management
