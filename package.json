@@ -9,8 +9,8 @@
     "build": "tsgo --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsgo --noEmit",
-    "lint": "oxlint",
-    "lint:fix": "oxlint --fix",
+    "lint": "oxlint --max-warnings=0",
+    "lint:fix": "oxlint --max-warnings=0 --fix",
     "format": "oxfmt --write",
     "format:check": "oxfmt --check",
     "test": "vitest run"
