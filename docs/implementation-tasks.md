@@ -96,12 +96,12 @@ This document contains a step-by-step checklist to build the LLM chat applicatio
   - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
   - [x] Perform code review (self/subagent).
   - [x] Commit the changes following `AGENTS.md`.
-- [ ] **Step 6.3:** Build the Preset Connection Tester State Machine and the Preset Config UI form for creating/editing LLM configurations.
-  - [ ] Implement the Preset Connection Tester State Machine and the Preset Config UI form.
-  - [ ] Write integration and state machine tests adhering to Testing Guidelines in `docs/scratchpad.md`.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Perform code review (self/subagent).
-  - [ ] Commit the changes following `AGENTS.md`.
+- [x] **Step 6.3:** Build the Preset Connection Tester State Machine and the Preset Config UI form for creating/editing LLM configurations.
+  - [x] Implement the Preset Connection Tester State Machine and the Preset Config UI form.
+  - [x] Write integration and state machine tests adhering to Testing Guidelines in `docs/scratchpad.md`.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Perform code review (self/subagent).
+  - [x] Commit the changes following `AGENTS.md`.
 
 ## 7. Workflow Management UI
 
