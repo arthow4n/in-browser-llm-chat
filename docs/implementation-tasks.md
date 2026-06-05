@@ -47,7 +47,7 @@ This document contains a step-by-step checklist to build the LLM chat applicatio
 ## 6. Global Settings & Presets Management
 
 - [x] **Step 6.1:** Build the Global Settings State Machine and its UI form component. Include password-masked fields for OpenRouter and Gemini API keys, theme override selectors, and system message definitions. Implement the API key validation logic and connection tester.
-- [ ] **Step 6.2:** Build the Preset List View State Machine and its UI component. Support sorting, pagination, and deletion safety guards.
+- [x] **Step 6.2:** Build the Preset List View State Machine and its UI component. Support sorting, pagination, and deletion safety guards.
 - [ ] **Step 6.3:** Build the Preset Connection Tester State Machine and the Preset Config UI form for creating/editing LLM configurations.
 
 ## 7. Workflow Management UI
