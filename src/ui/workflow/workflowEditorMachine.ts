@@ -89,10 +89,10 @@ function getErrorMessage(event: unknown, defaultMessage: string): string {
 }
 
 export const workflowEditorMachine = setup({
-  types: {
-    context: {} as WorkflowEditorContext,
-    events: {} as WorkflowEditorEvent,
-    input: {} as { workflowId: string | null },
+  types: {} as {
+    context: WorkflowEditorContext;
+    events: WorkflowEditorEvent;
+    input: { workflowId: string | null };
   },
   actors: {
     loadWorkflowActor: fromPromise(async ({ input }: { input: { workflowId: string | null } }) => {
