@@ -10,6 +10,10 @@
     - (Antigravity) Add X and do Y
     - (Jules) Add X and do Y
 
+## Environment
+
+For Antigravity: when running Windows, your terminal commands will be evaluated with PowerShell, so for example `&&` chaining is not supported.
+
 ## Toolchains
 
 ### Commands
