@@ -3,7 +3,8 @@ import { type WorkflowNode, type WorkflowEdge } from "../workflow/schemas";
 
 export interface SettingsStore {
   key: string;
-  value: unknown;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  value: any;
 }
 
 export interface PresetStore {
@@ -66,8 +67,10 @@ export interface CheckpointStore {
   threadId: string;
   checkpointNs: string;
   checkpointId: string;
-  checkpoint: unknown;
-  metadata: Record<string, unknown>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  checkpoint: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  metadata: any;
   parentCheckpointId: string | null;
   createdAt: number;
 }
@@ -79,7 +82,8 @@ export interface CheckpointWriteStore {
   taskId: string;
   idx: number;
   channel: string;
-  value: unknown;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  value: any;
   createdAt: number;
 }
 
@@ -194,7 +198,7 @@ export async function closeDB(): Promise<void> {
 export async function getSetting<T = unknown>(key: string): Promise<T | undefined> {
   const db = await getDB();
   const record = await db.get("settings", key);
-  return record ? (record.value as T) : undefined;
+  return record ? record.value : undefined;
 }
 
 export async function setSetting<T = unknown>(key: string, value: T): Promise<void> {
@@ -248,9 +252,8 @@ export async function deletePreset(id: string): Promise<void> {
   const workflows = await tx.objectStore("workflows").getAll();
   const referencingWorkflows: string[] = [];
   for (const wf of workflows) {
-    const hasPreset = wf.nodes?.some(
-      (node: unknown) => (node as { presetId?: string }).presetId === id,
-    );
+    const hasPreset = wf.nodes?.some((node) => node.presetId === id);
+
     if (hasPreset) {
       referencingWorkflows.push(wf.name);
     }
@@ -322,14 +325,10 @@ export async function getAllWorkflows(): Promise<WorkflowStore[]> {
 export const _activeDeletions = new Map<string, { promise: Promise<void>; resolve: () => void }>();
 
 const scheduleCallback =
-  typeof window !== "undefined" && "requestIdleCallback" in window
-    ? (cb: () => void) =>
-        (
-          window as Window &
-            typeof globalThis & {
-              requestIdleCallback: (cb: () => void, options?: { timeout: number }) => void;
-            }
-        ).requestIdleCallback(cb, { timeout: 1000 })
+  typeof window !== "undefined" && typeof window.requestIdleCallback === "function"
+    ? (cb: () => void) => {
+        window.requestIdleCallback(cb, { timeout: 1000 });
+      }
     : (cb: () => void) => setTimeout(cb, 0);
 
 async function runDeletionStep(threadId: string): Promise<void> {
@@ -700,18 +699,22 @@ export async function rollbackThreadHistory(
   let promptTokens = 0;
   let completionTokens = 0;
   let totalTokens = 0;
+  function isUsageRecord(val: unknown): val is Record<string, number> {
+    return typeof val === "object" && val !== null;
+  }
+
   for (const msg of remainingMessages) {
     const usage = msg.metadata?.usage;
-    if (usage) {
-      const u = usage as Record<string, number>;
-      const pt = u.prompt_tokens ?? u.promptTokens ?? 0;
-      const ct = u.completion_tokens ?? u.completionTokens ?? 0;
-      const tt = u.total_tokens ?? u.totalTokens ?? pt + ct;
+    if (isUsageRecord(usage)) {
+      const pt = usage.prompt_tokens ?? usage.promptTokens ?? 0;
+      const ct = usage.completion_tokens ?? usage.completionTokens ?? 0;
+      const tt = usage.total_tokens ?? usage.totalTokens ?? pt + ct;
       promptTokens += pt;
       completionTokens += ct;
       totalTokens += tt;
     }
   }
+
   thread.tokenStats = { promptTokens, completionTokens, totalTokens };
 
   // Update thread record
