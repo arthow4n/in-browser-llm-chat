@@ -120,12 +120,12 @@ This document contains a step-by-step checklist to build the LLM chat applicatio
 
 ## 8. Thread Management & Left Sidebar
 
-- [ ] **Step 8.1:** Build the Left Sidebar State Machine and UI component for listing threads. Implement pagination, sorting, search, and cascading deletes (batched asynchronously).
-  - [ ] Implement the Left Sidebar State Machine and UI component.
-  - [ ] Write integration and state machine tests adhering to Testing Guidelines in `docs/scratchpad.md`.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Perform code review (self/subagent).
-  - [ ] Commit the changes following `AGENTS.md`.
+- [x] **Step 8.1:** Build the Left Sidebar State Machine and UI component for listing threads. Implement pagination, sorting, search, and cascading deletes (batched asynchronously).
+  - [x] Implement the Left Sidebar State Machine and UI component.
+  - [x] Write integration and state machine tests adhering to Testing Guidelines in `docs/scratchpad.md`.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Perform code review (self/subagent).
+  - [x] Commit the changes following `AGENTS.md`.
 - [ ] **Step 8.2:** Build the New Chat Form State Machine and UI component, populating workflow and preset dropdowns. Ensure submitting a new chat correctly seeds the thread and routes the user.
   - [ ] Implement the New Chat Form State Machine and UI component.
   - [ ] Write integration and state machine tests adhering to Testing Guidelines in `docs/scratchpad.md`.

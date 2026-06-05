@@ -727,3 +727,37 @@ export async function rollbackThreadHistory(
 
   await tx.done;
 }
+
+export async function getPaginatedThreads(
+  searchQuery: string,
+  page: number,
+  pageSize: number,
+): Promise<{ threads: ThreadStore[]; hasMore: boolean }> {
+  const db = await getDB();
+  const tx = db.transaction("threads", "readonly");
+  const store = tx.objectStore("threads");
+  const allThreads: ThreadStore[] = [];
+
+  let cursor = await store.openCursor();
+  while (cursor) {
+    const t = cursor.value;
+    if (t.status !== "deleting") {
+      if (!searchQuery.trim() || t.title.toLowerCase().includes(searchQuery.toLowerCase())) {
+        allThreads.push(t);
+      }
+    }
+    cursor = await cursor.continue();
+  }
+
+  // Sort by updatedAt descending
+  allThreads.sort((a, b) => b.updatedAt - a.updatedAt);
+
+  const startIndex = (page - 1) * pageSize;
+  const paginatedThreads = allThreads.slice(startIndex, startIndex + pageSize);
+  const hasMore = allThreads.length > startIndex + pageSize;
+
+  return {
+    threads: paginatedThreads,
+    hasMore,
+  };
+}
