@@ -6,7 +6,7 @@ This document contains a step-by-step checklist to build the LLM chat applicatio
 
 1. Pick one step at a time. Do NOT implement multiple steps at once.
 2. Follow the exact specification from `docs/scratchpad.md` for each step. Do NOT add features not requested.
-3. Write tests for the logic implemented in each step, adhering to the Testing Guidelines in `docs/scratchpad.md`.
+3. Write tests for the logic implemented in each step, adhering to the Testing Guidelines in `docs/scratchpad.md`. Emphasize integration tests using `msw` for API mocking, explore `@xstate/graph` for state machine model-based testing, and strictly avoid general-purpose mocks.
 4. After completing the implementation and tests for a step, verify the worktree state is clean:
    - Run formatting (`npm run format`)
    - Run type-check (`npm run typecheck`)
@@ -21,7 +21,7 @@ This document contains a step-by-step checklist to build the LLM chat applicatio
 
 ## 1. Project Scaffolding & Dependencies
 
-- [ ] **Step 1.1:** Install the required dependencies specified in the scratchpad (e.g., `@langchain/langgraph/web`, `xstate`, `@xstate/react`, `@carbon/react`, `zod`, `idb`, `fake-indexeddb`, `@google/genai`, `@openrouter/sdk`, `react-markdown`, `rehype-katex`, `remark-gfm`, `remark-math`). Ensure `oxlint` and `oxfmt` are configured according to `AGENTS.md`.
+- [ ] **Step 1.1:** Install the required dependencies specified in the scratchpad (e.g., `@langchain/langgraph/web`, `xstate`, `@xstate/react`, `@carbon/react`, `zod`, `idb`, `fake-indexeddb`, `@google/genai`, `@openrouter/sdk`, `react-markdown`, `rehype-katex`, `remark-gfm`, `remark-math`, `msw`, `@xstate/graph`). Ensure `oxlint` (specifically `oxlint-tsgolint@latest`), `oxfmt`, and `@typescript/native-preview` are configured according to `AGENTS.md` and the tech stack in `docs/scratchpad.md`.
 - [ ] **Step 1.2:** Configure Vite, import Carbon Design system styles (`@carbon/styles`), and build the basic Carbon layout shell in the main entry point (`index.tsx` or `App.tsx`). Do NOT add any glassmorphism or custom fonts.
 
 ## 2. Database Layer (IndexedDB)
@@ -41,7 +41,7 @@ This document contains a step-by-step checklist to build the LLM chat applicatio
 
 ## 5. View State Machine (Parent Coordinator) & Routing
 
-- [ ] **Step 5.1:** Implement the `ViewState` parallel region of the Parent Coordinator machine, covering `initializing`, `onboarding`, `idle`, `chatting`, `presetConfig`, `workflowConfig`, and `globalSettings` states.
+- [ ] **Step 5.1:** Implement the `ViewState` parallel region of the Parent Coordinator machine, covering `initializing`, `onboarding`, `idle`, `chatting`, `presetConfig`, `workflowConfig`, and `globalSettings` states. Utilize `@xstate/graph` for testing where appropriate.
 - [ ] **Step 5.2:** Integrate the Parent Coordinator machine into the root React layout. Set up React Router, binding route changes to `ROUTE_CHANGED` events sent to the Parent Coordinator machine to decouple view navigation from background execution.
 
 ## 6. Global Settings & Presets Management
