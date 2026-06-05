@@ -5,7 +5,12 @@ This is a scratchpad for writing down vague ideas for building this LLM chat app
 This file will be collaboratively updated by the human user and the coding agent. It serves as the single source of truth for the project specification.
 
 ## Review Status
+
 **Final Review Complete:** The Database Schema, XState UI definitions, and UX guidelines have been critically reviewed and finalized. All previous open questions have been resolved and incorporated directly into the specifications below. The specifications are now comprehensive and ready for implementation.
+
+## Implementation Tasks
+
+A detailed step-by-step implementation checklist for coding agents has been created based on this specification. It can be found in [docs/implementation-tasks.md](./implementation-tasks.md). Coding agents should follow that checklist sequentially to build the application.
 
 ## Tech stack
 
@@ -820,6 +825,7 @@ All UI elements, interactive controls, buttons, fields, forms, and modals that p
 ### Global UX/UI Guidelines
 
 To ensure the application UI is readable and clearly understandable on both desktop and mobile, all UI components must adhere to the following rules:
+
 - **Mobile Readability**: To prevent iOS auto-zoom on focus, all input elements (text inputs, textareas, dropdowns, and form fields in inline tools like `ask_questions`) MUST use a minimum font-size of 16px.
 - **Touch Targets**: All interactive elements (buttons, links, form controls, accordion toggles) MUST have a minimum tap target size of 44x44px.
 - **Viewport Constraints**: Modals and off-canvas elements (like the Left Sidebar) must never exceed `100vw` or `100vh`. Use appropriate `max-height` and `overflow-y: auto` for internal content to allow scrolling within the bounds of the viewport.
