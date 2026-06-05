@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router";
 import { App } from "./App";
 
 vi.mock("@xstate/react", () => ({
-  useMachine: () => [{ value: "idle", context: {} }, vi.fn<(...args: any[]) => void>()],
+  useMachine: () => [{ value: "idle", context: {} }, vi.fn<(...args: unknown[]) => void>()],
 }));
 
 describe("App", () => {

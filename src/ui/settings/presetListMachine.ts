@@ -9,8 +9,17 @@ interface PresetListContext {
   error: string | null;
 }
 
+export type PresetListEvent =
+  | { type: "FETCH_PRESETS" }
+  | { type: "DELETE_REQUESTED"; id: string }
+  | { type: "SORT_CHANGED"; key: keyof PresetStore; direction: "asc" | "desc" }
+  | { type: "PAGE_CHANGED"; page: number }
+  | { type: "CANCEL_DELETE" }
+  | { type: "CONFIRM_DELETE" };
+
 export const presetListMachine = createMachine(
   {
+    types: {} as { context: PresetListContext; events: PresetListEvent },
     id: "presetList",
     initial: "idle",
     context: (): PresetListContext => ({
@@ -28,18 +37,20 @@ export const presetListMachine = createMachine(
             target: "confirmingDeletion",
             actions: assign({
               presetToDeleteId: ({ event }) => {
-                if ((event as any).type === "DELETE_REQUESTED") return (event as any).id;
+                const e = event as PresetListEvent;
+                if (e.type === "DELETE_REQUESTED") return e.id;
                 return null;
               },
             }),
           },
           SORT_CHANGED: {
             actions: assign({
-              sortConfig: ({ event }) => {
-                if ((event as any).type === "SORT_CHANGED") {
-                  return { key: (event as any).key, direction: (event as any).direction };
+              sortConfig: ({ context, event }) => {
+                const e = event as PresetListEvent;
+                if (e.type === "SORT_CHANGED") {
+                  return { key: e.key, direction: e.direction };
                 }
-                return { key: "name", direction: "asc" };
+                return context.sortConfig;
               },
               pagination: ({ context }) => ({
                 ...context.pagination,
@@ -50,8 +61,9 @@ export const presetListMachine = createMachine(
           PAGE_CHANGED: {
             actions: assign({
               pagination: ({ context, event }) => {
-                if ((event as any).type === "PAGE_CHANGED") {
-                  return { ...context.pagination, page: (event as any).page };
+                const e = event as PresetListEvent;
+                if (e.type === "PAGE_CHANGED") {
+                  return { ...context.pagination, page: e.page };
                 }
                 return context.pagination;
               },
@@ -67,14 +79,14 @@ export const presetListMachine = createMachine(
           onDone: {
             target: "idle",
             actions: assign({
-              presets: ({ event }) => (event as any).output,
+              presets: ({ event }) => (event as { output: PresetStore[] }).output,
               error: null,
             }),
           },
           onError: {
             target: "error",
             actions: assign({
-              error: ({ event }) => (event.error as any)?.message || "Failed to fetch presets",
+              error: ({ event }) => (event as { error?: { message?: string } }).error?.message || "Failed to fetch presets",
             }),
           },
         },
@@ -93,7 +105,7 @@ export const presetListMachine = createMachine(
           onError: {
             target: "idle",
             actions: assign({
-              error: ({ event }) => (event.error as any)?.message || "Failed to delete preset",
+              error: ({ event }) => (event as { error?: { message?: string } }).error?.message || "Failed to delete preset",
               presetToDeleteId: null,
             }),
           },

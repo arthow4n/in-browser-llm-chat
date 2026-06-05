@@ -4,11 +4,11 @@ import { graphRunnerActor } from "./graphRunnerActor.js";
 import { getThread } from "../db/db.js";
 
 vi.mock("../db/db.js", async (importOriginal) => {
-  const actual = await importOriginal<any>();
+  const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
-    getThread: vi.fn(),
-    getPreset: vi.fn().mockResolvedValue({
+    getThread: vi.fn<(...args: unknown[]) => unknown>(),
+    getPreset: vi.fn<(...args: unknown[]) => unknown>().mockResolvedValue({
       id: "preset-1",
       name: "Default Flash",
       provider: "gemini",
@@ -16,25 +16,25 @@ vi.mock("../db/db.js", async (importOriginal) => {
       temperature: 0.7,
       maxTokens: 100,
     }),
-    getSetting: vi.fn().mockImplementation((key) => {
+    getSetting: vi.fn<(...args: [string]) => unknown>().mockImplementation((key) => {
       if (key === "api_keys") {
         return { gemini: "test-key" };
       }
       return null;
     }),
-    saveThread: vi.fn(),
-    saveMessage: vi.fn(),
+    saveThread: vi.fn<(...args: unknown[]) => unknown>(),
+    saveMessage: vi.fn<(...args: unknown[]) => unknown>(),
   };
 });
 
 vi.mock("./compiler.js", () => ({
-  compileWorkflow: vi.fn().mockReturnValue({
-    compile: vi.fn().mockReturnValue({
-      getState: vi.fn().mockResolvedValue({
+  compileWorkflow: vi.fn<(...args: unknown[]) => unknown>().mockReturnValue({
+    compile: vi.fn<(...args: unknown[]) => unknown>().mockReturnValue({
+      getState: vi.fn<(...args: unknown[]) => unknown>().mockResolvedValue({
         next: [],
         config: { configurable: { checkpoint_id: "cp-1", checkpoint_ns: "" } },
       }),
-      stream: vi.fn().mockImplementation(async function* () {
+      stream: vi.fn<(...args: unknown[]) => unknown>().mockImplementation(async function* () {
         // Empty generator
       }),
     }),
@@ -69,9 +69,7 @@ describe("graphRunnerActor", () => {
       latestCheckpointNs: null,
       tokenStats: null,
     };
-
-    vi.mocked(getThread).mockResolvedValue(mockThread as any);
-
+    vi.mocked(getThread).mockResolvedValue(mockThread as never);
     const actor = createActor(graphRunnerActor, {
       input: { threadId: "thread-1" },
     });

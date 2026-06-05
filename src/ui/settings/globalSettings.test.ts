@@ -5,10 +5,10 @@ import * as db from "../../db/db.js";
 
 // Mock the DB layer
 vi.mock("../../db/db.js", () => ({
-  getSetting: vi.fn<(...args: any[]) => any>(),
-  setSetting: vi.fn<(...args: any[]) => any>(),
-  getAllPresets: vi.fn<(...args: any[]) => any>(),
-  savePreset: vi.fn<(...args: any[]) => any>(),
+  getSetting: vi.fn<(...args: unknown[]) => unknown>(),
+  setSetting: vi.fn<(...args: unknown[]) => unknown>(),
+  getAllPresets: vi.fn<(...args: unknown[]) => unknown>(),
+  savePreset: vi.fn<(...args: unknown[]) => unknown>(),
 }));
 
 describe("globalSettingsMachine", () => {

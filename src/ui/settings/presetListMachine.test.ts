@@ -8,8 +8,8 @@ vi.mock("../../db/db", async () => {
   const actual = await vi.importActual("../../db/db");
   return {
     ...actual,
-    getAllPresets: vi.fn(),
-    deletePreset: vi.fn(),
+    getAllPresets: vi.fn<(...args: unknown[]) => unknown>(),
+    deletePreset: vi.fn<(...args: unknown[]) => unknown>(),
   };
 });
 
@@ -28,7 +28,7 @@ describe("presetListMachine", () => {
       { id: "1", name: "Preset 1", provider: "gemini", model: "gemini-pro" },
       { id: "2", name: "Preset 2", provider: "openrouter", model: "gpt-4" },
     ];
-    (db.getAllPresets as any).mockResolvedValue(mockPresets);
+    vi.mocked(db.getAllPresets).mockResolvedValue(mockPresets as never);
 
     const actor = createActor(presetListMachine).start();
     actor.send({ type: "FETCH_PRESETS" });
@@ -43,7 +43,7 @@ describe("presetListMachine", () => {
   });
 
   it("should handle fetch errors", async () => {
-    (db.getAllPresets as any).mockRejectedValue(new Error("Fetch failed"));
+    vi.mocked(db.getAllPresets).mockRejectedValue(new Error("Fetch failed"));
 
     const actor = createActor(presetListMachine).start();
     actor.send({ type: "FETCH_PRESETS" });
@@ -55,8 +55,8 @@ describe("presetListMachine", () => {
   });
 
   it("should handle preset deletion success", async () => {
-    (db.deletePreset as any).mockResolvedValue(undefined);
-    (db.getAllPresets as any).mockResolvedValue([]);
+    vi.mocked(db.deletePreset).mockResolvedValue(undefined as never);
+    vi.mocked(db.getAllPresets).mockResolvedValue([] as never);
 
     const actor = createActor(presetListMachine).start();
     actor.send({ type: "DELETE_REQUESTED", id: "preset-123" });
@@ -75,7 +75,7 @@ describe("presetListMachine", () => {
   });
 
   it("should handle preset deletion error (safety guards)", async () => {
-    (db.deletePreset as any).mockRejectedValue(
+    vi.mocked(db.deletePreset).mockRejectedValue(
       new Error("Cannot delete the global default preset."),
     );
 

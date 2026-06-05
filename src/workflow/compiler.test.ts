@@ -74,7 +74,7 @@ describe("Workflow Compiler and Execution", () => {
     ];
     const edges: WorkflowEdge[] = [{ from: "input", to: "agent" }];
 
-    const callLLMMock = vi.fn<any>().mockResolvedValue({
+    const callLLMMock = vi.fn<(...args: unknown[]) => unknown>().mockResolvedValue({
       content: "Summary of topic",
     });
 
@@ -106,7 +106,6 @@ describe("Workflow Compiler and Execution", () => {
     const stateAfterInterrupt = await compiled.getState(config);
     expect(stateAfterInterrupt.next).toContain("input");
 
-    // Resume execution by passing user input
     const run2 = await compiled.stream(new Command({ resume: "Discuss cats" }), config);
     for await (const _chunk of run2) {
       // Consume stream
@@ -154,7 +153,7 @@ describe("Workflow Compiler and Execution", () => {
 
     const callLLMToolsHistory: (string[] | undefined)[] = [];
     const callLLMMock = vi
-      .fn<any>()
+      .fn<(...args: unknown[]) => unknown>()
       .mockImplementation(async (_preset, _systemPrompt, _messages, tools) => {
         callLLMToolsHistory.push(tools as string[] | undefined);
         return {
@@ -164,7 +163,7 @@ describe("Workflow Compiler and Execution", () => {
 
     const context = {
       callLLM: callLLMMock,
-      warn: vi.fn<any>(),
+      warn: vi.fn<(...args: unknown[]) => unknown>(),
     } as unknown as CompilationContext;
 
     const graph = compileWorkflow(nodes, edges, context);
@@ -176,7 +175,6 @@ describe("Workflow Compiler and Execution", () => {
 
     // 2. Resume input -> executes agent_a (round 1), evaluator -> loops back to agent_a -> stops at input?
     // Wait, evaluator loops back to agent_a. So agent_a executes again.
-    // Let's stream with the Command to resume.
     const run = await compiled.stream(new Command({ resume: "Topic of debate" }), {
       ...config,
       streamMode: "values",
@@ -209,9 +207,9 @@ describe("Workflow Compiler and Execution", () => {
       },
     ];
     const edges: WorkflowEdge[] = [];
-    const warnMock = vi.fn<any>();
+    const warnMock = vi.fn<(...args: unknown[]) => unknown>();
     const context = {
-      callLLM: vi.fn<any>().mockResolvedValue({ content: "invalid-json" }),
+      callLLM: vi.fn<(...args: unknown[]) => unknown>().mockResolvedValue({ content: "invalid-json" }),
       warn: warnMock,
     } as unknown as CompilationContext;
 
@@ -237,7 +235,7 @@ describe("Workflow Compiler and Execution", () => {
     ];
 
     const callLLMMock = vi
-      .fn<any>()
+      .fn<(...args: unknown[]) => unknown>()
       .mockResolvedValueOnce({
         content: "calling tool",
         tool_calls: [{ id: "tc-1", name: "ask_questions", args: { questions: [] } }],
@@ -257,7 +255,6 @@ describe("Workflow Compiler and Execution", () => {
     // Start execution -> stops at input
     await compiled.stream({ messages: [] }, { ...config, streamMode: "values" });
 
-    // Resume input -> runs input, agent -> triggers tool call -> enters tool node -> interrupts
     const run = await compiled.stream(new Command({ resume: "start" }), {
       ...config,
       streamMode: "values",
@@ -269,7 +266,6 @@ describe("Workflow Compiler and Execution", () => {
     expect(state1.next).toContain("tool");
     expect(state1.tasks[0].interrupts[0].value.type).toBe("tool");
 
-    // Resume the tool node with tool result -> runs tool, agent -> goes to input -> interrupts
     const run2 = await compiled.stream(new Command({ resume: { answers: { q1: "yes" } } }), config);
     for await (const _ of run2) {
     }

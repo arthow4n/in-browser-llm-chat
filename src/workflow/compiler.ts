@@ -1,8 +1,10 @@
 import { StateGraph, Annotation, END, START, interrupt } from "@langchain/langgraph";
 import type { WorkflowNode, WorkflowEdge } from "./schemas.js";
 
+export type GraphMessage = { id?: string; role?: string; content?: string; type?: string; metadata?: { tool_calls?: unknown[] }; name?: string; toolCallId?: string; createdAt?: number };
+
 export const GraphStateAnnotation = Annotation.Root({
-  messages: Annotation<any[]>({
+  messages: Annotation<GraphMessage[]>({
     reducer: (x, y) => {
       const merged = [...x];
       for (const msg of y) {
@@ -49,16 +51,16 @@ export interface CompilationContext {
   callLLM: (
     presetId: string | undefined,
     systemPrompt: string,
-    messages: any[],
+    messages: GraphMessage[],
     tools?: string[],
   ) => Promise<{
     content: string;
-    tool_calls?: Array<{ id: string; name: string; args: any }>;
+    tool_calls?: Array<{ id: string; name: string; args: unknown }>;
   }>;
   warn?: (message: string) => void;
 }
 
-function resolvePrompt(systemPrompt: string | undefined, messages: any[]): string {
+function resolvePrompt(systemPrompt: string | undefined, messages: GraphMessage[]): string {
   if (!systemPrompt) return "";
   const firstUserMsg = messages.find((m) => m.role === "user")?.content || "";
   return systemPrompt
@@ -70,7 +72,9 @@ export function compileWorkflow(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
   context: CompilationContext,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): StateGraph<any, any, any, any> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const graph = new StateGraph<any, any, any, any>(GraphStateAnnotation);
 
   // Find preceding node from outside for each loopHeader node
@@ -98,7 +102,8 @@ export function compileWorkflow(
   // Define node execution functions
   for (const node of nodes) {
     if (node.type === "agent") {
-      graph.addNode(node.id, async (state: GraphStateType) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      graph.addNode(node.id, async (state: any) => {
         let currentRound = state.currentRound;
         if (node.loopHeader) {
           const precedingId = loopHeaderPrecedingNodeMap.get(node.id);
@@ -148,14 +153,15 @@ export function compileWorkflow(
         };
       });
     } else if (node.type === "input") {
-      graph.addNode(node.id, async (state: GraphStateType) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      graph.addNode(node.id, async (state: any) => {
         const userInput = interrupt({
           type: "input",
           nodeId: node.id,
         });
 
         const content =
-          typeof userInput === "string" ? userInput : (userInput as any)?.content || "";
+          typeof userInput === "string" ? userInput : (userInput as { content?: string })?.content || "";
         const newMsg = {
           id: crypto.randomUUID(),
           role: "user" as const,
@@ -170,13 +176,14 @@ export function compileWorkflow(
         };
       });
     } else if (node.type === "tool") {
-      graph.addNode(node.id, async (state: GraphStateType) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      graph.addNode(node.id, async (state: any) => {
         const lastMsg = state.messages[state.messages.length - 1];
         const toolCalls = lastMsg?.metadata?.tool_calls || [];
-        const newMessages: any[] = [];
+        const newMessages: GraphMessage[] = [];
         let updatedConsensus = state.consensusReached;
 
-        for (const tc of toolCalls) {
+        for (const tc of toolCalls as { id: string; name: string }[]) {
           if (tc.name === "declare_consensus") {
             updatedConsensus = true;
             newMessages.push({
@@ -215,7 +222,8 @@ export function compileWorkflow(
         };
       });
     } else if (node.type === "consensus_check") {
-      graph.addNode(node.id, async (state: GraphStateType) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      graph.addNode(node.id, async (state: any) => {
         let consensusReached = state.consensusReached;
 
         if (node.systemPrompt) {
@@ -231,9 +239,9 @@ export function compileWorkflow(
               }
               consensusReached = false;
             }
-          } catch (e: any) {
+          } catch (e: unknown) {
             if (context.warn) {
-              context.warn(`Consensus check JSON parsing failed: ${e.message}`);
+              context.warn(`Consensus check JSON parsing failed: ${(e as Error).message}`);
             }
             consensusReached = false;
           }
@@ -245,7 +253,8 @@ export function compileWorkflow(
         };
       });
     } else if (node.type === "summary") {
-      graph.addNode(node.id, async (state: GraphStateType) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      graph.addNode(node.id, async (state: any) => {
         const resolvedPrompt = resolvePrompt(node.systemPrompt, state.messages);
         const llmResult = await context.callLLM(node.presetId, resolvedPrompt, state.messages);
 
@@ -292,14 +301,15 @@ export function compileWorkflow(
 
         graph.addConditionalEdges(
           node.id,
-          (state: GraphStateType) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (state: any): "on_tool_call" | "fallback" => {
             const lastMsg = state.messages[state.messages.length - 1];
             const hasToolCalls =
               lastMsg?.metadata?.tool_calls && lastMsg.metadata.tool_calls.length > 0;
             if (hasToolCalls && toolCallEdge) {
-              return "on_tool_call";
+              return "on_tool_call" as const;
             }
-            return "fallback";
+            return "fallback" as const;
           },
           {
             on_tool_call: toolCallEdge ? toolCallEdge.to : fallbackTarget,
@@ -319,11 +329,12 @@ export function compileWorkflow(
 
         graph.addConditionalEdges(
           node.id,
-          (state: GraphStateType) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (state: any): string => {
             if (state.lastAgentId && pathMap[state.lastAgentId]) {
               return state.lastAgentId;
             }
-            return "fallback";
+            return "fallback" as const;
           },
           {
             ...pathMap,
@@ -342,17 +353,18 @@ export function compileWorkflow(
 
         graph.addConditionalEdges(
           node.id,
-          (state: GraphStateType) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (state: any): "on_consensus" | "on_no_consensus" | "fallback" => {
             const shouldTerminate =
               state.consensusReached || state.forceSummarize || state.currentRound >= maxLoopLimit;
 
             if (shouldTerminate && onConsensusEdge) {
-              return "on_consensus";
+              return "on_consensus" as const;
             }
             if (!shouldTerminate && onNoConsensusEdge) {
-              return "on_no_consensus";
+              return "on_no_consensus" as const;
             }
-            return "fallback";
+            return "fallback" as const;
           },
           pathMap,
         );

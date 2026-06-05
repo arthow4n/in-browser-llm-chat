@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { IndexedDBSaver } from "./checkpointer";
 import { closeDB, saveThread, getThread } from "./db";
 import "fake-indexeddb/auto";
-import { type Checkpoint } from "@langchain/langgraph-checkpoint";
+import { type Checkpoint, type CheckpointTuple } from "@langchain/langgraph-checkpoint";
 
 describe("IndexedDBSaver", () => {
   beforeEach(async () => {
@@ -165,7 +165,7 @@ describe("IndexedDBSaver", () => {
     );
 
     // List all
-    const all: any[] = [];
+    const all: CheckpointTuple[] = [];
     for await (const t of saver.list(config)) {
       all.push(t);
     }
@@ -176,7 +176,7 @@ describe("IndexedDBSaver", () => {
     expect(all[1].checkpoint.id).toBe("cp-101");
 
     // List with limit
-    const limited: any[] = [];
+    const limited: CheckpointTuple[] = [];
     for await (const t of saver.list(config, { limit: 1 })) {
       limited.push(t);
     }
@@ -187,7 +187,7 @@ describe("IndexedDBSaver", () => {
     const beforeConfig = {
       configurable: { thread_id: threadId, checkpoint_ns: "ns-1", checkpoint_id: "cp-102" },
     };
-    const beforeList: any[] = [];
+    const beforeList: CheckpointTuple[] = [];
     for await (const t of saver.list(config, { before: beforeConfig })) {
       beforeList.push(t);
     }

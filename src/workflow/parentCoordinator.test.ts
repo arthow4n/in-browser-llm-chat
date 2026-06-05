@@ -4,10 +4,10 @@ import { parentCoordinatorMachine } from "./parentCoordinator.js";
 import { saveThread, getSetting } from "../db/db.js";
 
 vi.mock("../db/db.js", async (importOriginal) => {
-  const actual = await importOriginal<any>();
+  const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
-    getThread: vi.fn<(...args: any[]) => any>().mockImplementation(async (id: string) => {
+    getThread: vi.fn<(...args: [string]) => Promise<unknown>>().mockImplementation(async (id: string) => {
       return {
         id,
         title: "Test Thread",
@@ -16,8 +16,8 @@ vi.mock("../db/db.js", async (importOriginal) => {
         activeInterrupt: null,
       };
     }),
-    saveThread: vi.fn<any>(),
-    getPreset: vi.fn<any>().mockResolvedValue({
+    saveThread: vi.fn<(...args: unknown[]) => unknown>(),
+    getPreset: vi.fn<(...args: unknown[]) => unknown>().mockResolvedValue({
       id: "preset-1",
       name: "Default Flash",
       provider: "gemini",
@@ -25,21 +25,21 @@ vi.mock("../db/db.js", async (importOriginal) => {
       temperature: 0.7,
       maxTokens: 100,
     }),
-    getSetting: vi.fn<(...args: any[]) => any>().mockImplementation(async (key: string) => {
+    getSetting: vi.fn<(...args: [string]) => Promise<unknown>>().mockImplementation(async (key: string) => {
       if (key === "api_keys") {
         return { gemini: "test-key" };
       }
       return null;
     }),
-    saveMessage: vi.fn<any>(),
-    sweepInitializingThreads: vi.fn<any>().mockResolvedValue(undefined),
-    sweepDeletingThreads: vi.fn<any>().mockResolvedValue(undefined),
-    getDB: vi.fn<any>().mockResolvedValue({
-      getAll: vi.fn<any>().mockResolvedValue([]),
-      transaction: vi.fn<any>().mockReturnValue({
-        objectStore: vi.fn<any>().mockReturnValue({
-          getAll: vi.fn<any>().mockResolvedValue([]),
-          put: vi.fn<any>().mockResolvedValue(undefined),
+    saveMessage: vi.fn<(...args: unknown[]) => unknown>(),
+    sweepInitializingThreads: vi.fn<(...args: unknown[]) => unknown>().mockResolvedValue(undefined),
+    sweepDeletingThreads: vi.fn<(...args: unknown[]) => unknown>().mockResolvedValue(undefined),
+    getDB: vi.fn<(...args: unknown[]) => unknown>().mockResolvedValue({
+      getAll: vi.fn<(...args: unknown[]) => unknown>().mockResolvedValue([]),
+      transaction: vi.fn<(...args: unknown[]) => unknown>().mockReturnValue({
+        objectStore: vi.fn<(...args: unknown[]) => unknown>().mockReturnValue({
+          getAll: vi.fn<(...args: unknown[]) => unknown>().mockResolvedValue([]),
+          put: vi.fn<(...args: unknown[]) => unknown>().mockResolvedValue(undefined),
         }),
         done: Promise.resolve(),
       }),
@@ -60,15 +60,18 @@ vi.mock("./graphRunnerActor.js", () => {
   };
 });
 
+type StateMock = { value: unknown; context: Record<string, unknown> };
+
 // Helper function to wait for a state condition safely without race conditions
 function waitForState(
-  actor: any,
-  predicate: (state: any) => boolean,
+  actor: unknown,
+  predicate: (state: StateMock) => boolean,
   _label?: string,
-): Promise<any> {
+): Promise<unknown> {
   return new Promise((resolve) => {
-    let sub: any;
-    sub = actor.subscribe((state: any) => {
+    let sub: { unsubscribe: () => void };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    sub = (actor as any).subscribe((state: StateMock) => {
       if (predicate(state)) {
         if (sub) {
           sub.unsubscribe();
@@ -93,12 +96,12 @@ describe("parentCoordinatorMachine", () => {
     // Wait for the ViewState to settle into idle (async initialization)
     await waitForState(
       actor,
-      (state) => (state.value as any).ViewState === "idle",
+      (state) => (state.value as { ViewState?: string }).ViewState === "idle",
       "initialization",
     );
 
     const snapshot = actor.getSnapshot();
-    expect((snapshot.value as any).ViewState).toBe("idle");
+    expect((snapshot.value as { ViewState?: string }).ViewState).toBe("idle");
     expect(snapshot.context.apiKeysConfigured).toBe(true);
     actor.stop();
   });
@@ -110,7 +113,7 @@ describe("parentCoordinatorMachine", () => {
     // Wait for ViewState to settle into idle
     await waitForState(
       actor,
-      (state) => (state.value as any).ViewState === "idle",
+      (state) => (state.value as { ViewState?: string }).ViewState === "idle",
       "initialization",
     );
 
@@ -120,7 +123,7 @@ describe("parentCoordinatorMachine", () => {
     await waitForState(
       actor,
       (state) =>
-        (state.value as any).ExecutionState === "inactive" &&
+        (state.value as { ExecutionState?: string }).ExecutionState === "inactive" &&
         state.context.currentThreadId === "thread-inactive",
       "route change status",
     );
@@ -130,7 +133,7 @@ describe("parentCoordinatorMachine", () => {
 
     // Assert synchronously
     const snapshot = actor.getSnapshot();
-    expect((snapshot.value as any).ExecutionState).toBe("executing");
+    expect((snapshot.value as { ExecutionState?: string }).ExecutionState).toBe("executing");
 
     // Wait a brief moment for updateThreadStatus to write to the database (fire-and-forget async action)
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -146,7 +149,7 @@ describe("parentCoordinatorMachine", () => {
     // Wait for ViewState to settle into idle
     await waitForState(
       actor,
-      (state) => (state.value as any).ViewState === "idle",
+      (state) => (state.value as { ViewState?: string }).ViewState === "idle",
       "initialization",
     );
 
@@ -155,7 +158,7 @@ describe("parentCoordinatorMachine", () => {
     // Wait for ExecutionState to settle into executing (async database status check)
     await waitForState(
       actor,
-      (state) => (state.value as any).ExecutionState === "executing",
+      (state) => (state.value as { ExecutionState?: string }).ExecutionState === "executing",
       "route change executing",
     );
 
@@ -169,10 +172,10 @@ describe("parentCoordinatorMachine", () => {
 
     // Assert synchronously
     const snapshot = actor.getSnapshot();
-    expect((snapshot.value as any).ExecutionState).toEqual({
+    expect((snapshot.value as { ExecutionState?: string }).ExecutionState).toEqual({
       awaitingHumanInput: "budgetExceeded",
     });
-    expect(snapshot.context.loopControl.activeInterrupt?.type).toBe("budget_exceeded");
+    expect((snapshot.context.loopControl.activeInterrupt as { type?: string })?.type).toBe("budget_exceeded");
     actor.stop();
   });
 
@@ -185,12 +188,12 @@ describe("parentCoordinatorMachine", () => {
     // Wait for ViewState to settle into onboarding (async initialization)
     await waitForState(
       actor,
-      (state) => (state.value as any).ViewState === "onboarding",
+      (state) => (state.value as { ViewState?: string }).ViewState === "onboarding",
       "onboarding init",
     );
 
     const snapshot = actor.getSnapshot();
-    expect((snapshot.value as any).ViewState).toBe("onboarding");
+    expect((snapshot.value as { ViewState?: string }).ViewState).toBe("onboarding");
     expect(snapshot.context.apiKeysConfigured).toBe(false);
     actor.stop();
   });
@@ -204,17 +207,17 @@ describe("parentCoordinatorMachine", () => {
     // Wait for onboarding
     await waitForState(
       actor,
-      (state) => (state.value as any).ViewState === "onboarding",
+      (state) => (state.value as { ViewState?: string }).ViewState === "onboarding",
       "onboarding init",
     );
 
     // Open settings - synchronous
     actor.send({ type: "OPEN_SETTINGS" });
-    expect((actor.getSnapshot().value as any).ViewState).toBe("globalSettings");
+    expect((actor.getSnapshot().value as { ViewState?: string }).ViewState).toBe("globalSettings");
 
     // Close settings - synchronous
     actor.send({ type: "CLOSE_SETTINGS" });
-    expect((actor.getSnapshot().value as any).ViewState).toBe("onboarding");
+    expect((actor.getSnapshot().value as { ViewState?: string }).ViewState).toBe("onboarding");
 
     actor.stop();
   });
@@ -225,18 +228,18 @@ describe("parentCoordinatorMachine", () => {
 
     await waitForState(
       actor,
-      (state) => (state.value as any).ViewState === "idle",
+      (state) => (state.value as { ViewState?: string }).ViewState === "idle",
       "initialization",
     );
 
     // Open preset edit - synchronous
     actor.send({ type: "OPEN_PRESET_EDIT", presetId: "preset-2" });
-    expect((actor.getSnapshot().value as any).ViewState).toBe("presetConfig");
+    expect((actor.getSnapshot().value as { ViewState?: string }).ViewState).toBe("presetConfig");
     expect(actor.getSnapshot().context.editingPresetId).toBe("preset-2");
 
     // Close preset edit - synchronous
     actor.send({ type: "CLOSE_PRESET_EDIT" });
-    expect((actor.getSnapshot().value as any).ViewState).toBe("idle");
+    expect((actor.getSnapshot().value as { ViewState?: string }).ViewState).toBe("idle");
     expect(actor.getSnapshot().context.editingPresetId).toBeNull();
 
     actor.stop();
@@ -248,18 +251,18 @@ describe("parentCoordinatorMachine", () => {
 
     await waitForState(
       actor,
-      (state) => (state.value as any).ViewState === "idle",
+      (state) => (state.value as { ViewState?: string }).ViewState === "idle",
       "initialization",
     );
 
     // Open workflow edit - synchronous
     actor.send({ type: "OPEN_WORKFLOW_EDIT", workflowId: "wf-2" });
-    expect((actor.getSnapshot().value as any).ViewState).toBe("workflowConfig");
+    expect((actor.getSnapshot().value as { ViewState?: string }).ViewState).toBe("workflowConfig");
     expect(actor.getSnapshot().context.editingWorkflowId).toBe("wf-2");
 
     // Close workflow edit - synchronous
     actor.send({ type: "CLOSE_WORKFLOW_EDIT" });
-    expect((actor.getSnapshot().value as any).ViewState).toBe("idle");
+    expect((actor.getSnapshot().value as { ViewState?: string }).ViewState).toBe("idle");
     expect(actor.getSnapshot().context.editingWorkflowId).toBeNull();
 
     actor.stop();
@@ -271,14 +274,14 @@ describe("parentCoordinatorMachine", () => {
 
     await waitForState(
       actor,
-      (state) => (state.value as any).ViewState === "idle",
+      (state) => (state.value as { ViewState?: string }).ViewState === "idle",
       "initialization",
     );
 
     actor.send({ type: "ROUTE_CHANGED", threadId: "thread-executing" });
     await waitForState(
       actor,
-      (state) => (state.value as any).ExecutionState === "executing",
+      (state) => (state.value as { ExecutionState?: string }).ExecutionState === "executing",
       "route change executing",
     );
 
@@ -287,8 +290,8 @@ describe("parentCoordinatorMachine", () => {
 
     // Assert synchronously
     const snapshot = actor.getSnapshot();
-    expect((snapshot.value as any).ViewState).toBe("onboarding");
-    expect((snapshot.value as any).ExecutionState).toBe("inactive");
+    expect((snapshot.value as { ViewState?: string }).ViewState).toBe("onboarding");
+    expect((snapshot.value as { ExecutionState?: string }).ExecutionState).toBe("inactive");
     expect(snapshot.context.apiKeysConfigured).toBe(false);
     actor.stop();
   });

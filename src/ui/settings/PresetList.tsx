@@ -29,8 +29,8 @@ export const PresetList: React.FC = () => {
 
     // Sorting
     result.sort((a, b) => {
-      const valA = (a as any)[sortConfig.key];
-      const valB = (b as any)[sortConfig.key];
+      const valA = a[sortConfig.key] as string | number;
+      const valB = b[sortConfig.key] as string | number;
       if (valA < valB) return sortConfig.direction === "asc" ? -1 : 1;
       if (valA > valB) return sortConfig.direction === "asc" ? 1 : -1;
       return 0;

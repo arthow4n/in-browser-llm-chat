@@ -41,13 +41,15 @@ export class IndexedDBSaver extends BaseCheckpointSaver {
       return undefined;
     }
 
+    const ch = record.checkpoint as { type: string; value: string };
+    const meta = record.metadata as { type: string; value: string };
     const deserializedCheckpoint = await this.serde.loadsTyped(
-      record.checkpoint.type,
-      record.checkpoint.value,
+      ch.type,
+      ch.value,
     );
     const deserializedMetadata = await this.serde.loadsTyped(
-      record.metadata.type,
-      record.metadata.value,
+      meta.type,
+      meta.value,
     );
 
     const writes = await db.getAllFromIndex("checkpoint_writes", "by-thread", threadId);
@@ -57,7 +59,8 @@ export class IndexedDBSaver extends BaseCheckpointSaver {
 
     const pendingWrites = await Promise.all(
       filteredWrites.map(async (w) => {
-        const deserializedValue = await this.serde.loadsTyped(w.value.type, w.value.value);
+        const v = w.value as { type: string; value: string };
+        const deserializedValue = await this.serde.loadsTyped(v.type, v.value);
         return [w.taskId, w.channel, deserializedValue] as CheckpointPendingWrite;
       }),
     );
@@ -203,7 +206,7 @@ export class IndexedDBSaver extends BaseCheckpointSaver {
     options?: {
       limit?: number;
       before?: RunnableConfig;
-      filter?: Record<string, any>;
+      filter?: Record<string, unknown>;
     },
   ): AsyncGenerator<CheckpointTuple> {
     const threadId = config.configurable?.thread_id;
@@ -236,11 +239,13 @@ export class IndexedDBSaver extends BaseCheckpointSaver {
         break;
       }
 
+      const ch = r.checkpoint as { type: string; value: string };
+      const meta = r.metadata as { type: string; value: string };
       const deserializedCheckpoint = await this.serde.loadsTyped(
-        r.checkpoint.type,
-        r.checkpoint.value,
+        ch.type,
+        ch.value,
       );
-      const deserializedMetadata = await this.serde.loadsTyped(r.metadata.type, r.metadata.value);
+      const deserializedMetadata = await this.serde.loadsTyped(meta.type, meta.value);
 
       if (filter) {
         const matches = Object.entries(filter).every(
@@ -257,7 +262,8 @@ export class IndexedDBSaver extends BaseCheckpointSaver {
       );
       const pendingWrites = await Promise.all(
         filteredWrites.map(async (w) => {
-          const deserializedValue = await this.serde.loadsTyped(w.value.type, w.value.value);
+          const v = w.value as { type: string; value: string };
+          const deserializedValue = await this.serde.loadsTyped(v.type, v.value);
           return [w.taskId, w.channel, deserializedValue] as CheckpointPendingWrite;
         }),
       );

@@ -1,8 +1,9 @@
-import { openDB, DBSchema, IDBPDatabase } from "idb";
+import { openDB, type DBSchema, IDBPDatabase } from "idb";
+import { type WorkflowNode, type WorkflowEdge } from "../workflow/schemas";
 
 export interface SettingsStore {
   key: string;
-  value: any;
+  value: unknown;
 }
 
 export interface PresetStore {
@@ -22,8 +23,8 @@ export interface WorkflowStore {
   name: string;
   description: string;
   isBuiltIn: boolean;
-  nodes: any[];
-  edges: any[];
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
   injectedSystemMessages?: Array<{ content: string; depth: number }>;
 }
 
@@ -31,15 +32,15 @@ export interface ThreadStore {
   id: string;
   title: string;
   workflowId: string;
-  workflowSnapshot: any;
+  workflowSnapshot: unknown;
   activePresetId: string;
   createdAt: number;
   updatedAt: number;
   parentThreadId: string | null;
   parentMessageId: string | null;
   status: "inactive" | "executing" | "awaiting_input" | "error" | "deleting";
-  activeInterrupt: any | null;
-  draftAnswers?: Record<string, any>;
+  activeInterrupt: unknown;
+  draftAnswers?: Record<string, unknown>;
   errorMessage: string | null;
   latestCheckpointId: string | null;
   latestCheckpointNs: string | null;
@@ -56,7 +57,7 @@ export interface MessageStore {
   toolCallId?: string;
   name?: string;
   createdAt: number;
-  metadata?: any;
+  metadata?: Record<string, unknown>;
   checkpointId: string | null;
   checkpointNs: string | null;
 }
@@ -65,8 +66,8 @@ export interface CheckpointStore {
   threadId: string;
   checkpointNs: string;
   checkpointId: string;
-  checkpoint: any;
-  metadata: any;
+  checkpoint: unknown;
+  metadata: Record<string, unknown>;
   parentCheckpointId: string | null;
   createdAt: number;
 }
@@ -78,7 +79,7 @@ export interface CheckpointWriteStore {
   taskId: string;
   idx: number;
   channel: string;
-  value: any;
+  value: unknown;
   createdAt: number;
 }
 
@@ -190,13 +191,13 @@ export async function closeDB(): Promise<void> {
 // Settings Store CRUD Helpers
 // -------------------------------------------------------------
 
-export async function getSetting(key: string): Promise<any> {
+export async function getSetting<T = unknown>(key: string): Promise<T | undefined> {
   const db = await getDB();
   const record = await db.get("settings", key);
-  return record ? record.value : undefined;
+  return record ? (record.value as T) : undefined;
 }
 
-export async function setSetting(key: string, value: any): Promise<void> {
+export async function setSetting<T = unknown>(key: string, value: T): Promise<void> {
   const db = await getDB();
   await db.put("settings", { key, value });
 }
@@ -247,7 +248,7 @@ export async function deletePreset(id: string): Promise<void> {
   const workflows = await tx.objectStore("workflows").getAll();
   const referencingWorkflows: string[] = [];
   for (const wf of workflows) {
-    const hasPreset = wf.nodes?.some((node: any) => node.presetId === id);
+    const hasPreset = wf.nodes?.some((node: unknown) => (node as { presetId?: string }).presetId === id);
     if (hasPreset) {
       referencingWorkflows.push(wf.name);
     }
@@ -319,8 +320,14 @@ export async function getAllWorkflows(): Promise<WorkflowStore[]> {
 export const _activeDeletions = new Map<string, { promise: Promise<void>; resolve: () => void }>();
 
 const scheduleCallback =
-  typeof window !== "undefined" && (window as any).requestIdleCallback
-    ? (cb: () => void) => (window as any).requestIdleCallback(cb, { timeout: 1000 })
+  typeof window !== "undefined" && "requestIdleCallback" in window
+    ? (cb: () => void) =>
+        (
+          window as Window &
+            typeof globalThis & {
+              requestIdleCallback: (cb: () => void, options?: { timeout: number }) => void;
+            }
+        ).requestIdleCallback(cb, { timeout: 1000 })
     : (cb: () => void) => setTimeout(cb, 0);
 
 async function runDeletionStep(threadId: string): Promise<void> {
@@ -694,9 +701,10 @@ export async function rollbackThreadHistory(
   for (const msg of remainingMessages) {
     const usage = msg.metadata?.usage;
     if (usage) {
-      const pt = usage.prompt_tokens ?? usage.promptTokens ?? 0;
-      const ct = usage.completion_tokens ?? usage.completionTokens ?? 0;
-      const tt = usage.total_tokens ?? usage.totalTokens ?? pt + ct;
+      const u = usage as Record<string, number>;
+      const pt = u.prompt_tokens ?? u.promptTokens ?? 0;
+      const ct = u.completion_tokens ?? u.completionTokens ?? 0;
+      const tt = u.total_tokens ?? u.totalTokens ?? pt + ct;
       promptTokens += pt;
       completionTokens += ct;
       totalTokens += tt;

@@ -3,10 +3,13 @@ import { createActor } from "xstate";
 import { getShortestPaths } from "xstate/graph";
 import { parentCoordinatorMachine } from "./parentCoordinator.js";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createTestableMachine(machine: any) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function clone(obj: any): any {
     if (obj === null || typeof obj !== "object") return obj;
     if (Array.isArray(obj)) return obj.map(clone);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result: any = {};
     for (const key in obj) {
       if (key === "invoke") continue;
@@ -56,11 +59,11 @@ describe("parentCoordinatorMachine model-based testing (ViewState)", () => {
       { type: "DONE_KEYS_CONFIGURED" },
       { type: "OPEN_SETTINGS" },
       { type: "CLOSE_SETTINGS" },
-      { type: "OPEN_PRESET_EDIT", presetId: "p1" } as any,
+      { type: "OPEN_PRESET_EDIT", presetId: "p1" } as never,
       { type: "CLOSE_PRESET_EDIT" },
-      { type: "OPEN_WORKFLOW_EDIT", workflowId: "w1" } as any,
+      { type: "OPEN_WORKFLOW_EDIT", workflowId: "w1" } as never,
       { type: "CLOSE_WORKFLOW_EDIT" },
-      { type: "ROUTE_CHANGED", threadId: "t1" } as any,
+      { type: "ROUTE_CHANGED", threadId: "t1" } as never,
       { type: "API_KEYS_REMOVED" },
       { type: "DONE_INACTIVE" },
     ],
