@@ -35,38 +35,30 @@ export const presetListMachine = createMachine(
           FETCH_PRESETS: { target: "loading" },
           DELETE_REQUESTED: {
             target: "confirmingDeletion",
-            actions: assign({
-              presetToDeleteId: ({ event }) => {
-                const e = event as PresetListEvent;
-                if (e.type === "DELETE_REQUESTED") return e.id;
-                return null;
-              },
+            actions: assign(({ event }) => {
+              if (event.type === "DELETE_REQUESTED") return { presetToDeleteId: event.id };
+              return {};
             }),
           },
           SORT_CHANGED: {
-            actions: assign({
-              sortConfig: ({ context, event }) => {
-                const e = event as PresetListEvent;
-                if (e.type === "SORT_CHANGED") {
-                  return { key: e.key, direction: e.direction };
-                }
-                return context.sortConfig;
-              },
-              pagination: ({ context }) => ({
-                ...context.pagination,
-                page: 1,
-              }),
+            actions: assign(({ context, event }) => {
+              if (event.type === "SORT_CHANGED") {
+                return {
+                  sortConfig: { key: event.key, direction: event.direction },
+                  pagination: { ...context.pagination, page: 1 },
+                };
+              }
+              return {};
             }),
           },
           PAGE_CHANGED: {
-            actions: assign({
-              pagination: ({ context, event }) => {
-                const e = event as PresetListEvent;
-                if (e.type === "PAGE_CHANGED") {
-                  return { ...context.pagination, page: e.page };
-                }
-                return context.pagination;
-              },
+            actions: assign(({ context, event }) => {
+              if (event.type === "PAGE_CHANGED") {
+                return {
+                  pagination: { ...context.pagination, page: event.page },
+                };
+              }
+              return {};
             }),
           },
         },
@@ -78,17 +70,25 @@ export const presetListMachine = createMachine(
           }),
           onDone: {
             target: "idle",
-            actions: assign({
-              presets: ({ event }) => (event as { output: PresetStore[] }).output,
-              error: null,
+            actions: assign(({ event }) => {
+              if (Array.isArray(event.output)) {
+                return { presets: event.output, error: null };
+              }
+              return { error: null };
             }),
           },
           onError: {
             target: "error",
-            actions: assign({
-              error: ({ event }) =>
-                (event as { error?: { message?: string } }).error?.message ||
-                "Failed to fetch presets",
+            actions: assign(({ event }) => {
+              const err = event.error;
+              const message =
+                err &&
+                typeof err === "object" &&
+                "message" in err &&
+                typeof err.message === "string"
+                  ? err.message
+                  : "Failed to fetch presets";
+              return { error: message };
             }),
           },
         },
@@ -106,11 +106,19 @@ export const presetListMachine = createMachine(
           },
           onError: {
             target: "idle",
-            actions: assign({
-              error: ({ event }) =>
-                (event as { error?: { message?: string } }).error?.message ||
-                "Failed to delete preset",
-              presetToDeleteId: null,
+            actions: assign(({ event }) => {
+              const err = event.error;
+              const message =
+                err &&
+                typeof err === "object" &&
+                "message" in err &&
+                typeof err.message === "string"
+                  ? err.message
+                  : "Failed to delete preset";
+              return {
+                error: message,
+                presetToDeleteId: null,
+              };
             }),
           },
         },
