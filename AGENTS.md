@@ -12,6 +12,8 @@
 
 ## One-off scripts and inline script evaluation
 
+Prefer writing TypeScript and run with `npx tsx`.
+
 If you need to run any one-off script, write it under this projects `tmp/` then run it.
 
 If you need to run any form or evaluation (including but not limited), write it as one-off script then run the script.
