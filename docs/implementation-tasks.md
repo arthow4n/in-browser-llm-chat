@@ -105,12 +105,12 @@ This document contains a step-by-step checklist to build the LLM chat applicatio
 
 ## 7. Workflow Management UI
 
-- [ ] **Step 7.1:** Build the Custom Workflow List View State Machine and its UI component. Handle sorting, searching, and deletion guards.
-  - [ ] Implement the Custom Workflow List View State Machine and its UI component.
-  - [ ] Write integration and state machine tests adhering to Testing Guidelines in `docs/scratchpad.md`.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Perform code review (self/subagent).
-  - [ ] Commit the changes following `AGENTS.md`.
+- [x] **Step 7.1:** Build the Custom Workflow List View State Machine and its UI component. Handle sorting, searching, and deletion guards.
+  - [x] Implement the Custom Workflow List View State Machine and its UI component.
+  - [x] Write integration and state machine tests adhering to Testing Guidelines in `docs/scratchpad.md`.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Perform code review (self/subagent).
+  - [x] Commit the changes following `AGENTS.md`.
 - [ ] **Step 7.2:** Build the Workflow JSON Editor State Machine and its UI component (Textarea editor). Implement structural validation feedback (using Zod logic from Step 3.2) to block saving invalid graph topologies.
   - [ ] Implement the Workflow JSON Editor State Machine and UI component with validation feedback.
   - [ ] Write integration and state machine tests adhering to Testing Guidelines in `docs/scratchpad.md`.
