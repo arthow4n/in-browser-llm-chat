@@ -2,12 +2,13 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createActor, waitFor } from "xstate";
 import { newChatFormMachine } from "./newChatFormMachine.js";
 import * as db from "../../db/db.js";
+import { BUILT_IN_WORKFLOWS } from "../../workflow/builtInWorkflows.js";
 
 const mockWorkflow: db.WorkflowStore = {
   id: "w1",
-  name: "Standard Agent",
-  description: "A simple single-agent workflow",
-  isBuiltIn: true,
+  name: "Custom Workflow",
+  description: "A simple custom workflow",
+  isBuiltIn: false,
   nodes: [],
   edges: [],
 };
@@ -38,9 +39,9 @@ describe("newChatFormMachine", () => {
 
     const snap = actor.getSnapshot();
     expect(snap.matches("idle")).toBe(true);
-    expect(snap.context.workflows).toEqual([mockWorkflow]);
+    expect(snap.context.workflows).toEqual([...BUILT_IN_WORKFLOWS, mockWorkflow]);
     expect(snap.context.presets).toEqual([mockPreset]);
-    expect(snap.context.selectedWorkflowId).toBe("w1");
+    expect(snap.context.selectedWorkflowId).toBe(BUILT_IN_WORKFLOWS[0].id);
     expect(snap.context.selectedPresetId).toBe("p1");
   });
 
@@ -79,9 +80,9 @@ describe("newChatFormMachine", () => {
   it("allows changing workflow and preset selections", async () => {
     const workflow2: db.WorkflowStore = {
       id: "w2",
-      name: "Debate Workflow",
-      description: "A debate workflow",
-      isBuiltIn: true,
+      name: "Another Custom Workflow",
+      description: "Another custom workflow",
+      isBuiltIn: false,
       nodes: [],
       edges: [],
     };
@@ -183,7 +184,7 @@ describe("newChatFormMachine", () => {
 
     await waitFor(actor, (state) => state.matches("idle"), { timeout: 1000 });
     expect(actor.getSnapshot().matches("idle")).toBe(true);
-    expect(actor.getSnapshot().context.workflows).toEqual([mockWorkflow]);
+    expect(actor.getSnapshot().context.workflows).toEqual([...BUILT_IN_WORKFLOWS, mockWorkflow]);
 
     spy.mockRestore();
   });
@@ -201,8 +202,8 @@ describe("newChatFormMachine", () => {
     await waitFor(actor, (state) => state.matches("idle"), { timeout: 1000 });
 
     expect(spy).toHaveBeenCalledWith({
-      workflowId: "w1",
-      workflowSnapshot: mockWorkflow,
+      workflowId: BUILT_IN_WORKFLOWS[0].id,
+      workflowSnapshot: BUILT_IN_WORKFLOWS[0],
       activePresetId: "p1",
       initialMessage: "My topic",
     });

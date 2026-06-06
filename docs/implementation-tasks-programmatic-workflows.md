@@ -45,14 +45,14 @@
 
 ## 3. UI Integration - New Chat Form
 
-- [ ] **Step 3.1: Update New Chat Workflow Selection**
+- [x] **Step 3.1: Update New Chat Workflow Selection**
   - Update `src/ui/chat/newChatFormMachine.ts` (or the corresponding machine for the New Chat form).
   - Replace the logic that fetches workflows for the dropdown with a call to `getEffectiveWorkflows()`.
   - Ensure the UI correctly displays both built-in and custom workflows.
-  - [ ] Update `newChatFormMachine.ts`.
-  - [ ] Verify worktree state.
-  - [ ] Perform code review.
-  - [ ] Commit changes.
+  - [x] Update `newChatFormMachine.ts`.
+  - [x] Verify worktree state.
+  - [x] Perform code review.
+  - [x] Commit changes.
 
 ## 4. UI Integration - Workflow Manager
 

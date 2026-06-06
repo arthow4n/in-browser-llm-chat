@@ -1,13 +1,12 @@
 import { createMachine, assign, fromPromise } from "xstate";
 import {
-  getAllWorkflows,
   getAllPresets,
-  getWorkflow,
   getSetting,
   createNewThread,
   type WorkflowStore,
   type PresetStore,
 } from "../../db/db.js";
+import { getEffectiveWorkflows, getEffectiveWorkflow } from "../../workflow/workflowService.js";
 
 export interface NewChatFormContext {
   selectedWorkflowId: string;
@@ -41,7 +40,7 @@ async function loadFormData(): Promise<{
   defaultPresetId: string;
 }> {
   const [workflows, presets, defaultPresetId] = await Promise.all([
-    getAllWorkflows(),
+    getEffectiveWorkflows(),
     getAllPresets(),
     getSetting<string>("default_preset_id"),
   ]);
@@ -72,7 +71,7 @@ async function submitThread(input: {
     throw new Error("No preset selected");
   }
 
-  const workflow = await getWorkflow(selectedWorkflowId);
+  const workflow = await getEffectiveWorkflow(selectedWorkflowId);
   if (!workflow) {
     throw new Error("Selected workflow not found");
   }

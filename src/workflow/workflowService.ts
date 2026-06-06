@@ -1,4 +1,4 @@
-import { getAllWorkflows } from "../db/db";
+import { getAllWorkflows, getWorkflow } from "../db/db";
 import { BUILT_IN_WORKFLOWS } from "./builtInWorkflows";
 import type { WorkflowStore } from "../db/db";
 
@@ -16,4 +16,15 @@ export async function getEffectiveWorkflows(): Promise<WorkflowStore[]> {
 
   // Merge the filtered result with the BUILT_IN_WORKFLOWS array.
   return [...BUILT_IN_WORKFLOWS, ...userWorkflows];
+}
+
+/**
+ * Returns a specific workflow by ID, checking both built-in and user-defined workflows.
+ */
+export async function getEffectiveWorkflow(id: string): Promise<WorkflowStore | undefined> {
+  const builtIn = BUILT_IN_WORKFLOWS.find((w) => w.id === id);
+  if (builtIn) {
+    return builtIn;
+  }
+  return getWorkflow(id);
 }
