@@ -100,6 +100,7 @@ export type CoordinatorEvent =
   | { type: "SUBMIT_APPROVAL"; response: unknown }
   | { type: "RETRY_STEP" }
   | { type: "CHANGE_PRESET_AND_RESUME"; presetId: string }
+  | { type: "SWITCH_PRESET"; presetId: string }
   | { type: "DISMISS_ERROR" }
   | { type: "COMPLETE" }
   | { type: "ERROR"; error: string | null }
@@ -302,6 +303,24 @@ export const parentCoordinatorMachine = createMachine(
       },
       ExecutionState: {
         initial: "inactive",
+        on: {
+          SWITCH_PRESET: {
+            actions: [
+              assign({ activePresetId: ({ event }) => event.presetId }),
+              async ({ context, event }) => {
+                if (!context.currentThreadId) return;
+                const thread = await getThread(context.currentThreadId);
+                if (thread) {
+                  await saveThread({
+                    ...thread,
+                    activePresetId: event.presetId,
+                  });
+                }
+              },
+            ],
+            target: "inactive",
+          },
+        },
         states: {
           inactive: {
             entry: [

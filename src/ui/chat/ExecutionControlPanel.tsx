@@ -1,10 +1,7 @@
 import { useState } from "react";
 import { Button, Modal, ModalHeader, ModalBody } from "@carbon/react";
 import { Pause, Play, Stop, Warning, Information } from "@carbon/icons-react";
-import {
-  type CoordinatorContext,
-  type CoordinatorEvent,
-} from "../../workflow/parentCoordinator";
+import { type CoordinatorContext, type CoordinatorEvent } from "../../workflow/parentCoordinator";
 import { useWindowSize } from "../../ui/hooks/useWindowSize";
 
 interface ExecutionControlPanelProps {

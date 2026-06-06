@@ -12,6 +12,14 @@ export type GraphMessage = {
   createdAt?: number;
 };
 
+export interface CompiledPayloadMessage {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string;
+  name?: string;
+  tool_call_id?: string;
+  isInjected?: boolean;
+}
+
 export const GraphStateAnnotation = Annotation.Root({
   messages: Annotation<GraphMessage[]>({
     reducer: (x, y) => {
@@ -75,6 +83,135 @@ function resolvePrompt(systemPrompt: string | undefined, messages: GraphMessage[
   return systemPrompt
     .replace(/\{\{user_input\}\}/g, firstUserMsg)
     .replace(/\{\{topic\}\}/g, firstUserMsg);
+}
+
+export function compilePayloadForAgent(
+  activeAgent: WorkflowNode,
+  messages: GraphMessage[],
+  globalInjectedSystemMessages: Array<{ content: string; depth: number }>,
+  workflowInjectedSystemMessages: Array<{ content: string; depth: number }> = [],
+): CompiledPayloadMessage[] {
+  // 1. Assign Roles
+  let compiled: CompiledPayloadMessage[] = messages.map((m) => {
+    const isActiveAgent = m.name === activeAgent.name;
+    const type = m.type;
+
+    if (isActiveAgent) {
+      if (type === "tool_call" || type === "tool_result") {
+        return {
+          role: type === "tool_call" ? "assistant" : "tool",
+          content: m.content || "",
+          name: m.name,
+          tool_call_id: m.toolCallId,
+        };
+      }
+      return {
+        role: "assistant",
+        content: m.content || "",
+        name: m.name,
+      };
+    } else {
+      return {
+        role: "user",
+        content: m.content || "",
+        name: m.name,
+      };
+    }
+  });
+
+  // 2. Pruning
+  const maxHistory = activeAgent.maxHistoryMessages;
+  if (maxHistory !== undefined && compiled.length > maxHistory) {
+    compiled = compiled.slice(-maxHistory);
+  }
+
+  // 3. System Message Injection
+  const allInjected = [
+    ...workflowInjectedSystemMessages.map((m) => ({ ...m, source: "workflow" })),
+    ...globalInjectedSystemMessages.map((m) => ({ ...m, source: "global" })),
+  ];
+
+  const L = compiled.length;
+  const targetMessages: Map<number, Array<{ content: string; source: string }>> = new Map();
+
+  for (const msg of allInjected) {
+    let targetIndex = msg.depth >= 0 ? msg.depth : L + msg.depth;
+    targetIndex = Math.max(0, Math.min(L, targetIndex));
+
+    const existing = targetMessages.get(targetIndex) || [];
+    // Deduplication
+    if (!existing.some((e) => e.content === msg.content)) {
+      existing.push({ content: msg.content, source: msg.source });
+      targetMessages.set(targetIndex, existing);
+    }
+  }
+
+  // Merge and Insert
+  let finalPayload: CompiledPayloadMessage[] = [];
+  // sortedIndices is not needed if we iterate via currentIdx
+
+  // We can't just insert into `compiled` because indices shift.
+  // Let's rebuild the array.
+  let currentIdx = 0;
+  while (currentIdx <= L) {
+    const injected = targetMessages.get(currentIdx);
+    if (injected) {
+      // Order: workflow then global
+      const mergedContent = injected
+        .sort((a, b) => (a.source === "workflow" ? -1 : b.source === "workflow" ? 1 : 0))
+        .map((m) => m.content)
+        .join("\n\n");
+
+      finalPayload.push({
+        role: "system",
+        content: mergedContent,
+        isInjected: true,
+      });
+    }
+    if (currentIdx < L) {
+      finalPayload.push(compiled[currentIdx]);
+    }
+    currentIdx++;
+  }
+
+  // 4. Assign Prefix and Format for Strict APIs
+  finalPayload = finalPayload.map((m, idx) => {
+    if (m.role === "user") {
+      // If not original human user (we know if it was mapped from assistant/tool)
+      // To be precise, let's check if it was one of the messages we mapped to user
+      // But we can just check if it has a name that's NOT "User" or empty
+      if (m.name && m.name !== "User") {
+        return { ...m, content: `[${m.name}]: ${m.content}` };
+      }
+    }
+    if (m.role === "system" && idx > 0) {
+      return {
+        role: "user",
+        content: `[System Notification]: ${m.content}`,
+        isInjected: m.isInjected,
+      };
+    }
+    return m;
+  });
+
+  // 5. Merge Consecutive Messages of Same Role
+  const mergedPayload: CompiledPayloadMessage[] = [];
+  for (const m of finalPayload) {
+    const last = mergedPayload[mergedPayload.length - 1];
+    if (last && last.role === m.role) {
+      if (last.role === "user") {
+        last.content += `\n\n${m.content}`;
+        continue;
+      }
+      if (last.role === "assistant" && m.name === last.name) {
+        last.content += `\n\n${m.content}`;
+        continue;
+      }
+    }
+    mergedPayload.push({ ...m });
+  }
+
+  return mergedPayload;
 }
 
 export function compileWorkflow(
