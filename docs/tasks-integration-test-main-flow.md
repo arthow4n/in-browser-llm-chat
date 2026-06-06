@@ -96,11 +96,11 @@ Implement a test step that programmatically creates a new chat thread.
 
 Implement the instantiation of the `graphRunnerActor` and the dispatch of the initial message.
 
-- [ ] Spawn the `graphRunnerActor` using the newly created thread ID.
-- [ ] Send a `START` event to the actor with a user message (e.g., "Hello, who are you?").
-- [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-- [ ] Perform code review.
-- [ ] Commit the changes.
+- [x] Spawn the `graphRunnerActor` using the newly created thread ID.
+- [x] Send a `START` event to the actor with a user message (e.g., "Hello, who are you?").
+- [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+- [x] Perform code review.
+- [x] Commit the changes.
 
 ### Step 3.3: Implement Execution Synchronization
 

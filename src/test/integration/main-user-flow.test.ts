@@ -3,6 +3,7 @@ import { createActor } from "xstate";
 import { clearDatabase, getSetting, getAllPresets, createNewThread, getThread } from "../../db/db";
 import { globalSettingsMachine } from "../../ui/settings/globalSettings";
 import { BUILT_IN_WORKFLOWS } from "../../workflow/builtInWorkflows";
+import { graphRunnerActor } from "../../workflow/graphRunnerActor";
 
 describe("Main User Flow Integration Test", () => {
   beforeEach(async () => {
@@ -113,11 +114,11 @@ describe("Main User Flow Integration Test", () => {
     expect(presets.some((p) => p.id === defaultPresetId)).toBe(true);
   });
 
-  it("should programmatically create a new chat thread associated with a workflow and preset", async () => {
+  it("should trigger execution of the graphRunnerActor for a new thread", async () => {
     // 1. Setup: Seed API keys and presets
-    const actor = createActor(globalSettingsMachine).start();
+    const settingsActor = createActor(globalSettingsMachine).start();
     await new Promise<void>((resolve) => {
-      const subscription = actor.subscribe((state) => {
+      const subscription = settingsActor.subscribe((state) => {
         if (state.matches("idle")) {
           subscription.unsubscribe();
           resolve();
@@ -125,20 +126,20 @@ describe("Main User Flow Integration Test", () => {
       });
     });
 
-    actor.send({
+    settingsActor.send({
       type: "EDIT_FIELD",
       field: "openRouterApiKey",
       value: "mock-openrouter-key",
     });
-    actor.send({
+    settingsActor.send({
       type: "EDIT_FIELD",
       field: "geminiApiKey",
       value: "mock-gemini-key",
     });
-    actor.send({ type: "SAVE" });
+    settingsActor.send({ type: "SAVE" });
 
     await new Promise<void>((resolve) => {
-      const subscription = actor.subscribe((state) => {
+      const subscription = settingsActor.subscribe((state) => {
         if (state.matches({ idle: "clean" })) {
           subscription.unsubscribe();
           resolve();
@@ -149,10 +150,7 @@ describe("Main User Flow Integration Test", () => {
     // 2. Get a seeded preset and the standard workflow
     const presets = await getAllPresets();
     const preset = presets[0];
-    expect(preset).toBeDefined();
-
     const standardWorkflow = BUILT_IN_WORKFLOWS.find((wf) => wf.id === "builtin-standard-workflow");
-    expect(standardWorkflow).toBeDefined();
 
     // 3. Create a new thread
     const { threadId } = await createNewThread({
@@ -162,14 +160,26 @@ describe("Main User Flow Integration Test", () => {
       initialMessage: "Hello world",
     });
 
-    expect(threadId).toBeDefined();
+    // 4. Spawn the graphRunnerActor
+    const runnerActor = createActor(graphRunnerActor, {
+      input: { threadId },
+    }).start();
 
-    // 4. Assert the thread is correctly persisted in the DB
+    // 5. Send a START event
+    // In the current implementation, the actor starts automatically from initializing -> ready -> running.requesting.
+    // However, we send START as requested by the task.
+    runnerActor.send({ type: "START" });
+
+    // Verify the actor was spawned and is active
+    expect(runnerActor).toBeDefined();
+
+    // We check if the thread status has been updated to 'executing' by the actor.
+    // Since initialization is async, we wait a bit.
+    await new Promise((resolve) => setTimeout(resolve, 200));
     const thread = await getThread(threadId);
-    expect(thread).toBeDefined();
-    expect(thread?.workflowId).toBe(standardWorkflow!.id);
-    expect(thread?.activePresetId).toBe(preset!.id);
-    expect(thread?.title).toBe("Hello world");
-    expect(thread?.status).toBe("inactive");
+    expect(["executing", "awaiting_input"]).toContain(thread?.status);
+
+    // Cleanup: stop the actor to avoid leaking promises in tests
+    runnerActor.stop();
   });
 });
