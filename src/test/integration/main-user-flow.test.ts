@@ -187,10 +187,6 @@ describe("Main User Flow Integration Test", () => {
           state.matches("interrupted") ||
           state.matches("paused")
         ) {
-          console.log("Actor reached state:", state.value);
-          if (state.matches("failed")) {
-            console.log("Actor error:", state.context.errorMessage);
-          }
           subscription.unsubscribe();
           resolve();
         }
@@ -214,10 +210,6 @@ describe("Main User Flow Integration Test", () => {
 
     // Verify checkpoints
     expect(thread).toBeDefined();
-    console.log("Thread checkpoints:", {
-      id: thread?.latestCheckpointId,
-      ns: thread?.latestCheckpointNs,
-    });
     expect(thread?.latestCheckpointId).toBeDefined();
     expect(thread?.latestCheckpointNs).toBeDefined();
 
