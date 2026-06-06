@@ -106,11 +106,11 @@ Implement the instantiation of the `graphRunnerActor` and the dispatch of the in
 
 Implement a robust mechanism to wait for the asynchronous LangGraph execution to complete.
 
-- [ ] Implement a mechanism to wait for the `graphRunnerActor` to reach a terminal state (e.g., `idle` or `completed`).
-- [ ] Use `await` with a promise-based approach or `waitFor` from Testing Library to monitor state transitions and `emit` events, ensuring the test doesn't proceed until the execution is finished.
-- [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-- [ ] Perform code review.
-- [ ] Commit the changes.
+- [x] Implement a mechanism to wait for the `graphRunnerActor` to reach a terminal state (e.g., `idle` or `completed`).
+- [x] Use `await` with a promise-based approach or `waitFor` from Testing Library to monitor state transitions and `emit` events, ensuring the test doesn't proceed until the execution is finished.
+- [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+- [x] Perform code review.
+- [x] Commit the changes.
 
 ### Step 3.4: Verify Final Database State
 
