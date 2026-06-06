@@ -74,10 +74,12 @@ describe("workflowEditorMachine", () => {
 
     actor.send({ type: "CLONE_WORKFLOW" });
 
-    expect(actor.getSnapshot().matches({ editing: "dirty" })).toBe(true);
+    await waitFor(actor, (state) => state.matches({ editing: "clean" }), { timeout: 1000 });
+
+    expect(actor.getSnapshot().matches({ editing: "clean" })).toBe(true);
     expect(actor.getSnapshot().context.isBuiltIn).toBe(false);
-    expect(actor.getSnapshot().context.isDirty).toBe(true);
-    expect(actor.getSnapshot().context.workflowId).toBeNull();
+    expect(actor.getSnapshot().context.isDirty).toBe(false);
+    expect(typeof actor.getSnapshot().context.workflowId).toBe("string");
 
     const parsed = JSON.parse(actor.getSnapshot().context.jsonContent);
     expect(parsed.name).toBe("Copy of Debate Workflow");

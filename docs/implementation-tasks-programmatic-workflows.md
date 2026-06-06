@@ -75,16 +75,16 @@
 
 ## 5. UI Integration - Workflow Editor
 
-- [ ] **Step 5.1: Prevent Editing of Built-in Workflows**
+- [x] **Step 5.1: Prevent Editing of Built-in Workflows**
   - Update the Workflow Editor component and its associated state machine.
   - If a workflow with `isBuiltIn === true` is selected for editing:
     - Set the editor to read-only mode.
     - Display a notification or prompt informing the user that built-in workflows cannot be edited.
     - Provide a "Clone" button that creates a new custom workflow (using the same configuration but with `isBuiltIn: false` and a new UUID), saves it to the database, and switches the editor to the newly created workflow.
-  - [ ] Implement read-only mode and cloning for built-in workflows.
-  - [ ] Verify worktree state.
-  - [ ] Perform code review.
-  - [ ] Commit changes.
+  - [x] Implement read-only mode and cloning for built-in workflows.
+  - [x] Verify worktree state.
+  - [x] Perform code review.
+  - [x] Commit changes.
 
 ## 6. Database Refactoring & Seeding Cleanup
 

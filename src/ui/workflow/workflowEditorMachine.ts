@@ -182,24 +182,47 @@ export const workflowEditorMachine = setup({
     viewing: {
       on: {
         CLONE_WORKFLOW: {
-          target: "editing.dirty",
-          actions: assign({
-            workflowId: () => null,
-            isBuiltIn: () => false,
-            isDirty: () => true,
-            jsonContent: ({ context }) => {
-              try {
-                const parsed = JSON.parse(context.jsonContent);
-                parsed.name = `Copy of ${parsed.name}`;
-                return JSON.stringify(parsed, null, 2);
-              } catch {
-                return context.jsonContent;
-              }
-            },
-          }),
+          target: "cloning",
         },
         DELETE_WORKFLOW: {
           target: "deleting",
+        },
+      },
+    },
+    cloning: {
+      invoke: {
+        src: "saveWorkflowActor",
+        input: ({ context }) => {
+          let content = context.jsonContent;
+          try {
+            const parsed = JSON.parse(content);
+            parsed.name = `Copy of ${parsed.name}`;
+            content = JSON.stringify(parsed, null, 2);
+          } catch {}
+          return {
+            id: null,
+            jsonContent: content,
+          };
+        },
+        onDone: {
+          target: "editing.clean",
+          actions: assign(({ event }) => {
+            const { id, isBuiltIn: _, ...rest } = event.output;
+            const json = JSON.stringify(rest, null, 2);
+            return {
+              workflowId: id,
+              jsonContent: json,
+              originalContent: json,
+              isBuiltIn: false,
+              isDirty: false,
+            };
+          }),
+        },
+        onError: {
+          target: "error",
+          actions: assign({
+            errorMessage: ({ event }) => getErrorMessage(event, "Failed to clone workflow"),
+          }),
         },
       },
     },

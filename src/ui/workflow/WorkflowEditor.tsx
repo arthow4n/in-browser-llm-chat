@@ -105,9 +105,7 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflowId, onCl
                   : "Create Workflow"}
             </h3>
             <p style={{ color: "#c6c6c6", fontSize: "0.875rem", marginTop: "0.25rem" }}>
-              {isBuiltIn
-                ? "Built-in workflows are read-only. Clone them to make edits."
-                : "Define agent nodes, tools, and execution routing using JSON."}
+              {!isBuiltIn && "Define agent nodes, tools, and execution routing using JSON."}
             </p>
           </div>
 
@@ -139,6 +137,15 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflowId, onCl
             )}
           </div>
         </div>
+
+        {isBuiltIn && (
+          <InlineNotification
+            kind="info"
+            title="Read-only Workflow"
+            subtitle="Built-in workflows cannot be edited. Clone this workflow to create a customizable version."
+            style={{ marginBottom: "1rem", maxWidth: "100%" }}
+          />
+        )}
 
         {errorMessage && (
           <InlineNotification
