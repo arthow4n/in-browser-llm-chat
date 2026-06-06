@@ -3,6 +3,7 @@ import type { WorkflowStore } from "../db/db";
 export const BUILT_IN_WORKFLOWS: WorkflowStore[] = [
   {
     id: "builtin-standard-workflow",
+    name: "Standard Agent",
     description: "A simple 1-agent loop for general purpose chatting.",
     isBuiltIn: true,
     nodes: [

@@ -31,17 +31,17 @@
 
 ## 2. Workflow Merging Logic
 
-- [ ] **Step 2.1: Create Workflow Service**
+- [x] **Step 2.1: Create Workflow Service**
   - Create `src/workflow/workflowService.ts`.
   - Implement a function `getEffectiveWorkflows()` that:
     - Fetches all workflows from the database using `getAllWorkflows()`.
     - Filters out any workflows from the database that are marked as `isBuiltIn: true` to prevent duplicates with the programmatic definitions.
     - Merges the filtered result with the `BUILT_IN_WORKFLOWS` array.
     - Returns the combined list of workflows.
-  - [ ] Implement `getEffectiveWorkflows()` in `src/workflow/workflowService.ts`.
-  - [ ] Verify worktree state.
-  - [ ] Perform code review.
-  - [ ] Commit changes.
+  - [x] Implement `getEffectiveWorkflows()` in `src/workflow/workflowService.ts`.
+  - [x] Verify worktree state.
+  - [x] Perform code review.
+  - [x] Commit changes.
 
 ## 3. UI Integration - New Chat Form
 
