@@ -39,13 +39,13 @@ Configure the test environment to use `fake-indexeddb` to simulate a clean brows
 
 Create Mock Service Worker (MSW) handlers to intercept and mock responses from Google Gemini and OpenRouter APIs.
 
-- [ ] Initialize MSW in the test setup.
-- [ ] Implement a handler for the Google Gemini API endpoint (`generativelanguage.googleapis.com`) that returns a valid, LangChain-compatible chat response.
-- [ ] Implement a handler for the OpenRouter API endpoint (`openrouter.ai`) that returns a valid, LangChain-compatible chat response.
-- [ ] Ensure the mocks can be customized per test (e.g., simulating errors or different response content).
-- [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-- [ ] Perform code review.
-- [ ] Commit the changes.
+- [x] Initialize MSW in the test setup.
+- [x] Implement a handler for the Google Gemini API endpoint (`generativelanguage.googleapis.com`) that returns a valid, LangChain-compatible chat response.
+- [x] Implement a handler for the OpenRouter API endpoint (`openrouter.ai`) that returns a valid, LangChain-compatible chat response.
+- [x] Ensure the mocks can be customized per test (e.g., simulating errors or different response content).
+- [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+- [x] Perform code review.
+- [x] Commit the changes.
 
 ### Step 1.3: Implement Database Cleanup Utility
 
