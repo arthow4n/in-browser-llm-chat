@@ -91,8 +91,11 @@ describe("ChatInputArea", () => {
       },
       {
         loopControl: {
+          currentRound: 0,
+          turnCount: 0,
+          tokenStats: null,
           activeInterrupt: { type: "approval" },
-        } as unknown as CoordinatorContext["loopControl"],
+        },
       },
     );
     render(<ChatInputArea parentState={awaitingState} parentSend={mockParentSend} />);
