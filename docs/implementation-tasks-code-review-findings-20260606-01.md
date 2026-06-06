@@ -62,11 +62,11 @@ This document contains a step-by-step checklist to resolve the issues found in `
   - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
   - [x] Perform code review (self/subagent).
   - [x] Commit the changes following `AGENTS.md`.
-- [ ] **Step 3.4:** Refactor `apiKeyValidator.test.ts` to assert using `.matches()` instead of `.value`.
-  - [ ] Implement the logic/feature.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Perform code review (self/subagent).
-  - [ ] Commit the changes following `AGENTS.md`.
+- [x] **Step 3.4:** Refactor `apiKeyValidator.test.ts` to assert using `.matches()` instead of `.value`.
+  - [x] Implement the logic/feature.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Perform code review (self/subagent).
+  - [x] Commit the changes following `AGENTS.md`.
 - [ ] **Step 3.5:** Refactor `chatInputMachine.test.ts` to assert using `.matches()` instead of `.value`.
   - [ ] Implement the logic/feature.
   - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).

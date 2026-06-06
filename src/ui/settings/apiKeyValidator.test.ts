@@ -38,21 +38,21 @@ describe("apiKeyValidatorMachine", () => {
       input: { provider: "gemini" },
     }).start();
 
-    expect(actor.getSnapshot().value).toBe("idle");
+    expect(actor.getSnapshot().matches("idle")).toBe(true);
 
     actor.send({ type: "START_VALIDATION", apiKey: "valid-gemini" });
-    expect(actor.getSnapshot().value).toBe("validating");
+    expect(actor.getSnapshot().matches("validating")).toBe(true);
 
     // Wait for the async invoke to finish
     await new Promise<void>((resolve) => {
       actor.subscribe((state) => {
-        if (state.value === "valid" || state.value === "invalid") {
+        if (state.matches("valid") || state.matches("invalid")) {
           resolve();
         }
       });
     });
 
-    expect(actor.getSnapshot().value).toBe("valid");
+    expect(actor.getSnapshot().matches("valid")).toBe(true);
     expect(actor.getSnapshot().context.errorMessage).toBeNull();
   });
 
@@ -65,14 +65,14 @@ describe("apiKeyValidatorMachine", () => {
 
     await new Promise<void>((resolve) => {
       actor.subscribe((state) => {
-        if (state.value === "valid" || state.value === "invalid") {
+        if (state.matches("valid") || state.matches("invalid")) {
           resolve();
         }
       });
     });
 
     const snapshot = actor.getSnapshot();
-    expect(snapshot.value).toBe("invalid");
+    expect(snapshot.matches("invalid")).toBe(true);
     expect(snapshot.context.errorMessage).toContain("Gemini API error: 401 Unauthorized");
   });
 
@@ -85,13 +85,13 @@ describe("apiKeyValidatorMachine", () => {
 
     await new Promise<void>((resolve) => {
       actor.subscribe((state) => {
-        if (state.value === "valid" || state.value === "invalid") {
+        if (state.matches("valid") || state.matches("invalid")) {
           resolve();
         }
       });
     });
 
-    expect(actor.getSnapshot().value).toBe("valid");
+    expect(actor.getSnapshot().matches("valid")).toBe(true);
   });
 
   it("transitions to idle on INPUT_CHANGED", async () => {
@@ -104,13 +104,13 @@ describe("apiKeyValidatorMachine", () => {
     // Wait for it to become valid
     await new Promise<void>((resolve) => {
       actor.subscribe((state) => {
-        if (state.value === "valid") {
+        if (state.matches("valid")) {
           resolve();
         }
       });
     });
 
     actor.send({ type: "INPUT_CHANGED" });
-    expect(actor.getSnapshot().value).toBe("idle");
+    expect(actor.getSnapshot().matches("idle")).toBe(true);
   });
 });
