@@ -57,11 +57,11 @@
   - [x] Perform code review (self/subagent).
   - [x] Commit the changes following `AGENTS.md`.
 
-- [ ] **Step 3.2:** Migrate state in `src/ui/AskQuestionsForm.tsx`
-  - [ ] Create an XState machine to manage `answers` and migrate the component from `useState` to `@xstate/react`.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Perform code review (self/subagent).
-  - [ ] Commit the changes following `AGENTS.md`.
+- [x] **Step 3.2:** Migrate state in `src/ui/AskQuestionsForm.tsx`
+  - [x] Create an XState machine to manage `answers` and migrate the component from `useState` to `@xstate/react`.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Perform code review (self/subagent).
+  - [x] Commit the changes following `AGENTS.md`.
 
 - [ ] **Step 3.3:** Migrate display/visibility state in `src/ui/chat/ChatInterface.tsx`
   - [ ] Create a new XState state machine for `ChatInterface` to manage display/visibility state (`showSettings`, `showPayloadPreview`).
