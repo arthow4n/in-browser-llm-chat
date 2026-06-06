@@ -42,30 +42,37 @@ const mockMessages: MessageStore[] = [
 ];
 
 describe("ChatFeed", () => {
+  const defaultProps = {
+    messages: mockMessages,
+    send: () => {},
+    currentThreadId: "t1",
+    draftAnswers: {},
+  };
+
   it("renders the correct number of messages", () => {
-    render(<ChatFeed messages={mockMessages} />);
+    render(<ChatFeed {...defaultProps} />);
     expect(screen.getByText("Hello!")).toBeInTheDocument();
     expect(screen.getByText("Hi there! How can I help you?")).toBeInTheDocument();
     expect(screen.getByText("I am thinking about the best way to help.")).toBeInTheDocument();
   });
 
   it("renders the agent name for assistant messages", () => {
-    render(<ChatFeed messages={mockMessages} />);
+    render(<ChatFeed {...defaultProps} />);
     expect(screen.getAllByText("Assistant")[0]).toBeInTheDocument();
   });
 
   it("renders reasoning messages inside an accordion", () => {
-    render(<ChatFeed messages={mockMessages} />);
+    render(<ChatFeed {...defaultProps} />);
     expect(screen.getByText("Reasoning")).toBeInTheDocument();
   });
 
   it("displays empty state when no messages are provided", () => {
-    render(<ChatFeed messages={[]} />);
+    render(<ChatFeed {...defaultProps} messages={[]} />);
     expect(screen.getByText("No messages yet. Start a conversation!")).toBeInTheDocument();
   });
 
   it("handles scrolling events to update auto-scroll state", () => {
-    const { container } = render(<ChatFeed messages={mockMessages} />);
+    const { container } = render(<ChatFeed {...defaultProps} />);
     const feed = container.firstChild as HTMLDivElement;
 
     // Mock scroll properties

@@ -6,11 +6,19 @@ import { MessageStore } from "../db/db";
 
 interface ChatFeedProps {
   messages: MessageStore[];
+  send: (event: unknown) => void;
+  currentThreadId: string | null;
+  draftAnswers: Record<string, unknown>;
 }
 
-export const ChatFeed: React.FC<ChatFeedProps> = ({ messages }) => {
+export const ChatFeed: React.FC<ChatFeedProps> = ({
+  messages,
+  send,
+  currentThreadId,
+  draftAnswers,
+}) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [state, send] = useMachine(chatAutoScrollMachine);
+  const [state, scrollSend] = useMachine(chatAutoScrollMachine);
 
   const scrollToBottom = () => {
     if (scrollContainerRef.current) {
@@ -29,9 +37,9 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ messages }) => {
     const isAtBottom = scrollHeight - scrollTop <= clientHeight + 50;
 
     if (isAtBottom) {
-      send({ type: "USER_SCROLLED_TO_BOTTOM" });
+      scrollSend({ type: "USER_SCROLLED_TO_BOTTOM" });
     } else {
-      send({ type: "USER_SCROLLED_UP" });
+      scrollSend({ type: "USER_SCROLLED_UP" });
     }
   };
 
@@ -53,7 +61,16 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ messages }) => {
           No messages yet. Start a conversation!
         </div>
       ) : (
-        messages.map((msg) => <ChatMessage key={msg.id} message={msg} />)
+        messages.map((msg) => (
+          <ChatMessage
+            key={msg.id}
+            message={msg}
+            allMessages={messages}
+            send={send}
+            currentThreadId={currentThreadId!}
+            draftAnswers={draftAnswers}
+          />
+        ))
       )}
     </div>
   );

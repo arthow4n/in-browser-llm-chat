@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "react-router";
 import { useMachine } from "@xstate/react";
 import { Header, HeaderName, HeaderGlobalBar, Content, Button } from "@carbon/react";
@@ -6,7 +6,16 @@ import { Settings } from "@carbon/icons-react";
 import { parentCoordinatorMachine } from "../../workflow/parentCoordinator";
 import { ThreadSettingsModal } from "./ThreadSettingsModal";
 import { ChatInputArea } from "./ChatInputArea";
-import { getAllPresets, getThread, type PresetStore, type ThreadStore } from "../../db/db";
+import { ChatFeed } from "../ChatFeed";
+import {
+  getAllPresets,
+  getThread,
+  getMessagesForThread,
+  type PresetStore,
+  type ThreadStore,
+  type MessageStore,
+} from "../../db/db";
+import { type CoordinatorEvent } from "../../workflow/parentCoordinator";
 
 export function ChatInterface() {
   const { threadId } = useParams();
@@ -14,18 +23,29 @@ export function ChatInterface() {
   const [showSettings, setShowSettings] = useState(false);
   const [presets, setPresets] = useState<PresetStore[]>([]);
   const [thread, setThread] = useState<ThreadStore | undefined | null>(null);
+  const [messages, setMessages] = useState<MessageStore[]>([]);
+  const [draftAnswers, setDraftAnswers] = useState<Record<string, unknown>>({});
 
-  React.useEffect(() => {
+  useEffect(() => {
     async function loadData() {
       const p = await getAllPresets();
       setPresets(p);
       if (threadId) {
         const t = await getThread(threadId);
         setThread(t);
+        setDraftAnswers(t?.draftAnswers || {});
+        const m = await getMessagesForThread(threadId);
+        setMessages(m);
       }
     }
     void loadData();
   }, [threadId]);
+
+  useEffect(() => {
+    if (threadId) {
+      void getMessagesForThread(threadId).then(setMessages);
+    }
+  }, [threadId, state.context.currentThreadId]);
 
   const handleOpenSettings = () => setShowSettings(true);
   const handleCloseSettings = () => setShowSettings(false);
@@ -64,10 +84,15 @@ export function ChatInterface() {
           </Button>
         </div>
 
-        {/* Chat Feed Placeholder */}
+        {/* Chat Feed */}
         <div style={{ flex: 1, overflowY: "auto", padding: "1rem" }}>
           <div style={{ maxWidth: "800px", margin: "0 auto" }}>
-            <p>Chat messages will appear here...</p>
+            <ChatFeed
+              messages={messages}
+              send={(event: unknown) => send(event as unknown as CoordinatorEvent)}
+              currentThreadId={state.context.currentThreadId}
+              draftAnswers={draftAnswers}
+            />
           </div>
         </div>
 

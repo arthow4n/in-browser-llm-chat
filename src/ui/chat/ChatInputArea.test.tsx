@@ -4,6 +4,7 @@ import { ChatInputArea } from "./ChatInputArea";
 
 describe("ChatInputArea", () => {
   const mockParentSend = vi.fn();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const defaultParentState: any = {
     value: {
       ViewState: "chatting",

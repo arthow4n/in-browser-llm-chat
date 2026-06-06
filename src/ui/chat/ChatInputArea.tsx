@@ -6,7 +6,7 @@ import { chatInputMachine } from "./chatInputMachine";
 import { type CoordinatorEvent, type CoordinatorContext } from "../../workflow/parentCoordinator";
 import { v4 as uuidv4 } from "uuid";
 
-interface ParentState {
+export interface ParentState {
   value: unknown;
   context: CoordinatorContext;
 }
@@ -73,7 +73,7 @@ export function ChatInputArea({ parentState, parentSend }: ChatInputAreaProps) {
       name: role,
     };
 
-    parentSend({ type: "SUBMIT_MESSAGE", message: message as CoordinatorEvent["message"] });
+    parentSend({ type: "SUBMIT_MESSAGE", message } as unknown as CoordinatorEvent);
     send({ type: "RESET" });
   };
 

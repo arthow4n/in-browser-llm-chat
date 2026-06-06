@@ -3,12 +3,18 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
-import { MessageStore } from "../db/db";
+import { MessageStore, saveMessage } from "../db/db";
 import { Accordion, AccordionItem } from "@carbon/react";
 import { CodeBlock } from "./CodeBlock";
+import { AskQuestionsForm } from "./AskQuestionsForm";
+import { AskQuestionsResponse, type Answer } from "../schemas/tools";
 
 interface ChatMessageProps {
   message: MessageStore;
+  allMessages: MessageStore[];
+  send: (event: unknown) => void;
+  currentThreadId: string;
+  draftAnswers: Record<string, unknown>;
 }
 
 const getAvatarColor = (name: string) => {
@@ -26,7 +32,13 @@ const getAvatarColor = (name: string) => {
   return colors[Math.abs(hash) % colors.length];
 };
 
-export const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
+export const ChatMessage: React.FC<ChatMessageProps> = ({
+  message,
+  allMessages,
+  send,
+  currentThreadId,
+  draftAnswers,
+}) => {
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
   const isSystem = message.role === "system";
@@ -151,14 +163,81 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
         {message.type === "tool_call" && (
           <Accordion>
             <AccordionItem title={`Tool Call: ${message.name || "Unknown Tool"}`}>
-              <pre style={{ fontSize: "0.75rem", overflowX: "auto" }}>{message.content}</pre>
+              {message.name === "ask_questions" ? (
+                allMessages.some(
+                  (m) => m.type === "tool_result" && m.toolCallId === message.toolCallId,
+                ) ? (
+                  <div style={{ color: "var(--cds-text-disabled)", fontSize: "0.875rem" }}>
+                    Answered. See the tool result below.
+                  </div>
+                ) : (
+                  <AskQuestionsForm
+                    threadId={currentThreadId}
+                    toolCallId={message.toolCallId || ""}
+                    questions={JSON.parse(message.content || "[]")}
+                    initialDrafts={
+                      draftAnswers as unknown as Record<string, Record<string, Answer>>
+                    }
+                    onUpdateDraft={() => {}} // handled internally by component & DB
+                    onSubmit={async (response: AskQuestionsResponse) => {
+                      const resultMessage: MessageStore = {
+                        id: crypto.randomUUID(),
+                        threadId: currentThreadId,
+                        sequence: allMessages.length,
+                        role: "tool",
+                        content: JSON.stringify(response),
+                        type: "tool_result",
+                        toolCallId: message.toolCallId,
+                        name: "ask_questions",
+                        createdAt: Date.now(),
+                        checkpointId: null,
+                        checkpointNs: null,
+                      };
+                      await saveMessage(resultMessage);
+                      send({ type: "SUBMIT_TOOL_RESPONSE", response });
+                    }}
+                  />
+                )
+              ) : (
+                <pre style={{ fontSize: "0.75rem", overflowX: "auto" }}>{message.content}</pre>
+              )}
             </AccordionItem>
           </Accordion>
         )}
         {message.type === "tool_result" && (
           <Accordion>
             <AccordionItem title={`Tool Result: ${message.name || "Unknown Tool"}`}>
-              <pre style={{ fontSize: "0.75rem", overflowX: "auto" }}>{message.content}</pre>
+              {message.name === "ask_questions" ? (
+                <div style={{ fontSize: "0.875rem" }}>
+                  {Object.entries(JSON.parse(message.content || "{}").answers || {}).map(
+                    ([qId, ans]: [string, unknown]) => {
+                      const a = ans as {
+                        refused?: boolean;
+                        refusalReason?: string;
+                        selected?: string[];
+                        text?: string;
+                      };
+                      return (
+                        <div key={qId} style={{ marginBottom: "0.5rem" }}>
+                          <strong>Question {qId}:</strong>
+                          {a.refused ? (
+                            <div style={{ color: "red" }}>
+                              Refused: {a.refusalReason || "No reason provided"}
+                            </div>
+                          ) : (
+                            <div style={{ marginLeft: "0.5rem" }}>
+                              {a.selected?.length ? `Selected: ${a.selected.join(", ")}` : ""}
+                              {a.text ? `Text: ${a.text}` : ""}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    },
+                  )}
+                </div>
+              ) : (
+                <pre style={{ fontSize: "0.75rem", overflowX: "auto" }}>{message.content}</pre>
+              )}
             </AccordionItem>
           </Accordion>
         )}

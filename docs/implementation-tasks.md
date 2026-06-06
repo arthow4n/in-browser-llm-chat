@@ -162,12 +162,12 @@ This document contains a step-by-step checklist to build the LLM chat applicatio
 
 ## 10. Interactive Tools & Inline Cards
 
-- [ ] **Step 10.1:** Implement the `ask_questions` Tool Form State Machine and UI component. Render it interactively inside the chat feed to update draft answers in the DB, and handle final submission formatting.
-  - [ ] Implement the `ask_questions` Tool Form State Machine and UI.
-  - [ ] Write integration and state machine tests adhering to Testing Guidelines in `docs/scratchpad.md`.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Perform code review (self/subagent).
-  - [ ] Commit the changes following `AGENTS.md`.
+- [x] **Step 10.1:** Implement the `ask_questions` Tool Form State Machine and UI component. Render it interactively inside the chat feed to update draft answers in the DB, and handle final submission formatting.
+  - [x] Implement the `ask_questions` Tool Form State Machine and UI.
+  - [x] Write integration and state machine tests adhering to Testing Guidelines in `docs/scratchpad.md`.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Perform code review (self/subagent).
+  - [x] Commit the changes following `AGENTS.md`.
 - [ ] **Step 10.2:** Implement the Proposed Action Card (Approval Form) State Machine for database-modifying tools. Build the visual diff UI and confirmation logic.
   - [ ] Implement the Proposed Action Card State Machine and visual diff UI.
   - [ ] Write integration and state machine tests adhering to Testing Guidelines in `docs/scratchpad.md`.
