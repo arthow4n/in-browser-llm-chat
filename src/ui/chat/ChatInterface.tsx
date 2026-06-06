@@ -110,7 +110,7 @@ export function ChatInterface() {
     <>
       <Header aria-label="LLM Chat Thread">
         <HeaderName href="#" prefix="Chat">
-          {!thread && (state.value as Record<string, unknown>).ViewState === "initializing"
+          {!thread && state.matches({ ViewState: "initializing" })
             ? "Loading..."
             : !thread
               ? "Thread Not Found"
@@ -121,7 +121,7 @@ export function ChatInterface() {
             kind="ghost"
             size="sm"
             onClick={handleOpenPayloadPreview}
-            disabled={(state.value as Record<string, unknown>).ExecutionState === "executing"}
+            disabled={state.matches({ ExecutionState: "executing" })}
           >
             Preview API Payload
           </Button>
@@ -161,8 +161,7 @@ export function ChatInterface() {
               currentThreadId={state.context.currentThreadId}
               draftAnswers={draftAnswers}
               budgetExceededCard={
-                (state.value as Record<string, unknown>).ExecutionState ===
-                  "awaitingHumanInput.budgetExceeded" && (
+                state.matches({ ExecutionState: { awaitingHumanInput: "budgetExceeded" } }) && (
                   <BudgetExceededCard
                     budgetDetails={
                       state.context.loopControl.activeInterrupt?.budgetDetails || {
@@ -177,7 +176,7 @@ export function ChatInterface() {
                 )
               }
               errorBubble={
-                (state.value as Record<string, unknown>).ExecutionState === "error" && (
+                state.matches({ ExecutionState: "error" }) && (
                   <ErrorBubble
                     errorMessage={state.context.errorMessage || "An unknown error occurred"}
                     presets={presets}
