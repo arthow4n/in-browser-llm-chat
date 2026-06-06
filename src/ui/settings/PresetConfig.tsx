@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { useMachine } from "@xstate/react";
 import {
   Form,
@@ -17,32 +17,20 @@ import {
 import { CheckmarkOutline, Warning } from "@carbon/icons-react";
 import { presetConfigMachine } from "./presetConfigMachine";
 import { presetConnectionTesterMachine } from "./presetConnectionTester";
+import { POPULAR_MODELS } from "./modelConstants";
+import { modelSelectionMachine } from "./modelSelectionMachine";
 
 interface PresetConfigProps {
   presetId: string | null;
   onClose: () => void;
 }
 
-const POPULAR_MODELS = {
-  gemini: [
-    { label: "Gemini 2.5 Flash", value: "gemini-2.5-flash" },
-    { label: "Gemini 2.5 Pro", value: "gemini-2.5-pro" },
-    { label: "Gemini 1.5 Flash", value: "gemini-1.5-flash" },
-    { label: "Gemini 1.5 Pro", value: "gemini-1.5-pro" },
-  ],
-  openrouter: [
-    { label: "Google Gemini 2.5 Flash", value: "google/gemini-2.5-flash" },
-    { label: "Google Gemini 2.5 Pro", value: "google/gemini-2.5-pro" },
-    { label: "Llama 3.3 70B Instruct", value: "meta-llama/llama-3.3-70b-instruct" },
-    { label: "DeepSeek Chat", value: "deepseek/deepseek-chat" },
-  ],
-};
-
 export const PresetConfig: React.FC<PresetConfigProps> = ({ presetId, onClose }) => {
   const [configState, sendConfig] = useMachine(presetConfigMachine, {
     input: { presetId },
   });
 
+  const [modelState, sendModel] = useMachine(modelSelectionMachine);
   const [testerState, sendTester] = useMachine(presetConnectionTesterMachine);
 
   const {
@@ -59,21 +47,18 @@ export const PresetConfig: React.FC<PresetConfigProps> = ({ presetId, onClose })
     errorMessage,
   } = configState.context;
 
-  // Track if model is custom
-  const popularList = POPULAR_MODELS[provider];
-  const isModelPopular = popularList.some((m) => m.value === model);
-  const [isCustomModel, setIsCustomModel] = useState(!isModelPopular);
-  const [customModelId, setCustomModelId] = useState(isModelPopular ? "" : model);
+  const { isCustomModel, customModelId } = modelState.context;
 
-  // Synchronize custom model ID field
+  const popularList = POPULAR_MODELS[provider as keyof typeof POPULAR_MODELS];
+
+  // Synchronize model selection state with config state
   useEffect(() => {
-    if (!isModelPopular) {
-      setIsCustomModel(true);
-      setCustomModelId(model);
-    } else {
-      setIsCustomModel(false);
-    }
-  }, [model, isModelPopular]);
+    sendModel({
+      type: "SYNC_MODEL",
+      model,
+      provider: provider as keyof typeof POPULAR_MODELS,
+    });
+  }, [model, provider, sendModel]);
 
   // Handle final save/delete navigation
   useEffect(() => {
@@ -85,17 +70,21 @@ export const PresetConfig: React.FC<PresetConfigProps> = ({ presetId, onClose })
   const handleModelSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
     if (val === "custom") {
-      setIsCustomModel(true);
+      sendModel({
+        type: "SET_CUSTOM_MODEL",
+        isCustom: true,
+        modelId: customModelId,
+      });
       sendConfig({ type: "EDIT_FIELD", field: "model", value: customModelId || "" });
     } else {
-      setIsCustomModel(false);
+      sendModel({ type: "SET_CUSTOM_MODEL", isCustom: false });
       sendConfig({ type: "EDIT_FIELD", field: "model", value: val });
     }
   };
 
   const handleCustomModelIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
-    setCustomModelId(val);
+    sendModel({ type: "UPDATE_CUSTOM_ID", id: val });
     sendConfig({ type: "EDIT_FIELD", field: "model", value: val });
   };
 
