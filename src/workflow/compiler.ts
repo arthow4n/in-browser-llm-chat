@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { StateGraph, Annotation, END, START, interrupt } from "@langchain/langgraph";
 import type { WorkflowNode, WorkflowEdge } from "./schemas.js";
 import type { GraphMessage, CompiledPayloadMessage } from "./types.js";
@@ -206,6 +205,7 @@ export function compileWorkflow(
   edges: WorkflowEdge[],
   context: CompilationContext,
 ) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const graph = new StateGraph(GraphStateAnnotation) as any;
 
   // Find preceding node from outside for each loopHeader node
@@ -417,7 +417,7 @@ export function compileWorkflow(
   }
   const entryNode = nodes.find((n) => n.type === "input" || !nodesWithIncomingEdges.has(n.id));
   if (entryNode) {
-    graph.addEdge(START, entryNode.id as any);
+    graph.addEdge(START, entryNode.id);
   }
 
   // Add Edges
@@ -434,9 +434,10 @@ export function compileWorkflow(
         const fallbackTarget = unconditionalEdge ? unconditionalEdge.to : END;
 
         graph.addConditionalEdges(
-          node.id as any,
+          node.id,
           (state: Partial<GraphStateType>): "on_tool_call" | "fallback" => {
-            const lastMsg = state.messages?.[state.messages?.length ? state.messages.length - 1 : 0];
+            const lastMsg =
+              state.messages?.[state.messages?.length ? state.messages.length - 1 : 0];
             const hasToolCalls =
               lastMsg?.metadata?.tool_calls && lastMsg.metadata.tool_calls.length > 0;
             if (hasToolCalls && toolCallEdge) {
@@ -461,7 +462,7 @@ export function compileWorkflow(
         const fallbackTarget = unconditionalEdge ? unconditionalEdge.to : END;
 
         graph.addConditionalEdges(
-          node.id as any,
+          node.id,
           (state: Partial<GraphStateType>): string => {
             if (state.lastAgentId && pathMap[state.lastAgentId]) {
               return state.lastAgentId;
@@ -484,10 +485,12 @@ export function compileWorkflow(
         if (unconditionalEdge) pathMap.fallback = unconditionalEdge.to;
 
         graph.addConditionalEdges(
-          node.id as any,
+          node.id,
           (state: Partial<GraphStateType>): "on_consensus" | "on_no_consensus" | "fallback" => {
             const shouldTerminate =
-              state.consensusReached || state.forceSummarize || (state.currentRound !== undefined && state.currentRound >= maxLoopLimit);
+              state.consensusReached ||
+              state.forceSummarize ||
+              (state.currentRound !== undefined && state.currentRound >= maxLoopLimit);
 
             if (shouldTerminate && onConsensusEdge) {
               return "on_consensus" as const;
@@ -501,9 +504,9 @@ export function compileWorkflow(
         );
       }
     } else if (unconditionalEdge) {
-      graph.addEdge(node.id as any, unconditionalEdge.to as any);
+      graph.addEdge(node.id, unconditionalEdge.to);
     } else {
-      graph.addEdge(node.id as any, END);
+      graph.addEdge(node.id, END);
     }
   }
 

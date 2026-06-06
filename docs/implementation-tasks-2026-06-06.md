@@ -116,10 +116,10 @@ Replace the `any` generics in `new StateGraph<any, any, any, any>(GraphStateAnno
 
 Remove the `/* eslint-disable @typescript-eslint/no-explicit-any */` directive from `src/workflow/compiler.ts`.
 
-- [ ] Remove the eslint-disable comment.
-- [ ] Verify worktree state.
-- [ ] Perform code review.
-- [ ] Commit the changes.
+- [x] Remove the eslint-disable comment.
+- [x] Verify worktree state.
+- [x] Perform code review.
+- [x] Commit the changes.
 
 ## 4. Final Verification
 
