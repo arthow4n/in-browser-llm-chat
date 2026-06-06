@@ -51,11 +51,11 @@ Create Mock Service Worker (MSW) handlers to intercept and mock responses from G
 
 Create a helper utility to clear all IndexedDB tables between integration tests to ensure test isolation.
 
-- [ ] Implement a `clearDatabase()` function that deletes all records from `settings`, `presets`, `threads`, `messages`, and `checkpoints` tables.
-- [ ] Integrate `clearDatabase()` into the `beforeEach` hook of the integration test suite.
-- [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-- [ ] Perform code review.
-- [ ] Commit the changes.
+- [x] Implement a `clearDatabase()` function that deletes all records from `settings`, `presets`, `threads`, `messages`, and `checkpoints` tables.
+- [x] Integrate `clearDatabase()` into the `beforeEach` hook of the integration test suite.
+- [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+- [x] Perform code review.
+- [x] Commit the changes.
 
 ## 2. Onboarding & Seeding Test
 

@@ -182,6 +182,28 @@ export async function closeDB(): Promise<void> {
 }
 
 // -------------------------------------------------------------
+// Database Cleanup Utility
+// -------------------------------------------------------------
+
+export async function clearDatabase(): Promise<void> {
+  const db = await getDB();
+  const tx = db.transaction(
+    ["settings", "presets", "workflows", "threads", "messages", "checkpoints", "checkpoint_writes"],
+    "readwrite",
+  );
+
+  await tx.objectStore("settings").clear();
+  await tx.objectStore("presets").clear();
+  await tx.objectStore("workflows").clear();
+  await tx.objectStore("threads").clear();
+  await tx.objectStore("messages").clear();
+  await tx.objectStore("checkpoints").clear();
+  await tx.objectStore("checkpoint_writes").clear();
+
+  await tx.done;
+}
+
+// -------------------------------------------------------------
 // Settings Store CRUD Helpers
 // -------------------------------------------------------------
 
