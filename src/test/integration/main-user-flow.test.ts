@@ -170,7 +170,15 @@ describe("Main User Flow Integration Test", () => {
 
     // 4. Spawn the graphRunnerActor
     const runnerActor = createActor(graphRunnerActor, {
-      input: { threadId },
+      input: {
+        threadId,
+        llmProvider: async ({ presetId, systemPrompt, messages, tools }) => {
+          return {
+            content: "mocked Gemini response",
+            tool_calls: [],
+          };
+        },
+      },
     }).start();
 
     // 5. Send a START event

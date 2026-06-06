@@ -18,6 +18,19 @@ import { Command } from "@langchain/langgraph";
 import { type GraphMessage, type CompiledPayloadMessage, type RunnerInterrupt } from "./types.js";
 
 // Types
+export interface RunnerInput {
+  threadId: string;
+  llmProvider?: (params: {
+    presetId: string | undefined;
+    systemPrompt: string;
+    messages: GraphMessage[];
+    tools?: string[];
+  }) => Promise<{
+    content: string;
+    tool_calls?: Array<{ id: string; name: string; args: unknown }>;
+  }>;
+}
+
 export interface RunnerContext {
   threadId: string;
   workflowSnapshot: WorkflowStore | null;
@@ -36,6 +49,7 @@ export interface RunnerContext {
   accumulatedTokensThisStep: { promptTokens: number; completionTokens: number };
   lastEmitTime: number;
   toolResponse?: unknown;
+  llmProvider?: RunnerInput["llmProvider"];
 }
 
 export type RunnerEvent =
@@ -347,6 +361,7 @@ export const graphRunnerActor = createMachine(
       compiledGraph: null,
       accumulatedTokensThisStep: { promptTokens: 0, completionTokens: 0 },
       lastEmitTime: 0,
+      llmProvider: input.llmProvider,
     }),
     exit: ["abortActiveRequest"],
     on: {
@@ -355,7 +370,7 @@ export const graphRunnerActor = createMachine(
       },
     },
     states: {
-      initializing: {
+          initializing: {
         invoke: {
           src: fromPromise(async ({ input }: { input: { context: RunnerContext } }) => {
             const context = input.context;
@@ -376,26 +391,40 @@ export const graphRunnerActor = createMachine(
             // Load API keys
             const apiKeys = (await getSetting("api_keys")) || {};
 
+            // Get current max sequence
+            const existingMessages = await getMessagesForThread(context.threadId);
+            const maxSequence = existingMessages.length > 0 
+              ? Math.max(...existingMessages.map(m => m.sequence)) 
+              : -1;
+
             return {
               thread,
               preset: preset || null,
               apiKeys,
+              maxSequence,
             };
           }),
           input: ({ context }) => ({ context }),
           onDone: {
             target: "ready",
-            actions: assign(({ event }) => ({
-              workflowSnapshot: event.output.thread.workflowSnapshot,
-              presetConfig: event.output.preset,
-              apiKeyConfig: event.output.apiKeys,
-              activeInterrupt: event.output.thread.activeInterrupt,
-            })),
+            actions: assign(({ event }) => {
+              console.log('DEBUG: initializing onDone', JSON.stringify(event.output, null, 2));
+              return {
+                workflowSnapshot: event.output.thread.workflowSnapshot,
+                presetConfig: event.output.preset,
+                apiKeyConfig: event.output.apiKeys,
+                activeInterrupt: event.output.thread.activeInterrupt,
+                currentStepIndex: event.output.maxSequence + 1,
+              };
+            }),
           },
           onError: {
             target: "failed.graphError",
-            actions: assign({
-              errorMessage: ({ event }) => getEventErrorMessage(event) || "Failed to initialize",
+            actions: assign(({ event }) => {
+              console.log('DEBUG: initializing onError', JSON.stringify(event, null, 2));
+              return {
+                errorMessage: getEventErrorMessage(event) || "Failed to initialize",
+              };
             }),
           },
         },
@@ -436,8 +465,8 @@ export const graphRunnerActor = createMachine(
                     context.workflowSnapshot?.edges || [],
                     {
                       callLLM: async (presetId, systemPrompt, messages, _tools) => {
-                        if (abortController.signal.aborted) {
-                          throw new Error("Aborted");
+                        if (context.llmProvider) {
+                          return context.llmProvider({ presetId, systemPrompt, messages, tools: _tools });
                         }
 
                         // Budget checks before starting LLM execution
@@ -608,13 +637,15 @@ export const graphRunnerActor = createMachine(
                   const config = {
                     configurable: {
                       thread_id: context.threadId,
-                      checkpoint_ns: thread?.latestCheckpointNs ?? "",
-                      checkpoint_id: thread?.latestCheckpointId ?? undefined,
+                      checkpoint_ns: thread?.latestCheckpointNs || undefined,
+                      checkpoint_id: thread?.latestCheckpointId || undefined,
                     },
                   };
 
                   // Consume step-by-step
                   const state = await compiled.getState(config);
+                  console.log('DEBUG: state', JSON.stringify(state, null, 2));
+                  console.log('DEBUG: state.next', JSON.stringify(state.next, null, 2));
                   let runStream;
                   if (state.next && state.next.length > 0) {
                     const payload =
@@ -628,6 +659,7 @@ export const graphRunnerActor = createMachine(
                   } else {
                     // If it's a new thread or we're starting fresh, load existing messages from the DB to seed the graph state
                     const existingMessages = await getMessagesForThread(context.threadId);
+                    console.log('DEBUG: existingMessages', JSON.stringify(existingMessages, null, 2));
                     runStream = await compiled.stream(
                       { messages: existingMessages },
                       { ...config, streamMode: "updates" },
