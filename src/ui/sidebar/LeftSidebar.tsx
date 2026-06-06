@@ -1,7 +1,8 @@
 import React, { useEffect, useRef } from "react";
 import { useMachine } from "@xstate/react";
 import { useParams, useNavigate } from "react-router";
-import { Search, Button, Modal, Loading } from "@carbon/react";
+import { Search, Button, Modal, Loading, SkeletonText } from "@carbon/react";
+
 import { Add, TrashCan } from "@carbon/icons-react";
 import { leftSidebarMachine } from "./leftSidebarMachine.js";
 
@@ -75,6 +76,26 @@ export const LeftSidebar: React.FC = () => {
   const isConfirmingDelete = state.matches("confirmingDelete");
   const isDeleting = state.matches("deleting");
 
+  const renderSkeletons = () => (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+      {[...Array(10)].map((_, i) => (
+        <div
+          key={i}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "0.75rem 1rem",
+            gap: "0.5rem",
+          }}
+        >
+          <SkeletonText width="70%" />
+          <SkeletonText width="2rem" />
+        </div>
+      ))}
+    </div>
+  );
+
   return (
     <div
       style={{
@@ -129,9 +150,7 @@ export const LeftSidebar: React.FC = () => {
         }}
       >
         {isLoadingInitial ? (
-          <div style={{ padding: "1rem", display: "flex", justifyContent: "center" }}>
-            <Loading withOverlay={false} small />
-          </div>
+          <div style={{ padding: "1rem" }}>{renderSkeletons()}</div>
         ) : threads.length === 0 ? (
           <div style={{ padding: "2rem 1rem", textAlign: "center", color: "#8d8d8d" }}>
             No chats found

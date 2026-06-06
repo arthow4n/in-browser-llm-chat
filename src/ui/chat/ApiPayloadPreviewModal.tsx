@@ -51,7 +51,9 @@ export function ApiPayloadPreviewModal({
               agents.find((a) => a.id === state.context.activeAgentId)?.name || "Select Agent"
             }
             items={agents.map((a) => ({ id: a.id, label: a.name }))}
-            onChange={(data: unknown) => send({ type: "SELECT_AGENT", agentId: (data as any).target.value })}
+            onChange={(data: unknown) =>
+              send({ type: "SELECT_AGENT", agentId: (data as any).target.value })
+            }
           />
 
           {state.context.errorMessage && (

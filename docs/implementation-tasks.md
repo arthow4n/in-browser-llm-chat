@@ -195,8 +195,8 @@ This document contains a step-by-step checklist to build the LLM chat applicatio
   - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
   - [x] Perform code review (self/subagent).
   - [x] Commit the changes following `AGENTS.md`.
-- [ ] **Step 11.3:** Perform a final review of the empty states, loading skeletons, error fallbacks, and mobile constraints as dictated by the "Global UX/UI Guidelines" in the scratchpad. Fix any UI misalignments to purely use Carbon Design elements.
-  - [ ] Conduct final UI/UX review and fix misalignments.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Perform code review (self/subagent).
-  - [ ] Commit the changes following `AGENTS.md`.
+- [x] **Step 11.3:** Perform a final review of the empty states, loading skeletons, error fallbacks, and mobile constraints as dictated by the "Global UX/UI Guidelines" in the scratchpad. Fix any UI misalignments to purely use Carbon Design elements.
+  - [x] Conduct final UI/UX review and fix misalignments.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Perform code review (self/subagent).
+  - [x] Commit the changes following `AGENTS.md`.

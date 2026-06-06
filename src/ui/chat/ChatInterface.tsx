@@ -91,13 +91,13 @@ export function ChatInterface() {
       if (agent && agent.type === "agent") {
         const workflowInjected =
           thread?.workflowSnapshot && typeof thread.workflowSnapshot === "object"
-            ? (thread.workflowSnapshot as any).injectedSystemMessages || []
+            ? (thread.workflowSnapshot as Record<string, unknown>).injectedSystemMessages || []
             : [];
         const payload = compilePayloadForAgent(
           agent,
           messages as any,
           globalInjectedMessages,
-          workflowInjected,
+          workflowInjected as any,
         );
         setPreviewPayload(payload);
       } else {
@@ -110,14 +110,18 @@ export function ChatInterface() {
     <>
       <Header aria-label="LLM Chat Thread">
         <HeaderName href="#" prefix="Chat">
-          {thread?.title || "Loading..."}
+          {!thread && (state.value as Record<string, unknown>).ViewState === "initializing"
+            ? "Loading..."
+            : !thread
+              ? "Thread Not Found"
+              : thread?.title || "Loading..."}
         </HeaderName>
         <HeaderGlobalBar>
           <Button
             kind="ghost"
             size="sm"
             onClick={handleOpenPayloadPreview}
-            disabled={(state.value as any).ExecutionState === "executing"}
+            disabled={(state.value as Record<string, unknown>).ExecutionState === "executing"}
           >
             Preview API Payload
           </Button>
@@ -126,7 +130,9 @@ export function ChatInterface() {
             label="Active Preset"
             titleText={activePresetName}
             items={presets.map((p) => ({ id: p.id, label: p.name }))}
-            onChange={(data: unknown) => send({ type: "SWITCH_PRESET", presetId: (data as any).target.value })}
+            onChange={(data: unknown) =>
+              send({ type: "SWITCH_PRESET", presetId: (data as Record<string, unknown>).target.value as string })
+            }
           />
           <Button
             kind="ghost"

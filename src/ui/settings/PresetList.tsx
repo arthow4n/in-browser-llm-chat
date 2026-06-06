@@ -11,7 +11,9 @@ import {
   Pagination,
   Modal,
   InlineNotification,
+  DataTableSkeleton,
 } from "@carbon/react";
+
 import { presetListMachine } from "./presetListMachine";
 import { PresetStore } from "../../db/db";
 
@@ -23,6 +25,8 @@ export const PresetList: React.FC = () => {
   useEffect(() => {
     send({ type: "FETCH_PRESETS" });
   }, [send]);
+
+  const isLoading = state.matches("loading");
 
   const sortedAndPagedPresets = useMemo(() => {
     let result = [...presets];
@@ -79,22 +83,43 @@ export const PresetList: React.FC = () => {
           </TableRow>
         </TableHead>
         <TableBody>
-          {sortedAndPagedPresets.map((row) => (
-            <TableRow key={row.id}>
-              <TableCell>{row.name}</TableCell>
-              <TableCell>{row.provider}</TableCell>
-              <TableCell>{row.model}</TableCell>
-              <TableCell>
-                <Button
-                  kind="danger"
-                  size="sm"
-                  onClick={() => send({ type: "DELETE_REQUESTED", id: row.id })}
-                >
-                  Delete
-                </Button>
+          {isLoading ? (
+            <DataTableSkeleton
+              headers={[
+                { key: "name", header: "Name" },
+                { key: "provider", header: "Provider" },
+                { key: "model", header: "Model" },
+                { key: "actions", header: "Actions" },
+              ]}
+              rowCount={pagination.pageSize}
+            />
+          ) : sortedAndPagedPresets.length === 0 ? (
+            <TableRow>
+              <TableCell
+                colSpan={4}
+                style={{ textAlign: "center", padding: "2rem", color: "#525252" }}
+              >
+                No presets found.
               </TableCell>
             </TableRow>
-          ))}
+          ) : (
+            sortedAndPagedPresets.map((row) => (
+              <TableRow key={row.id}>
+                <TableCell>{row.name}</TableCell>
+                <TableCell>{row.provider}</TableCell>
+                <TableCell>{row.model}</TableCell>
+                <TableCell>
+                  <Button
+                    kind="danger"
+                    size="sm"
+                    onClick={() => send({ type: "DELETE_REQUESTED", id: row.id })}
+                  >
+                    Delete
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))
+          )}
         </TableBody>
       </Table>
 
