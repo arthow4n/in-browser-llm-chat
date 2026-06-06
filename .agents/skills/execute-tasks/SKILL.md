@@ -15,6 +15,7 @@ Follow this process strictly:
 2. Execution Loop:
    - Read the tasks file to identify the next pending step. If all steps are clearly marked as done, break the loop and proceed to Completion.
    - Spawn an isolated subagent and instruct it to execute exactly 1 pending step from the tasks file. Instruct the subagent to:
+     - Run `git status && git diff` to understand if the current branch state is in the middle of a failed run (e.g., if a previous subagent crashed and exited abruptly), so it can pick up the progress and continue the step.
      - Read the specific task description.
      - Implement the required changes.
      - Mark the step as completed in the tasks markdown file.
