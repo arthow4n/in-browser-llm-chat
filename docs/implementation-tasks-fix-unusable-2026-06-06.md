@@ -40,9 +40,9 @@ Implement a React Context to share the `parentCoordinatorMachine` instance acros
 
 Ensure the entire application is wrapped in the new provider.
 
-- [ ] Update `src/App.tsx` to wrap the component tree with `CoordinatorProvider`.
-- [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run build`).
-- [ ] Commit: `(Agent Name) Wrap App with CoordinatorProvider`.
+- [x] Update `src/App.tsx` to wrap the component tree with `CoordinatorProvider`.
+- [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run build`).
+- [x] Commit: `(Agent Name) Wrap App with CoordinatorProvider`.
 
 ### Step 1.3: Refactor `App.tsx` to use `useCoordinator`
 
