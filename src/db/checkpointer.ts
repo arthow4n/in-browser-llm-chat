@@ -12,6 +12,23 @@ import {
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { getDB, type CheckpointStore, type CheckpointWriteStore } from "./db.js";
 
+interface SerializedData {
+  type: string;
+  value: Uint8Array;
+}
+
+function isSerializedData(data: unknown): data is SerializedData {
+  if (typeof data !== "object" || data === null) {
+    return false;
+  }
+  const record = data as Record<string, unknown>;
+  const isTypeValid = typeof record.type === "string";
+  const isValueValid =
+    record.value instanceof Uint8Array ||
+    Object.prototype.toString.call(record.value) === "[object Uint8Array]";
+  return isTypeValid && isValueValid;
+}
+
 export class IndexedDBSaver extends BaseCheckpointSaver {
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
     const threadId = config.configurable?.thread_id;
@@ -41,8 +58,15 @@ export class IndexedDBSaver extends BaseCheckpointSaver {
       return undefined;
     }
 
-    const ch = record.checkpoint as { type: string; value: Uint8Array };
-    const meta = record.metadata as { type: string; value: Uint8Array };
+    if (!isSerializedData(record.checkpoint)) {
+      throw new Error("Invalid checkpoint format");
+    }
+    const ch = record.checkpoint;
+
+    if (!isSerializedData(record.metadata)) {
+      throw new Error("Invalid metadata format");
+    }
+    const meta = record.metadata;
     const deserializedCheckpoint = await this.serde.loadsTyped(ch.type, ch.value);
     const deserializedMetadata = await this.serde.loadsTyped(meta.type, meta.value);
 
@@ -53,7 +77,10 @@ export class IndexedDBSaver extends BaseCheckpointSaver {
 
     const pendingWrites = await Promise.all(
       filteredWrites.map(async (w): Promise<CheckpointPendingWrite> => {
-        const v = w.value as { type: string; value: Uint8Array };
+        if (!isSerializedData(w.value)) {
+          throw new Error("Invalid pending write format");
+        }
+        const v = w.value;
         const deserializedValue = await this.serde.loadsTyped(v.type, v.value);
         return [w.taskId, w.channel, deserializedValue];
       }),
@@ -233,8 +260,15 @@ export class IndexedDBSaver extends BaseCheckpointSaver {
         break;
       }
 
-      const ch = r.checkpoint as { type: string; value: Uint8Array };
-      const meta = r.metadata as { type: string; value: Uint8Array };
+      if (!isSerializedData(r.checkpoint)) {
+        throw new Error("Invalid checkpoint format");
+      }
+      const ch = r.checkpoint;
+
+      if (!isSerializedData(r.metadata)) {
+        throw new Error("Invalid metadata format");
+      }
+      const meta = r.metadata;
       const deserializedCheckpoint = await this.serde.loadsTyped(ch.type, ch.value);
       const deserializedMetadata = await this.serde.loadsTyped(meta.type, meta.value);
 
@@ -253,7 +287,10 @@ export class IndexedDBSaver extends BaseCheckpointSaver {
       );
       const pendingWrites = await Promise.all(
         filteredWrites.map(async (w): Promise<CheckpointPendingWrite> => {
-          const v = w.value as { type: string; value: Uint8Array };
+          if (!isSerializedData(w.value)) {
+            throw new Error("Invalid pending write format");
+          }
+          const v = w.value;
           const deserializedValue = await this.serde.loadsTyped(v.type, v.value);
           return [w.taskId, w.channel, deserializedValue];
         }),
