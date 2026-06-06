@@ -3,7 +3,8 @@
 ## Git/GitHub conventions
 
 - Unless otherwise instructed, commit the changes directly after you are done with the work, but don't push.
-- Begin the commit message and pull request title with the coding agent name. If the model selection or model ID is available (especially for Antigravity), include it in the agent name prefix (e.g., `(Antigravity/Gemini 3.5 Flash (Low))` or `(Antigravity/gemini-3.5-flash)` should be prioritized over `(Antigravity)`).
+- Subagents should work on the same branch as the current one unless otherwise mentioned.
+- Begin the commit message and pull request title with the coding agent name. If the model selection or model ID is available (especially for Antigravity), include it in the agent name prefix (e.g., `(Antigravity/Gemini 3.5 Flash (Low))` or `(Antigravity/gemini-3.5-flash)` should be prioritized over `(Antigravity)`). However, the model name/id shouldn't be "guessed" - it must be explicitly provided in the prompt. If it is not explicitly provided, it is better to omit the model name/id in the commit message.
   - Bad example
     - Add X and do Y
   - Good examples
