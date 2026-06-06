@@ -10,9 +10,9 @@ export default function (pi: ExtensionAPI) {
     const model = ctx.model;
     if (!model) return;
 
-    const modelName = model.name || model.id;
+    const modelId = model.id || model.name;
     const provider = model.provider;
-    const modelContext = `Current model: ${provider}/${modelName}`;
+    const modelContext = `Current model: ${provider}/${modelId}`;
 
     return {
       systemPrompt: event.systemPrompt + `\n\n${modelContext}`,
