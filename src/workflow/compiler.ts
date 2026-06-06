@@ -3,13 +3,14 @@ import type { WorkflowNode, WorkflowEdge } from "./schemas.js";
 
 export type GraphMessage = {
   id?: string;
-  role?: string;
-  content?: string;
-  type?: string;
-  metadata?: { tool_calls?: { id: string; name: string; args?: unknown }[] };
+  role: "system" | "user" | "assistant" | "tool";
+  content: string;
+  type?: "text" | "tool_call" | "tool_result" | "reasoning";
   name?: string;
   toolCallId?: string;
+  metadata?: { tool_calls?: { id: string; name: string; args?: unknown }[] };
   createdAt?: number;
+  isInjected?: boolean;
 };
 
 export interface CompiledPayloadMessage {

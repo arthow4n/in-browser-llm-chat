@@ -821,7 +821,7 @@ export const graphRunnerActor = createMachine(
                   activeInterrupt: null,
                   stepsInCurrentRun: 0,
                   tokensInCurrentRun: 0,
-                  toolResponse: (event as any).response,
+                  toolResponse: event.type === "SUBMIT_TOOL_RESPONSE" ? event.response : undefined,
                 })),
               },
             },
@@ -833,8 +833,8 @@ export const graphRunnerActor = createMachine(
                 actions: assign(({ event }) => ({
                   activeInterrupt: null,
                   stepsInCurrentRun: 0,
-                  toolResponse: (event as any).response,
                   tokensInCurrentRun: 0,
+                  toolResponse: event.type === "SUBMIT_TOOL_RESPONSE" ? event.response : undefined,
                 })),
               },
             },

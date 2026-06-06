@@ -59,7 +59,7 @@ export function ChatInputArea({ parentState, parentSend }: ChatInputAreaProps) {
       return;
     }
 
-    const message = {
+    const message: import("../../db/db").MessageStore = {
       id: uuidv4(),
       threadId,
       sequence: 0,
@@ -73,7 +73,7 @@ export function ChatInputArea({ parentState, parentSend }: ChatInputAreaProps) {
       name: role,
     };
 
-    parentSend({ type: "SUBMIT_MESSAGE", message } as unknown as CoordinatorEvent);
+    parentSend({ type: "SUBMIT_MESSAGE", message });
     send({ type: "RESET" });
   };
 

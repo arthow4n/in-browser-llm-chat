@@ -95,7 +95,7 @@ export function ChatInterface() {
             : [];
         const payload = compilePayloadForAgent(
           agent,
-          messages as unknown as import("../../workflow/compiler").GraphMessage[],
+          messages as import("../../workflow/compiler").GraphMessage[],
           globalInjectedMessages,
           workflowInjected as Array<{ content: string; depth: number }>,
         );
