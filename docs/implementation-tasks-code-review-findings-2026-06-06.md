@@ -51,11 +51,11 @@
 
 ## 3. Fix UI State Machine Policy Violations (`useState` Usage)
 
-- [ ] **Step 3.1:** Migrate state in `src/App.tsx`
-  - [ ] Create an XState machine to manage `isSidebarOpen` and migrate the component from `useState` to `@xstate/react`.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Perform code review (self/subagent).
-  - [ ] Commit the changes following `AGENTS.md`.
+- [x] **Step 3.1:** Migrate state in `src/App.tsx`
+  - [x] Create an XState machine to manage `isSidebarOpen` and migrate the component from `useState` to `@xstate/react`.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Perform code review (self/subagent).
+  - [x] Commit the changes following `AGENTS.md`.
 
 - [ ] **Step 3.2:** Migrate state in `src/ui/AskQuestionsForm.tsx`
   - [ ] Create an XState machine to manage `answers` and migrate the component from `useState` to `@xstate/react`.
