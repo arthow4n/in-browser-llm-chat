@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, it, expect, beforeEach } from "vitest";
 import { MemoryRouter } from "react-router";
 import { App } from "./App";
+import { CoordinatorProvider } from "./context/CoordinatorContext";
 import { resetDBPromise } from "./db/db.js";
 
 describe("App", () => {
@@ -13,7 +14,9 @@ describe("App", () => {
   it("renders the Carbon layout shell", () => {
     render(
       <MemoryRouter>
-        <App />
+        <CoordinatorProvider>
+          <App />
+        </CoordinatorProvider>
       </MemoryRouter>,
     );
 
