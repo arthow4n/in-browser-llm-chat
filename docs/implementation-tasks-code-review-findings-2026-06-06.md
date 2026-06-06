@@ -3,6 +3,7 @@
 **Source:** `docs/code-review-findings-2026-06-06.md`
 
 ## Rules for the Coding Agent
+
 1. **Strict Sequential Execution**: Execute tasks one by one in the order they appear. Do not skip steps.
 2. **Verify Worktree State**: For every step, run the verification commands (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`) and fix any issues before proceeding.
 3. **Code Review**: Self-review your changes against the original requirements and no-bypasses policy.
@@ -24,11 +25,11 @@
 
 ## 2. Fix Structural Type Casting
 
-- [ ] **Step 2.1:** Fix structural type casting in `src/db/checkpointer.ts`
-  - [ ] Define explicit `interface` or `type` definitions and use type guards or Zod schema validation to replace `as { type: string; value: Uint8Array }` on Lines 44, 45, 56, 236, 237, 256.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Perform code review (self/subagent).
-  - [ ] Commit the changes following `AGENTS.md`.
+- [x] **Step 2.1:** Fix structural type casting in `src/db/checkpointer.ts`
+  - [x] Define explicit `interface` or `type` definitions and use type guards or Zod schema validation to replace `as { type: string; value: Uint8Array }` on Lines 44, 45, 56, 236, 237, 256.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Perform code review (self/subagent).
+  - [x] Commit the changes following `AGENTS.md`.
 
 - [ ] **Step 2.2:** Fix structural type casting in `src/ui/ChatMessage.tsx`
   - [ ] Define explicit `interface` or `type` definitions and use type guards or Zod schema validation to replace structural cast on Line 276.
