@@ -148,7 +148,7 @@ describe("Database CRUD Helper Functions", () => {
       nodes: [{ id: "agent-node", type: "agent", name: "Agent A", presetId: "preset-1" }],
       edges: [],
     };
-    await saveWorkflow(workflow as unknown as WorkflowStore);
+    await saveWorkflow(workflow as WorkflowStore);
     await expect(deletePreset("preset-1")).rejects.toThrow(
       "Cannot delete preset: referenced by workflows",
     );

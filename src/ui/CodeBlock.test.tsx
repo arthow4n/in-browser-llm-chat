@@ -62,11 +62,9 @@ describe("CodeBlock", () => {
 
     vi.spyOn(document, "createElement").mockImplementation((tagName: string) => {
       if (tagName === "a") {
-        return {
-          href: "",
-          download: "",
-          click: aCreateMock,
-        } as unknown as HTMLElement;
+        const anchor = originalCreateElement("a") as HTMLAnchorElement;
+        anchor.click = aCreateMock;
+        return anchor;
       }
       return originalCreateElement(tagName);
     });

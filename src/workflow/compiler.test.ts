@@ -74,13 +74,13 @@ describe("Workflow Compiler and Execution", () => {
     ];
     const edges: WorkflowEdge[] = [{ from: "input", to: "agent" }];
 
-    const callLLMMock = vi.fn<(...args: unknown[]) => unknown>().mockResolvedValue({
+    const callLLMMock = vi.fn<CompilationContext["callLLM"]>().mockResolvedValue({
       content: "Summary of topic",
     });
 
-    const context = {
+    const context: CompilationContext = {
       callLLM: callLLMMock,
-    } as unknown as CompilationContext;
+    };
 
     const graph = compileWorkflow(nodes, edges, context);
     const compiled = graph.compile({ checkpointer: new MemorySaver() });
@@ -153,7 +153,7 @@ describe("Workflow Compiler and Execution", () => {
 
     const callLLMToolsHistory: (string[] | undefined)[] = [];
     const callLLMMock = vi
-      .fn<(...args: unknown[]) => unknown>()
+      .fn<CompilationContext["callLLM"]>()
       .mockImplementation(async (_preset, _systemPrompt, _messages, tools) => {
         callLLMToolsHistory.push(tools as string[] | undefined);
         return {
@@ -161,10 +161,10 @@ describe("Workflow Compiler and Execution", () => {
         };
       });
 
-    const context = {
+    const context: CompilationContext = {
       callLLM: callLLMMock,
       warn: vi.fn<(...args: unknown[]) => unknown>(),
-    } as unknown as CompilationContext;
+    };
 
     const graph = compileWorkflow(nodes, edges, context);
     const compiled = graph.compile({ checkpointer: new MemorySaver() });
@@ -208,12 +208,12 @@ describe("Workflow Compiler and Execution", () => {
     ];
     const edges: WorkflowEdge[] = [];
     const warnMock = vi.fn<(...args: unknown[]) => unknown>();
-    const context = {
+    const context: CompilationContext = {
       callLLM: vi
-        .fn<(...args: unknown[]) => unknown>()
+        .fn<CompilationContext["callLLM"]>()
         .mockResolvedValue({ content: "invalid-json" }),
       warn: warnMock,
-    } as unknown as CompilationContext;
+    };
 
     const graph = compileWorkflow(nodes, edges, context);
     const compiled = graph.compile();
@@ -237,7 +237,7 @@ describe("Workflow Compiler and Execution", () => {
     ];
 
     const callLLMMock = vi
-      .fn<(...args: unknown[]) => unknown>()
+      .fn<CompilationContext["callLLM"]>()
       .mockResolvedValueOnce({
         content: "calling tool",
         tool_calls: [{ id: "tc-1", name: "ask_questions", args: { questions: [] } }],
@@ -246,9 +246,9 @@ describe("Workflow Compiler and Execution", () => {
         content: "all done",
       });
 
-    const context = {
+    const context: CompilationContext = {
       callLLM: callLLMMock,
-    } as unknown as CompilationContext;
+    };
 
     const graph = compileWorkflow(nodes, edges, context);
     const compiled = graph.compile({ checkpointer: new MemorySaver() });

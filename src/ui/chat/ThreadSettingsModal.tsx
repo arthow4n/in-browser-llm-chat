@@ -159,10 +159,10 @@ export function ThreadSettingsModal({
             label="Active Preset"
             defaultValue={settingsState.context.selectedPresetId}
             items={presets.map((p) => ({ id: p.id, text: p.name }))}
-            onChange={(e) =>
+            onChange={(data: { selectedItem: { id: string } }) =>
               settingsSend({
                 type: "CHANGE_PRESET",
-                presetId: (e as unknown as { target: { value: string } }).target.value,
+                presetId: data.selectedItem.id,
               })
             }
           />

@@ -318,7 +318,7 @@ export const parentCoordinatorMachine = createMachine(
                 }
               },
             ],
-            target: "inactive",
+            target: ".inactive",
           },
         },
         states: {

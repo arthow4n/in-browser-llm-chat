@@ -132,7 +132,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                     code={
                       Array.isArray(children)
                         ? children.join("").replace(/\n$/, "")
-                        : (children as unknown as string).replace(/\n$/, "")
+                        : String(children).replace(/\n$/, "")
                     }
                   />
                 ) : (
@@ -176,9 +176,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                     threadId={currentThreadId}
                     toolCallId={message.toolCallId || ""}
                     questions={JSON.parse(message.content || "[]")}
-                    initialDrafts={
-                      draftAnswers as unknown as Record<string, Record<string, Answer>>
-                    }
+                    initialDrafts={draftAnswers as Record<string, Record<string, Answer>>}
                     onUpdateDraft={() => {}} // handled internally by component & DB
                     onSubmit={async (response: AskQuestionsResponse) => {
                       const resultMessage: MessageStore = {

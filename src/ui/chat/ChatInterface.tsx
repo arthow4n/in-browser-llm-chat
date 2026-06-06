@@ -22,7 +22,7 @@ import {
   type ThreadStore,
   type MessageStore,
 } from "../../db/db";
-import { type CoordinatorEvent } from "../../workflow/parentCoordinator";
+
 import { type WorkflowNode } from "../../workflow/schemas";
 import { type CompiledPayloadMessage } from "../../workflow/compiler";
 
@@ -157,7 +157,7 @@ export function ChatInterface() {
           <div style={{ maxWidth: "800px", margin: "0 auto" }}>
             <ChatFeed
               messages={messages}
-              send={(event: CoordinatorEvent | { type: string }) => send(event as CoordinatorEvent)}
+              send={(event: unknown) => send(event as import("../../workflow/parentCoordinator").CoordinatorEvent)}
               currentThreadId={state.context.currentThreadId}
               draftAnswers={draftAnswers}
               budgetExceededCard={
