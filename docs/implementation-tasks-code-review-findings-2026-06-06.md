@@ -37,11 +37,11 @@
   - [x] Perform code review (self/subagent).
   - [x] Commit the changes following `AGENTS.md`.
 
-- [ ] **Step 2.3:** Fix structural type casting in `src/ui/ErrorBubble.tsx`
-  - [ ] Define explicit `interface` or `type` definitions and use type guards or Zod schema validation to replace structural cast on Line 62.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Perform code review (self/subagent).
-  - [ ] Commit the changes following `AGENTS.md`.
+- [x] **Step 2.3:** Fix structural type casting in `src/ui/ErrorBubble.tsx`
+  - [x] Define explicit `interface` or `type` definitions and use type guards or Zod schema validation to replace structural cast on Line 62.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Perform code review (self/subagent).
+  - [x] Commit the changes following `AGENTS.md`.
 
 - [ ] **Step 2.4:** Fix structural type casting in `src/ui/chat/ChatInputArea.tsx`
   - [ ] Define explicit `interface` or `type` definitions and use type guards or Zod schema validation to replace structural cast on Line 38.

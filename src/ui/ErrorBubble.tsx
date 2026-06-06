@@ -1,6 +1,15 @@
 import React from "react";
 import { Button, Dropdown } from "@carbon/react";
 import { PresetStore } from "../db/db";
+import { z } from "zod";
+
+const dropdownChangeSchema = z
+  .object({
+    item: z.object({ id: z.string() }).optional(),
+    selectedItem: z.object({ id: z.string() }).optional(),
+    value: z.string().optional(),
+  })
+  .passthrough();
 
 interface ErrorBubbleProps {
   errorMessage: string;
@@ -59,10 +68,13 @@ export const ErrorBubble: React.FC<ErrorBubbleProps> = ({
             items={presets.map((p) => ({ id: p.id, text: p.name }))}
             itemToString={(item: { text: string }) => (item ? item.text : "")}
             onChange={(data: unknown) => {
-              const item = data as { item?: { id: string }; value?: string };
-              const id = item.item?.id || item.value;
-              if (id) {
-                onChangePreset(id);
+              const result = dropdownChangeSchema.safeParse(data);
+              if (result.success) {
+                const parsed = result.data;
+                const id = parsed.selectedItem?.id || parsed.item?.id || parsed.value;
+                if (id) {
+                  onChangePreset(id);
+                }
               }
             }}
           />
