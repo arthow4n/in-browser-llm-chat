@@ -1,4 +1,4 @@
-import { createMachine, assign } from "xstate";
+import { createMachine, assign, assertEvent } from "xstate";
 
 export interface ProposedActionContext {
   toolCallId: string;
@@ -37,18 +37,14 @@ export const proposedActionCardMachine = createMachine({
       on: {
         START_APPROVAL: {
           target: "awaitingApproval",
-          actions: assign({
-            toolCallId: ({ event }) =>
-              (event as Extract<ProposedActionEvent, { type: "START_APPROVAL" }>).payload
-                .toolCallId,
-            actionType: ({ event }) =>
-              (event as Extract<ProposedActionEvent, { type: "START_APPROVAL" }>).payload
-                .actionType,
-            payload: ({ event }) =>
-              (event as Extract<ProposedActionEvent, { type: "START_APPROVAL" }>).payload.payload,
-            originalPayload: ({ event }) =>
-              (event as Extract<ProposedActionEvent, { type: "START_APPROVAL" }>).payload
-                .originalPayload,
+          actions: assign(({ event }) => {
+            assertEvent(event, "START_APPROVAL");
+            return {
+              toolCallId: event.payload.toolCallId,
+              actionType: event.payload.actionType,
+              payload: event.payload.payload,
+              originalPayload: event.payload.originalPayload,
+            };
           }),
         },
       },
