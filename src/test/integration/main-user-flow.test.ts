@@ -1,7 +1,8 @@
 import { describe, beforeEach, it, expect } from "vitest";
 import { createActor } from "xstate";
-import { clearDatabase, getSetting, getAllPresets } from "../../db/db";
+import { clearDatabase, getSetting, getAllPresets, createNewThread, getThread } from "../../db/db";
 import { globalSettingsMachine } from "../../ui/settings/globalSettings";
+import { BUILT_IN_WORKFLOWS } from "../../workflow/builtInWorkflows";
 
 describe("Main User Flow Integration Test", () => {
   beforeEach(async () => {
@@ -110,5 +111,65 @@ describe("Main User Flow Integration Test", () => {
     const defaultPresetId = await getSetting<string>("default_preset_id");
     expect(defaultPresetId).toBeDefined();
     expect(presets.some((p) => p.id === defaultPresetId)).toBe(true);
+  });
+
+  it("should programmatically create a new chat thread associated with a workflow and preset", async () => {
+    // 1. Setup: Seed API keys and presets
+    const actor = createActor(globalSettingsMachine).start();
+    await new Promise<void>((resolve) => {
+      const subscription = actor.subscribe((state) => {
+        if (state.matches("idle")) {
+          subscription.unsubscribe();
+          resolve();
+        }
+      });
+    });
+
+    actor.send({
+      type: "EDIT_FIELD",
+      field: "openRouterApiKey",
+      value: "mock-openrouter-key",
+    });
+    actor.send({
+      type: "EDIT_FIELD",
+      field: "geminiApiKey",
+      value: "mock-gemini-key",
+    });
+    actor.send({ type: "SAVE" });
+
+    await new Promise<void>((resolve) => {
+      const subscription = actor.subscribe((state) => {
+        if (state.matches({ idle: "clean" })) {
+          subscription.unsubscribe();
+          resolve();
+        }
+      });
+    });
+
+    // 2. Get a seeded preset and the standard workflow
+    const presets = await getAllPresets();
+    const preset = presets[0];
+    expect(preset).toBeDefined();
+
+    const standardWorkflow = BUILT_IN_WORKFLOWS.find((wf) => wf.id === "builtin-standard-workflow");
+    expect(standardWorkflow).toBeDefined();
+
+    // 3. Create a new thread
+    const { threadId } = await createNewThread({
+      workflowId: standardWorkflow!.id,
+      workflowSnapshot: standardWorkflow!,
+      activePresetId: preset!.id,
+      initialMessage: "Hello world",
+    });
+
+    expect(threadId).toBeDefined();
+
+    // 4. Assert the thread is correctly persisted in the DB
+    const thread = await getThread(threadId);
+    expect(thread).toBeDefined();
+    expect(thread?.workflowId).toBe(standardWorkflow!.id);
+    expect(thread?.activePresetId).toBe(preset!.id);
+    expect(thread?.title).toBe("Hello world");
+    expect(thread?.status).toBe("inactive");
   });
 });

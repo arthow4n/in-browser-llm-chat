@@ -86,11 +86,11 @@ Verify that the initial seeding of default presets occurs as expected during the
 
 Implement a test step that programmatically creates a new chat thread.
 
-- [ ] Implement logic to create a new thread in the DB associated with the `builtin-standard-workflow` and one of the seeded presets.
-- [ ] Assert that the thread is correctly persisted in the `threads` table with the correct workflow and preset IDs.
-- [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-- [ ] Perform code review.
-- [ ] Commit the changes.
+- [x] Implement logic to create a new thread in the DB associated with the `builtin-standard-workflow` and one of the seeded presets.
+- [x] Assert that the thread is correctly persisted in the `threads` table with the correct workflow and preset IDs.
+- [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+- [x] Perform code review.
+- [x] Commit the changes.
 
 ### Step 3.2: Implement `graphRunnerActor` Execution Trigger
 
