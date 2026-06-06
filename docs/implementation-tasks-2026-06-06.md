@@ -59,11 +59,11 @@ Remove the `/* eslint-disable @typescript-eslint/no-explicit-any */` directive f
 
 Refactor the `ThreadStore` interface in `src/db/db.ts` to use the `WorkflowStore` type for the `workflowSnapshot` field, eliminating the need for casting it as `Record<string, unknown>` in the UI.
 
-- [ ] Update `ThreadStore` interface in `src/db/db.ts` to use `WorkflowStore` for `workflowSnapshot`.
-- [ ] Update usages of `workflowSnapshot` in `src/ui/chat/ChatInterface.tsx` to remove the cast.
-- [ ] Verify worktree state.
-- [ ] Perform code review.
-- [ ] Commit the changes.
+- [x] Update `ThreadStore` interface in `src/db/db.ts` to use `WorkflowStore` for `workflowSnapshot`.
+- [x] Update usages of `workflowSnapshot` in `src/ui/chat/ChatInterface.tsx` to remove the cast.
+- [x] Verify worktree state.
+- [x] Perform code review.
+- [x] Commit the changes.
 
 ### Step 2.2: Fix Structural Casting of `workflowInjected`
 

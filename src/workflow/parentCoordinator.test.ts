@@ -34,6 +34,8 @@ describe("parentCoordinatorMachine", () => {
       workflowSnapshot: {
         id: "wf-1",
         name: "WF",
+        description: "WF Description",
+        isBuiltIn: false,
         nodes: [{ id: "input", type: "input", name: "User Input" }],
         edges: [],
       },
@@ -91,6 +93,8 @@ describe("parentCoordinatorMachine", () => {
       workflowSnapshot: {
         id: "wf-1",
         name: "WF",
+        description: "WF Description",
+        isBuiltIn: false,
         nodes: [{ id: "input", type: "input", name: "User Input" }],
         edges: [],
       },

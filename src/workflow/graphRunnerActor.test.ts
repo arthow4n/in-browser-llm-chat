@@ -33,6 +33,8 @@ describe("graphRunnerActor", () => {
       workflowSnapshot: {
         id: "wf-1",
         name: "Test Wf",
+        description: "Test Description",
+        isBuiltIn: false,
         nodes: [{ id: "input", type: "input", name: "User Input" }],
         edges: [],
       },

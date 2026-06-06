@@ -32,7 +32,7 @@ export interface ThreadStore {
   id: string;
   title: string;
   workflowId: string;
-  workflowSnapshot: unknown;
+  workflowSnapshot: WorkflowStore;
   activePresetId: string;
   createdAt: number;
   updatedAt: number;

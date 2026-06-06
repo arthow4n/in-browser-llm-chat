@@ -85,10 +85,7 @@ export function ChatInterface() {
     if (showPayloadPreview && previewAgentId) {
       const agent = nodes.find((n) => n.id === previewAgentId);
       if (agent && agent.type === "agent") {
-        const workflowInjected =
-          thread?.workflowSnapshot && typeof thread.workflowSnapshot === "object"
-            ? (thread.workflowSnapshot as Record<string, unknown>).injectedSystemMessages || []
-            : [];
+        const workflowInjected = thread?.workflowSnapshot?.injectedSystemMessages || [];
         const payload = compilePayloadForAgent(
           agent,
           messages as import("../../workflow/types").GraphMessage[],

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { IndexedDBSaver } from "./checkpointer";
-import { closeDB, saveThread, getThread } from "./db";
+import { closeDB, saveThread, getThread, type WorkflowStore } from "./db";
 import "fake-indexeddb/auto";
 import { type Checkpoint, type CheckpointTuple } from "@langchain/langgraph-checkpoint";
 
@@ -23,6 +23,15 @@ describe("IndexedDBSaver", () => {
     versions_seen: { node: { message: 1 } },
   });
 
+  const mockWorkflow: WorkflowStore = {
+    id: "wf-1",
+    name: "Mock Workflow",
+    description: "Mock Description",
+    isBuiltIn: false,
+    nodes: [],
+    edges: [],
+  };
+
   it("should save and retrieve checkpoints", async () => {
     const saver = new IndexedDBSaver();
     const threadId = "test-thread";
@@ -32,7 +41,7 @@ describe("IndexedDBSaver", () => {
       id: threadId,
       title: "Test Thread",
       workflowId: "wf-1",
-      workflowSnapshot: {},
+      workflowSnapshot: mockWorkflow,
       activePresetId: "preset-1",
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -97,7 +106,7 @@ describe("IndexedDBSaver", () => {
       id: threadId,
       title: "Test Thread Writes",
       workflowId: "wf-1",
-      workflowSnapshot: {},
+      workflowSnapshot: mockWorkflow,
       activePresetId: "preset-1",
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -134,7 +143,7 @@ describe("IndexedDBSaver", () => {
       id: threadId,
       title: "Test Thread List",
       workflowId: "wf-1",
-      workflowSnapshot: {},
+      workflowSnapshot: mockWorkflow,
       activePresetId: "preset-1",
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -204,7 +213,7 @@ describe("IndexedDBSaver", () => {
       id: threadId,
       title: "Test Thread Delete",
       workflowId: "wf-1",
-      workflowSnapshot: {},
+      workflowSnapshot: mockWorkflow,
       activePresetId: "preset-1",
       createdAt: Date.now(),
       updatedAt: Date.now(),

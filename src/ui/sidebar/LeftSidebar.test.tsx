@@ -2,8 +2,17 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { LeftSidebar } from "./LeftSidebar.tsx";
-import { closeDB, saveThread, resetDBPromise } from "../../db/db.ts";
+import { closeDB, saveThread, resetDBPromise, type WorkflowStore } from "../../db/db.ts";
 import "fake-indexeddb/auto";
+
+const mockWorkflow: WorkflowStore = {
+  id: "wf-1",
+  name: "Mock Workflow",
+  description: "Mock Description",
+  isBuiltIn: false,
+  nodes: [],
+  edges: [],
+};
 
 class ResizeObserverMock {
   observe() {}
@@ -32,7 +41,7 @@ describe("LeftSidebar Component Integration", () => {
       id: "thread-1",
       title: "First Thread Query",
       workflowId: "w1",
-      workflowSnapshot: {},
+      workflowSnapshot: mockWorkflow,
       activePresetId: "p1",
       createdAt: Date.now() - 1000,
       updatedAt: Date.now() - 1000,
@@ -49,7 +58,7 @@ describe("LeftSidebar Component Integration", () => {
       id: "thread-2",
       title: "Second Thread",
       workflowId: "w1",
-      workflowSnapshot: {},
+      workflowSnapshot: mockWorkflow,
       activePresetId: "p1",
       createdAt: Date.now(),
       updatedAt: Date.now(),
