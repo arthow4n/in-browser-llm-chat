@@ -1,10 +1,27 @@
-import { useState } from "react";
 import { Button, Modal, ModalHeader, ModalBody } from "@carbon/react";
 import { Pause, Play, Stop, Warning, Information } from "@carbon/icons-react";
 import { type CoordinatorContext, type CoordinatorEvent } from "../../workflow/parentCoordinator";
 import { useWindowSize } from "../../ui/hooks/useWindowSize";
 
-import { StateValue } from "xstate";
+import { StateValue, setup } from "xstate";
+import { useMachine } from "@xstate/react";
+
+const executionControlMachine = setup({
+  types: {
+    events: {} as { type: "OPEN_MODAL" } | { type: "CLOSE_MODAL" },
+  },
+}).createMachine({
+  id: "executionControl",
+  initial: "closed",
+  states: {
+    closed: {
+      on: { OPEN_MODAL: "open" },
+    },
+    open: {
+      on: { CLOSE_MODAL: "closed" },
+    },
+  },
+});
 
 interface ExecutionControlPanelProps {
   state: { value: unknown; context: CoordinatorContext; matches: (val: StateValue) => boolean };
@@ -12,7 +29,8 @@ interface ExecutionControlPanelProps {
 }
 
 export function ExecutionControlPanel({ state, send }: ExecutionControlPanelProps) {
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [machineState, machineSend] = useMachine(executionControlMachine);
+  const isModalOpen = machineState.matches("open");
   const { width } = useWindowSize();
   const isMobile = width < 672;
 
@@ -105,7 +123,7 @@ export function ExecutionControlPanel({ state, send }: ExecutionControlPanelProp
             borderBottom: "1px solid #ddd",
             cursor: "pointer",
           }}
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => machineSend({ type: "OPEN_MODAL" })}
         >
           <div style={{ fontSize: "0.875rem" }}>
             Round: {loopControl.currentRound} | Tokens: {loopControl.tokenStats?.totalTokens || 0}
@@ -116,7 +134,7 @@ export function ExecutionControlPanel({ state, send }: ExecutionControlPanelProp
         </div>
         <Modal
           open={isModalOpen}
-          onRequestClose={() => setIsModalOpen(false)}
+          onRequestClose={() => machineSend({ type: "CLOSE_MODAL" })}
           modalHeading="Execution Controls"
         >
           <ModalHeader />
