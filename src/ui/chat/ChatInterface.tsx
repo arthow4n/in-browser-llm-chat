@@ -20,8 +20,6 @@ import {
   getSetting,
   getWorkflow,
   type PresetStore,
-  type ThreadStore,
-  type MessageStore,
 } from "../../db/db";
 
 import { type WorkflowNode } from "../../workflow/schemas";
@@ -35,14 +33,15 @@ export function ChatInterface() {
   const showPayloadPreview = displayState.context.showPayloadPreview;
   const previewAgentId = displayState.context.previewAgentId;
   const previewPayload = displayState.context.previewPayload;
+  const thread = displayState.context.thread;
+  const messages = displayState.context.messages;
+  const draftAnswers = displayState.context.draftAnswers;
+
   const [presets, setPresets] = useState<PresetStore[]>([]);
   const [nodes, setNodes] = useState<WorkflowNode[]>([]);
   const [globalInjectedMessages, setGlobalInjectedMessages] = useState<
     Array<{ content: string; depth: number }>
   >([]);
-  const [thread, setThread] = useState<ThreadStore | undefined | null>(null);
-  const [messages, setMessages] = useState<MessageStore[]>([]);
-  const [draftAnswers, setDraftAnswers] = useState<Record<string, unknown>>({});
 
   const activePreset = presets.find((p) => p.id === state.context.activePresetId);
   const activePresetName = activePreset?.name || "No preset selected";
@@ -57,10 +56,10 @@ export function ChatInterface() {
       setGlobalInjectedMessages(injected || []);
       if (threadId) {
         const t = await getThread(threadId);
-        setThread(t);
-        setDraftAnswers(t?.draftAnswers || {});
+        sendDisplay({ type: "SET_THREAD", thread: t });
+        sendDisplay({ type: "SET_DRAFT_ANSWERS", draftAnswers: t?.draftAnswers || {} });
         const m = await getMessagesForThread(threadId);
-        setMessages(m);
+        sendDisplay({ type: "SET_MESSAGES", messages: m });
         if (t?.workflowId) {
           const wf = await getWorkflow(t.workflowId);
           if (wf) {
@@ -70,13 +69,15 @@ export function ChatInterface() {
       }
     }
     void loadData();
-  }, [threadId]);
+  }, [threadId, sendDisplay]);
 
   useEffect(() => {
     if (threadId) {
-      void getMessagesForThread(threadId).then(setMessages);
+      void getMessagesForThread(threadId).then((m) => {
+        sendDisplay({ type: "SET_MESSAGES", messages: m });
+      });
     }
-  }, [threadId, state.context.currentThreadId]);
+  }, [threadId, state.context.currentThreadId, sendDisplay]);
 
   const handleOpenSettings = () => sendDisplay({ type: "OPEN_SETTINGS" });
   const handleCloseSettings = () => sendDisplay({ type: "CLOSE_SETTINGS" });
@@ -224,7 +225,9 @@ export function ChatInterface() {
           presets={presets}
           onSaveSuccess={() => {
             // Refresh thread data
-            void getThread(thread.id).then(setThread);
+            void getThread(thread.id).then((t) => {
+              sendDisplay({ type: "SET_THREAD", thread: t });
+            });
           }}
         />
       )}
