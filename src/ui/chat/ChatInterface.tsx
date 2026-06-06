@@ -88,7 +88,7 @@ export function ChatInterface() {
         const workflowInjected = thread?.workflowSnapshot?.injectedSystemMessages || [];
         const payload = compilePayloadForAgent(
           agent,
-          messages as import("../../workflow/types").GraphMessage[],
+          messages,
           globalInjectedMessages,
           workflowInjected,
         );

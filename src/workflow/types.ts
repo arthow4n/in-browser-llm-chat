@@ -20,6 +20,11 @@ export interface OpenRouterChunk {
   usage?: OpenRouterUsage;
 }
 
+export type GraphMessageMetadata = {
+  tool_calls?: { id: string; name: string; args?: unknown }[];
+  [key: string]: unknown;
+};
+
 export type GraphMessage = {
   id?: string;
   role: "system" | "user" | "assistant" | "tool";
@@ -27,7 +32,7 @@ export type GraphMessage = {
   type?: "text" | "tool_call" | "tool_result" | "reasoning";
   name?: string;
   toolCallId?: string;
-  metadata?: { tool_calls?: { id: string; name: string; args?: unknown }[] };
+  metadata?: GraphMessageMetadata;
   createdAt?: number;
   isInjected?: boolean;
 };

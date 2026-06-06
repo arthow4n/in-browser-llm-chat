@@ -78,10 +78,10 @@ In `src/ui/chat/ChatInterface.tsx`, remove the structural cast `workflowInjected
 
 In `src/ui/chat/ChatInterface.tsx`, remove the forced cast `messages as import("../../workflow/compiler").GraphMessage[]`. Ensure the source of `messages` (e.g. the `threads` or `messages` store in `db.ts` or the state machine) uses the `GraphMessage` type.
 
-- [ ] Refactor `messages` usage.
-- [ ] Verify worktree state.
-- [ ] Perform code review.
-- [ ] Commit the changes.
+- [x] Refactor `messages` usage.
+- [x] Verify worktree state.
+- [x] Perform code review.
+- [x] Commit the changes.
 
 ### Step 2.4: Fix Forced Casting of `event`
 

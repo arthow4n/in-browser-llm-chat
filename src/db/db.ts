@@ -1,5 +1,6 @@
 import { openDB, type DBSchema, IDBPDatabase } from "idb";
 import { type WorkflowNode, type WorkflowEdge } from "../workflow/schemas";
+import type { GraphMessage } from "../workflow/types";
 
 export interface SettingsStore {
   key: string;
@@ -47,17 +48,10 @@ export interface ThreadStore {
   tokenStats: { promptTokens: number; completionTokens: number; totalTokens: number } | null;
 }
 
-export interface MessageStore {
+export interface MessageStore extends GraphMessage {
   id: string;
   threadId: string;
   sequence: number;
-  role: "system" | "user" | "assistant" | "tool";
-  content: string;
-  type: "text" | "reasoning" | "tool_call" | "tool_result";
-  toolCallId?: string;
-  name?: string;
-  createdAt: number;
-  metadata?: Record<string, unknown>;
   checkpointId: string | null;
   checkpointNs: string | null;
 }
