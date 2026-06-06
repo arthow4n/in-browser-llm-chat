@@ -64,6 +64,12 @@ Use the following commands to run the project's quality checks and builds:
 - Use ONLY the Carbon Design System.
 - Do NOT use "premium design aesthetics" like glassmorphism, custom micro-animations, or custom typography (like Inter/Outfit). Adhere strictly to the Carbon Design System defaults and tokens.
 
+## Business Logic Documentation
+
+- `docs/scratchpad.md` is the source of truth for business logic.
+- It should be kept up-to-date whenever business logic is changed.
+- While documentation can become outdated over time, agents must strive to keep it synced with the actual code logic.
+
 ## Code Architecture & Conventions
 
 - **NO Default Exports**: Use only named exports and imports. `export default` is explicitly banned as it causes refactoring issues and confusion (exception: configuration files that strictly require it like `vite.config.ts`).
