@@ -1,23 +1,25 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
-import { ChatInputArea } from "./ChatInputArea";
+import { ChatInputArea, type ParentState } from "./ChatInputArea";
+import { type CoordinatorContext } from "../../workflow/parentCoordinator";
 
 describe("ChatInputArea", () => {
   const mockParentSend =
     vi.fn<(event: import("../../workflow/parentCoordinator").CoordinatorEvent) => void>();
-  function createMockState(value: unknown, context?: unknown) {
+  function createMockState(value: unknown, context?: Partial<CoordinatorContext>): ParentState {
     return {
       value,
       context: {
         currentThreadId: "test-thread-id",
         loopControl: { activeInterrupt: null },
-        ...(context as any),
-      },
-      matches: function (val: unknown) {
+        ...context,
+      } as CoordinatorContext,
+      matches: function (val: import("xstate").StateValue) {
         if (typeof val === "object" && val !== null) {
-          const key = Object.keys(val as object)[0];
-          return (this.value as any)[key] === (val as any)[key];
+          const key = Object.keys(val)[0];
+          const typedValue = this.value as Record<string, unknown>;
+          const typedVal = val as Record<string, unknown>;
+          return typedValue[key] === typedVal[key];
         }
         return false;
       },
@@ -88,7 +90,9 @@ describe("ChatInputArea", () => {
         ExecutionState: "awaitingHumanInput",
       },
       {
-        loopControl: { activeInterrupt: { type: "approval" } },
+        loopControl: {
+          activeInterrupt: { type: "approval" },
+        } as unknown as CoordinatorContext["loopControl"],
       },
     );
     render(<ChatInputArea parentState={awaitingState} parentSend={mockParentSend} />);
