@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from "uuid";
 export interface ParentState {
   value: unknown;
   context: CoordinatorContext;
+  matches: (val: unknown) => boolean;
 }
 
 interface ChatInputAreaProps {
@@ -21,24 +22,20 @@ export function ChatInputArea({ parentState, parentSend }: ChatInputAreaProps) {
 
   const { text, role } = state.context;
 
-  // Determine if the input should be disabled
-  const viewState = (parentState.value as Record<string, unknown>)?.ViewState as string;
-  const executionState = (parentState.value as Record<string, unknown>)?.ExecutionState as string;
-
   const isDisabled =
-    viewState === "onboarding" ||
-    executionState === "executing" ||
-    executionState === "checkingStatus" ||
-    (executionState === "awaitingHumanInput" &&
-      (parentState.context.loopControl.activeInterrupt as { type: string })?.type !== "input");
+    parentState.matches({ ViewState: "onboarding" }) ||
+    parentState.matches({ ExecutionState: "executing" }) ||
+    parentState.matches({ ExecutionState: "checkingStatus" }) ||
+    (parentState.matches({ ExecutionState: "awaitingHumanInput" }) &&
+      parentState.context.loopControl.activeInterrupt?.type !== "input");
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     send({ type: "UPDATE_TEXT", text: e.target.value });
   };
 
-  const handleRoleChange = (data: unknown) => {
+  const handleRoleChange = (data: { item?: { value: string }; value?: string } | unknown) => {
     const item = data as { item?: { value: string }; value?: string };
-    const value = item.item?.value || item.value;
+    const value = item?.item?.value || item?.value;
     if (value) {
       send({ type: "UPDATE_ROLE", role: value as "User" | "Assistant" | "System" });
     }

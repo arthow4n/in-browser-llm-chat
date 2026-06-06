@@ -5,7 +5,7 @@ import { type CoordinatorContext, type CoordinatorEvent } from "../../workflow/p
 import { useWindowSize } from "../../ui/hooks/useWindowSize";
 
 interface ExecutionControlPanelProps {
-  state: { value: unknown; context: CoordinatorContext };
+  state: { value: unknown; context: CoordinatorContext; matches: (val: unknown) => boolean };
   send: (event: CoordinatorEvent) => void;
 }
 
@@ -14,16 +14,13 @@ export function ExecutionControlPanel({ state, send }: ExecutionControlPanelProp
   const { width } = useWindowSize();
   const isMobile = width < 672;
 
-  const executionState = (state.value as Record<string, unknown>).ExecutionState as string;
   const { loopControl } = state.context;
 
-  const canPause = executionState === "executing";
-  const canResume = executionState === "inactive" || executionState === "error";
-  const canAbort = executionState === "executing" || executionState === "awaitingHumanInput";
-  const canForceConsensus =
-    executionState === "inactive" || executionState === "awaitingHumanInput";
-  const canForceSummarize =
-    executionState === "inactive" || executionState === "awaitingHumanInput";
+  const canPause = state.matches({ ExecutionState: "executing" });
+  const canResume = state.matches({ ExecutionState: "inactive" }) || state.matches({ ExecutionState: "error" });
+  const canAbort = state.matches({ ExecutionState: "executing" }) || state.matches({ ExecutionState: "awaitingHumanInput" });
+  const canForceConsensus = state.matches({ ExecutionState: "inactive" }) || state.matches({ ExecutionState: "awaitingHumanInput" });
+  const canForceSummarize = state.matches({ ExecutionState: "inactive" }) || state.matches({ ExecutionState: "awaitingHumanInput" });
 
   const stats = (
     <div style={{ display: "flex", gap: "1rem", fontSize: "0.875rem", color: "#525252" }}>
