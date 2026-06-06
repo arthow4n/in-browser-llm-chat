@@ -194,7 +194,7 @@ export function ThreadSettingsModal({
           </div>
 
           {/* Workflow Sync UI Overlay/Section */}
-          {syncState.value !== "idle" && (
+          {!syncState.matches("idle") && (
             <div
               style={{
                 padding: "1rem",
@@ -249,7 +249,7 @@ export function ThreadSettingsModal({
           )}
 
           {/* Compaction UI Overlay/Section */}
-          {compactionState.value !== "idle" && (
+          {!compactionState.matches("idle") && (
             <div
               style={{
                 padding: "1rem",
