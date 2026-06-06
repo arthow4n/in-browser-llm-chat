@@ -117,9 +117,9 @@ Confirm that the configuration path is accessible.
 
 ## 4. Cleanup
 
-- [ ] Move the findings file (`docs/business-logic-review-findings-2026-06-06.md`) to the docs.outdated directory.
-  - [ ] Move findings file to `docs.outdated/`.
-  - [ ] Commit the movement of the findings file.
-- [ ] Delete the findings file from `docs.outdated/`.
-  - [ ] Delete the findings file.
-  - [ ] Commit the deletion.
+- [x] Move the findings file (`docs/business-logic-review-findings-2026-06-06.md`) to the docs.outdated directory.
+  - [x] Move findings file to `docs.outdated/`.
+  - [x] Commit the movement of the findings file.
+- [x] Delete the findings file from `docs.outdated/`.
+  - [x] Delete the findings file.
+  - [x] Commit the deletion.
