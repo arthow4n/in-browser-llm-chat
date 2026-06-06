@@ -11,7 +11,14 @@ describe("leftSidebarMachine", () => {
   it("should start in loadingInitial state and load threads", async () => {
     const { threadId } = await db.createNewThread({
       workflowId: "w1",
-      workflowSnapshot: { id: "w1", name: "WF1", description: "", isBuiltIn: false, nodes: [], edges: [] },
+      workflowSnapshot: {
+        id: "w1",
+        name: "WF1",
+        description: "",
+        isBuiltIn: false,
+        nodes: [],
+        edges: [],
+      },
       activePresetId: "p1",
       initialMessage: "Test Thread 1",
     });
@@ -41,12 +48,19 @@ describe("leftSidebarMachine", () => {
   });
 
   it("should load more threads when requested and append them", async () => {
-    // Create multiple threads to test pagination. 
+    // Create multiple threads to test pagination.
     // pageSize is 50.
     for (let i = 0; i < 60; i++) {
       await db.createNewThread({
         workflowId: "w1",
-        workflowSnapshot: { id: "w1", name: "WF1", description: "", isBuiltIn: false, nodes: [], edges: [] },
+        workflowSnapshot: {
+          id: "w1",
+          name: "WF1",
+          description: "",
+          isBuiltIn: false,
+          nodes: [],
+          edges: [],
+        },
         activePresetId: "p1",
         initialMessage: `Thread ${i}`,
       });
@@ -70,7 +84,14 @@ describe("leftSidebarMachine", () => {
   it("should delete a thread and update optimistically", async () => {
     const { threadId } = await db.createNewThread({
       workflowId: "w1",
-      workflowSnapshot: { id: "w1", name: "WF1", description: "", isBuiltIn: false, nodes: [], edges: [] },
+      workflowSnapshot: {
+        id: "w1",
+        name: "WF1",
+        description: "",
+        isBuiltIn: false,
+        nodes: [],
+        edges: [],
+      },
       activePresetId: "p1",
       initialMessage: "To Delete",
     });
@@ -85,7 +106,9 @@ describe("leftSidebarMachine", () => {
     actor.send({ type: "CONFIRM_DELETE" });
     expect(actor.getSnapshot().value).toBe("deleting");
     // Optimistic UI check - status should be set to deleting
-    expect(actor.getSnapshot().context.threads.find(t => t.id === threadId)?.status).toBe("deleting");
+    expect(actor.getSnapshot().context.threads.find((t) => t.id === threadId)?.status).toBe(
+      "deleting",
+    );
 
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(actor.getSnapshot().value).toBe("idle");

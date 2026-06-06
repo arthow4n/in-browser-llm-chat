@@ -86,7 +86,7 @@ describe("workflowListMachine", () => {
 
     expect(actor.getSnapshot().value).toBe("error");
     expect(actor.getSnapshot().context.errorMessage).toBe("Database error");
-    
+
     spy.mockRestore();
   });
 

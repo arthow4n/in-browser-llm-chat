@@ -46,7 +46,7 @@ describe("presetListMachine", () => {
 
     expect(actor.getSnapshot().value).toBe("error");
     expect(actor.getSnapshot().context.error).toBe("Fetch failed");
-    
+
     spy.mockRestore();
   });
 

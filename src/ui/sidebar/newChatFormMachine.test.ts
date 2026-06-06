@@ -72,7 +72,7 @@ describe("newChatFormMachine", () => {
     const snap = actor.getSnapshot();
     expect(snap.matches("error")).toBe(true);
     expect(snap.context.errorMessage).toBe("DB unavailable");
-    
+
     spy.mockRestore();
   });
 
@@ -135,7 +135,9 @@ describe("newChatFormMachine", () => {
   it("transitions to error state when thread creation fails", async () => {
     await db.saveWorkflow(mockWorkflow);
     await db.savePreset(mockPreset);
-    const spy = vi.spyOn(db, "createNewThread").mockRejectedValue(new Error("IndexedDB write failed"));
+    const spy = vi
+      .spyOn(db, "createNewThread")
+      .mockRejectedValue(new Error("IndexedDB write failed"));
 
     const actor = createActor(newChatFormMachine).start();
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -146,7 +148,7 @@ describe("newChatFormMachine", () => {
     const snap = actor.getSnapshot();
     expect(snap.matches("error")).toBe(true);
     expect(snap.context.errorMessage).toBe("IndexedDB write failed");
-    
+
     spy.mockRestore();
   });
 
@@ -160,7 +162,7 @@ describe("newChatFormMachine", () => {
     actor.send({ type: "DISMISS_ERROR" });
     expect(actor.getSnapshot().matches("idle")).toBe(true);
     expect(actor.getSnapshot().context.errorMessage).toBeNull();
-    
+
     spy.mockRestore();
   });
 
@@ -182,7 +184,7 @@ describe("newChatFormMachine", () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(actor.getSnapshot().matches("idle")).toBe(true);
     expect(actor.getSnapshot().context.workflows).toEqual([mockWorkflow]);
-    
+
     spy.mockRestore();
   });
 
@@ -204,7 +206,7 @@ describe("newChatFormMachine", () => {
       activePresetId: "p1",
       initialMessage: "My topic",
     });
-    
+
     spy.mockRestore();
   });
 });

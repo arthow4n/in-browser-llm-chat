@@ -72,8 +72,7 @@ describe("parentCoordinatorMachine", () => {
     await waitFor(
       actor,
       (state) =>
-        state.matches({ ExecutionState: "inactive" }) &&
-        state.context.currentThreadId === threadId,
+        state.matches({ ExecutionState: "inactive" }) && state.context.currentThreadId === threadId,
       { timeout: 5000 },
     );
 

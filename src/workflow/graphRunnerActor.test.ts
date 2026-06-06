@@ -16,7 +16,7 @@ describe("graphRunnerActor", () => {
   it("should initialize correctly from database settings and complete run", async () => {
     const threadId = "thread-1";
     const presetId = "preset-1";
-    
+
     await db.savePreset({
       id: presetId,
       name: "Default Flash",
@@ -25,9 +25,9 @@ describe("graphRunnerActor", () => {
       temperature: 0.7,
       maxTokens: 100,
     });
-    
+
     await db.setSetting("api_keys", { gemini: "test-key" });
-    
+
     await db.saveThread({
       id: threadId,
       title: "Test Thread",

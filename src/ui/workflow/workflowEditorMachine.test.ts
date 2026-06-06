@@ -191,7 +191,7 @@ describe("workflowEditorMachine", () => {
     expect(actor.getSnapshot().matches({ editing: "clean" })).toBe(true);
     expect(actor.getSnapshot().context.isDirty).toBe(false);
     expect(actor.getSnapshot().context.workflowId).toBeDefined();
-    
+
     const allWorkflows = await db.getAllWorkflows();
     expect(allWorkflows.length).toBe(1);
     expect(allWorkflows[0].name).toBe("My Valid Custom Workflow");

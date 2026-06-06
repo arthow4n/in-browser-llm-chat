@@ -82,13 +82,10 @@ describe("presetConnectionTesterMachine", () => {
   it("should handle API errors", async () => {
     server.use(
       http.post("https://openrouter.ai/api/v1/chat/completions", () => {
-        return new HttpResponse(
-          JSON.stringify({ error: { message: "Invalid API key" } }),
-          {
-            status: 403,
-            statusText: "Forbidden",
-          },
-        );
+        return new HttpResponse(JSON.stringify({ error: { message: "Invalid API key" } }), {
+          status: 403,
+          statusText: "Forbidden",
+        });
       }),
     );
 

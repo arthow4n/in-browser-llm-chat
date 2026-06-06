@@ -132,12 +132,12 @@ This document contains a step-by-step checklist to build the LLM chat applicatio
   - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
   - [x] Perform code review (self/subagent).
   - [x] Commit the changes following `AGENTS.md`.
-- [ ] **Step 8.3:** Build the Thread Settings Modal State Machine and UI for renaming, switching active presets, and invoking "Soft/Hard Sync" workflows logic or checkpoint compaction.
-  - [ ] Implement the Thread Settings Modal State Machine and UI.
-  - [ ] Write integration and state machine tests adhering to Testing Guidelines in `docs/scratchpad.md`.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Perform code review (self/subagent).
-  - [ ] Commit the changes following `AGENTS.md`.
+- [x] **Step 8.3:** Build the Thread Settings Modal State Machine and UI for renaming, switching active presets, and invoking "Soft/Hard Sync" workflows logic or checkpoint compaction.
+  - [x] Implement the Thread Settings Modal State Machine and UI.
+  - [x] Write integration and state machine tests adhering to Testing Guidelines in `docs/scratchpad.md`.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Perform code review (self/subagent).
+  - [x] Commit the changes following `AGENTS.md`.
 
 ## 9. Chat Feed & Message Components
 

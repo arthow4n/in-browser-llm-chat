@@ -11,6 +11,6 @@ If your edit tool call fails, you might need to read the file again in order to 
 ## Commands
 
 Instead of -> use:
+
 - `grep` -> `rg`
 - `find` -> `fdfind`
-
