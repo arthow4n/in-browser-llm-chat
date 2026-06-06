@@ -183,12 +183,12 @@ This document contains a step-by-step checklist to build the LLM chat applicatio
 
 ## 11. Final Integration & Polish
 
-- [ ] **Step 11.1:** Integrate the Execution & Loop Control Panel State Machine (floating panel/mobile overlay) to allow users to Pause, Resume, Abort, Force Consensus, or Force Summarize.
-  - [ ] Implement the Execution & Loop Control Panel State Machine and floating UI panel.
-  - [ ] Write integration and state machine tests adhering to Testing Guidelines in `docs/scratchpad.md`.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Perform code review (self/subagent).
-  - [ ] Commit the changes following `AGENTS.md`.
+- [x] **Step 11.1:** Integrate the Execution & Loop Control Panel State Machine (floating panel/mobile overlay) to allow users to Pause, Resume, Abort, Force Consensus, or Force Summarize.
+  - [x] Implement the Execution & Loop Control Panel State Machine and floating UI panel.
+  - [x] Write integration and state machine tests adhering to Testing Guidelines in `docs/scratchpad.md`.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Perform code review (self/subagent).
+  - [x] Commit the changes following `AGENTS.md`.
 - [ ] **Step 11.2:** Integrate the API Payload Preview Modal State Machine and the Chat Header Quick Preset Switcher State Machine.
   - [ ] Implement the API Payload Preview and Chat Header Quick Preset Switcher state machines.
   - [ ] Write integration and state machine tests adhering to Testing Guidelines in `docs/scratchpad.md`.
