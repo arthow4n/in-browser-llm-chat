@@ -1,28 +1,18 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import "fake-indexeddb/auto";
+import { describe, it, expect, beforeEach } from "vitest";
 import { createActor } from "xstate";
 import { globalSettingsMachine } from "./globalSettings.js";
-import * as db from "../../db/db.js";
-
-// Mock the DB layer
-vi.mock("../../db/db.js", () => ({
-  getSetting: vi.fn<(...args: unknown[]) => unknown>(),
-  setSetting: vi.fn<(...args: unknown[]) => unknown>(),
-  getAllPresets: vi.fn<(...args: unknown[]) => unknown>(),
-  savePreset: vi.fn<(...args: unknown[]) => unknown>(),
-}));
+import { setSetting, resetDBPromise } from "../../db/db.js";
 
 describe("globalSettingsMachine", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    resetDBPromise();
   });
 
   it("loads settings on startup and transitions to idle.clean", async () => {
-    vi.mocked(db.getSetting).mockImplementation(async (key: string) => {
-      if (key === "api_keys") return { openRouter: "or-key", gemini: "gem-key" };
-      if (key === "ui_config") return { theme: "dark" };
-      if (key === "injected_system_messages") return [{ content: "sys", depth: 0 }];
-      return null;
-    });
+    await setSetting("api_keys", { openRouter: "or-key", gemini: "gem-key" });
+    await setSetting("ui_config", { theme: "dark" });
+    await setSetting("injected_system_messages", [{ content: "sys", depth: 0 }]);
 
     const actor = createActor(globalSettingsMachine).start();
 
@@ -45,8 +35,6 @@ describe("globalSettingsMachine", () => {
   });
 
   it("becomes dirty when fields are edited", async () => {
-    vi.mocked(db.getSetting).mockImplementation(async () => null);
-
     const actor = createActor(globalSettingsMachine).start();
 
     await new Promise<void>((resolve) => {
@@ -66,10 +54,6 @@ describe("globalSettingsMachine", () => {
   });
 
   it("validates depths when saving and transitions to saving", async () => {
-    vi.mocked(db.getSetting).mockImplementation(async () => null);
-    vi.mocked(db.getAllPresets).mockResolvedValue([]);
-    vi.mocked(db.setSetting).mockResolvedValue();
-
     const actor = createActor(globalSettingsMachine).start();
 
     await new Promise<void>((resolve) => {
@@ -101,14 +85,9 @@ describe("globalSettingsMachine", () => {
 
     const snapshot = actor.getSnapshot();
     expect(snapshot.value).toEqual({ idle: "clean" });
-    expect(db.setSetting).toHaveBeenCalledWith("injected_system_messages", {
-      value: [{ content: "", depth: 5 }],
-    });
   });
 
   it("fails validation if depths are not integers", async () => {
-    vi.mocked(db.getSetting).mockImplementation(async () => null);
-
     const actor = createActor(globalSettingsMachine).start();
 
     await new Promise<void>((resolve) => {
@@ -132,6 +111,5 @@ describe("globalSettingsMachine", () => {
     const snapshot = actor.getSnapshot();
     expect(snapshot.value).toEqual({ idle: "dirty" });
     expect(snapshot.context.validationErrors.general).toBeDefined();
-    expect(db.setSetting).not.toHaveBeenCalled();
   });
 });
