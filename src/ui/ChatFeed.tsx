@@ -3,10 +3,11 @@ import { useMachine } from "@xstate/react";
 import { chatAutoScrollMachine } from "../machines/chatAutoScrollMachine";
 import { ChatMessage } from "./ChatMessage";
 import { MessageStore } from "../db/db";
+import { CoordinatorEvent } from "../workflow/parentCoordinator";
 
 interface ChatFeedProps {
   messages: MessageStore[];
-  send: (event: unknown) => void;
+  send: (event: CoordinatorEvent) => void;
   currentThreadId: string | null;
   draftAnswers: Record<string, unknown>;
   budgetExceededCard?: React.ReactNode;

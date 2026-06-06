@@ -87,10 +87,10 @@ In `src/ui/chat/ChatInterface.tsx`, remove the forced cast `messages as import("
 
 In `src/ui/chat/ChatInterface.tsx`, remove the forced cast `send(event as import("../../workflow/parentCoordinator").CoordinatorEvent)`. Update the event handling logic to use the `CoordinatorEvent` type directly.
 
-- [ ] Refactor `send(event ...)` call to use `CoordinatorEvent`.
-- [ ] Verify worktree state.
-- [ ] Perform code review.
-- [ ] Commit the changes.
+- [x] Refactor `send(event ...)` call to use `CoordinatorEvent`.
+- [x] Verify worktree state.
+- [x] Perform code review.
+- [x] Commit the changes.
 
 ## 3. Strict `StateGraph` Typing in `compiler.ts`
 

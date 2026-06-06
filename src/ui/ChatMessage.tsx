@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { MessageStore, saveMessage } from "../db/db";
+import { CoordinatorEvent } from "../workflow/parentCoordinator";
 import { Accordion, AccordionItem } from "@carbon/react";
 import { CodeBlock } from "./CodeBlock";
 import { AskQuestionsForm } from "./AskQuestionsForm";
@@ -21,7 +22,7 @@ const AnswerSchema = z.object({
 interface ChatMessageProps {
   message: MessageStore;
   allMessages: MessageStore[];
-  send: (event: unknown) => void;
+  send: (event: CoordinatorEvent) => void;
   currentThreadId: string;
   draftAnswers: Record<string, unknown>;
 }

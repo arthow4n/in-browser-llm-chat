@@ -3,7 +3,7 @@ import { useParams } from "react-router";
 import { useMachine } from "@xstate/react";
 import { Header, HeaderName, HeaderGlobalBar, Content, Button, Dropdown } from "@carbon/react";
 import { Settings } from "@carbon/icons-react";
-import { parentCoordinatorMachine } from "../../workflow/parentCoordinator";
+import { parentCoordinatorMachine, type CoordinatorEvent } from "../../workflow/parentCoordinator";
 import { chatInterfaceDisplayMachine } from "./chatInterfaceDisplayMachine";
 import { ThreadSettingsModal } from "./ThreadSettingsModal";
 import { ExecutionControlPanel } from "./ExecutionControlPanel";
@@ -160,9 +160,7 @@ export function ChatInterface() {
           <div style={{ maxWidth: "800px", margin: "0 auto" }}>
             <ChatFeed
               messages={messages}
-              send={(event: unknown) =>
-                send(event as import("../../workflow/parentCoordinator").CoordinatorEvent)
-              }
+              send={(event: CoordinatorEvent) => send(event)}
               currentThreadId={state.context.currentThreadId}
               draftAnswers={draftAnswers}
               budgetExceededCard={
