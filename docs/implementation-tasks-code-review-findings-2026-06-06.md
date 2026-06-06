@@ -10,11 +10,11 @@
 
 ## 1. Fix Type Bypasses (`as any`, `as unknown as`)
 
-- [ ] **Step 1.1:** Fix type bypass in `src/workflow/parentCoordinator.graph.test.ts`
-  - [ ] Replace `as any` (Line 84) with properly typed mocks or valid object structures.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Perform code review (self/subagent).
-  - [ ] Commit the changes following `AGENTS.md`.
+- [x] **Step 1.1:** Fix type bypass in `src/workflow/parentCoordinator.graph.test.ts`
+  - [x] Replace `as any` (Line 84) with properly typed mocks or valid object structures.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Perform code review (self/subagent).
+  - [x] Commit the changes following `AGENTS.md`.
 
 - [ ] **Step 1.2:** Fix type bypass in `src/ui/chat/ChatInputArea.test.tsx`
   - [ ] Replace `as unknown as` (Line 95) with properly typed mocks or valid object structures.
