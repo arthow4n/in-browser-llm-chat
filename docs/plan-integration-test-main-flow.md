@@ -1,3 +1,8 @@
+# Original Query
+plan for implementing an integration test that will really check the main business logic e.g. can a new user just setup and chat with LLM normally from scratch, currently it seems like such a test is missing, it might be expected that the test will fail at the beginning, but its important that we plan a thought-thorough test to reflect the business logic, also investigate the current code shape to understand if theres anything thats potentially missing, but the main test case should be reflecting the simple integrated user flow, focus on just making 1 main user flow test for now.
+
+---
+
 # Implementation Plan: Main User Flow Integration Test
 
 ## Goal
