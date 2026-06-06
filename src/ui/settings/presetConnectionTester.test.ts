@@ -34,7 +34,7 @@ describe("presetConnectionTesterMachine", () => {
 
     expect(actor.getSnapshot().value).toBe("testing");
 
-    await waitFor(actor, (state) => state.value === "success", { timeout: 1000 });
+    await waitFor(actor, (state) => state.matches("success"), { timeout: 1000 });
 
     expect(actor.getSnapshot().value).toBe("success");
     expect(actor.getSnapshot().context.latency).toBeTypeOf("number");
@@ -59,7 +59,7 @@ describe("presetConnectionTesterMachine", () => {
 
     expect(actor.getSnapshot().value).toBe("testing");
 
-    await waitFor(actor, (state) => state.value === "success", { timeout: 1000 });
+    await waitFor(actor, (state) => state.matches("success"), { timeout: 1000 });
 
     expect(actor.getSnapshot().value).toBe("success");
   });
@@ -73,7 +73,7 @@ describe("presetConnectionTesterMachine", () => {
       apiKey: "",
     });
 
-    await waitFor(actor, (state) => state.value === "failure", { timeout: 1000 });
+    await waitFor(actor, (state) => state.matches("failure"), { timeout: 1000 });
 
     expect(actor.getSnapshot().value).toBe("failure");
     expect(actor.getSnapshot().context.errorMessage).toContain("No API key configured");
@@ -97,7 +97,7 @@ describe("presetConnectionTesterMachine", () => {
       apiKey: "invalid-key",
     });
 
-    await waitFor(actor, (state) => state.value === "failure", { timeout: 1000 });
+    await waitFor(actor, (state) => state.matches("failure"), { timeout: 1000 });
 
     expect(actor.getSnapshot().value).toBe("failure");
     expect(actor.getSnapshot().context.errorMessage).toContain(

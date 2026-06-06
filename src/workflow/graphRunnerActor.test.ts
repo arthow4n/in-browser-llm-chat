@@ -55,12 +55,12 @@ describe("graphRunnerActor", () => {
 
     actor.start();
 
-    console.log("Actor started, current state:", actor.getSnapshot().value);
+    console.log("Actor started, current state:", actor.getSnapshot());
 
     // Handle input interrupt
     await new Promise<void>((resolve) => {
       const sub = actor.subscribe((state) => {
-        console.log("FIRST SUB State:", state.value);
+        console.log("FIRST SUB State:", state);
         if (state.matches({ interrupted: "awaitingToolInput" })) {
           sub.unsubscribe();
           resolve();
@@ -78,12 +78,12 @@ describe("graphRunnerActor", () => {
     try {
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => {
-          console.log("FINAL TIMEOUT STATE:", actor.getSnapshot().value);
+          console.log("FINAL TIMEOUT STATE:", actor.getSnapshot());
           reject(new Error("Timeout waiting for completion"));
         }, 4000);
 
         actor.subscribe((state) => {
-          console.log("State transition:", state.value);
+          console.log("State transition:", state);
           if (state.status === "done") {
             clearTimeout(timeout);
             resolve();

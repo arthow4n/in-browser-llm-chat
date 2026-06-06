@@ -71,7 +71,7 @@ describe("parentCoordinatorMachine model-based testing (ViewState)", () => {
 
   for (const path of paths) {
     // Only test paths that reach a relevant state for ViewState
-    if (path.state.value.ViewState === "initializing") continue;
+    if (path.state.matches({ ViewState: "initializing" })) continue;
 
     test(`ViewState resolves to ${String(path.state.value.ViewState)} via path`, async () => {
       const actor = createActor(testMachine).start();
@@ -81,7 +81,7 @@ describe("parentCoordinatorMachine model-based testing (ViewState)", () => {
       }
 
       const actualState = actor.getSnapshot();
-      expect(actualState.value.ViewState).toEqual(path.state.value.ViewState);
+      expect(actualState.matches({ ViewState: path.state.value.ViewState as any })).toBe(true);
       actor.stop();
     });
   }

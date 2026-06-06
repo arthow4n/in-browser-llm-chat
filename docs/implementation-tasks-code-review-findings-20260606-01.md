@@ -79,6 +79,7 @@ This document contains a step-by-step checklist to resolve the issues found in `
   - [x] Commit the changes following `AGENTS.md`.
 
 **Files identified requiring modification:**
+
 - `src/machines/proposedActionCardMachine.test.ts`
 - `src/ui/settings/globalSettings.test.ts`
 - `src/ui/settings/presetConfigMachine.test.ts`
@@ -89,8 +90,9 @@ This document contains a step-by-step checklist to resolve the issues found in `
 - `src/ui/workflow/workflowListMachine.test.ts`
 - `src/workflow/graphRunnerActor.test.ts`
 - `src/workflow/parentCoordinator.graph.test.ts`
-- [ ] **Step 3.7:** Replace the remaining instances identified in Step 3.6 with `.matches()` across all affected files, ensuring tests are also updated to assert using `.matches()`.
-  - [ ] Implement the logic/feature.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Perform code review (self/subagent).
-  - [ ] Commit the changes following `AGENTS.md`.
+- [x] **Step 3.7:** Replace the remaining instances identified in Step 3.6 with `.matches()` across all affected files, ensuring tests are also updated to assert using `.matches()`.
+  - [x] Implement the logic/feature.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Perform code review (self/subagent).
+  - [x] Commit the changes following `AGENTS.md`.
+

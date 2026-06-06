@@ -46,7 +46,7 @@ describe("presetListMachine", () => {
     expect(actor.getSnapshot().value).toBe("loading");
 
     // Wait for the invoke to complete
-    await waitFor(actor, (state) => state.value === "idle", { timeout: 1000 });
+    await waitFor(actor, (state) => state.matches("idle"), { timeout: 1000 });
 
     expect(actor.getSnapshot().value).toBe("idle");
     expect(actor.getSnapshot().context.presets).toEqual(mockPresets);
@@ -58,7 +58,7 @@ describe("presetListMachine", () => {
     const actor = createActor(presetListMachine).start();
     actor.send({ type: "FETCH_PRESETS" });
 
-    await waitFor(actor, (state) => state.value === "error", { timeout: 1000 });
+    await waitFor(actor, (state) => state.matches("error"), { timeout: 1000 });
 
     expect(actor.getSnapshot().value).toBe("error");
     expect(actor.getSnapshot().context.error).toBe("Fetch failed");
@@ -80,7 +80,7 @@ describe("presetListMachine", () => {
 
     expect(actor.getSnapshot().value).toBe("deleting");
 
-    await waitFor(actor, (state) => state.value === "idle", { timeout: 1000 });
+    await waitFor(actor, (state) => state.matches("idle"), { timeout: 1000 });
 
     expect(actor.getSnapshot().value).toBe("idle");
     expect(actor.getSnapshot().context.presetToDeleteId).toBeNull();
@@ -96,7 +96,7 @@ describe("presetListMachine", () => {
     actor.send({ type: "DELETE_REQUESTED", id: presetId });
     actor.send({ type: "CONFIRM_DELETE" });
 
-    await waitFor(actor, (state) => state.value === "idle", { timeout: 1000 });
+    await waitFor(actor, (state) => state.matches("idle"), { timeout: 1000 });
 
     expect(actor.getSnapshot().value).toBe("idle");
     expect(actor.getSnapshot().context.error).toBe("Cannot delete the global default preset.");

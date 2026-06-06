@@ -14,25 +14,18 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflowId, onCl
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const previousStateRef = useRef<string>("");
+  const wasSavingRef = useRef<boolean>(false);
 
   const { jsonContent, isDirty, isBuiltIn, validationErrors, errorMessage } = state.context;
 
   // Handle transitions to onClose
   useEffect(() => {
-    const currentState =
-      typeof state.value === "string" ? state.value : Object.keys(state.value)[0];
-
-    if (state.matches("deleteSuccess") || state.matches("discarded")) {
-      onClose();
-    }
-
     // If we just successfully saved and transitioned back to editing.clean, navigate away
-    if (previousStateRef.current === "saving" && state.matches({ editing: "clean" })) {
+    if (wasSavingRef.current && state.matches({ editing: "clean" })) {
       onClose();
     }
 
-    previousStateRef.current = currentState;
+    wasSavingRef.current = state.matches("saving");
   }, [state, onClose]);
 
   const handleCopy = async () => {

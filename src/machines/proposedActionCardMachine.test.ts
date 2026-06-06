@@ -5,7 +5,7 @@ import { proposedActionCardMachine } from "./proposedActionCardMachine";
 describe("proposedActionCardMachine", () => {
   it("should start in idle state", () => {
     const actor = createActor(proposedActionCardMachine).start();
-    expect(actor.getSnapshot().value).toBe("idle");
+    expect(actor.getSnapshot().matches("idle")).toBe(true);
   });
 
   it("should transition to awaitingApproval on START_APPROVAL", () => {
@@ -18,7 +18,7 @@ describe("proposedActionCardMachine", () => {
         payload: { name: "Test Workflow" },
       },
     });
-    expect(actor.getSnapshot().value).toBe("awaitingApproval");
+    expect(actor.getSnapshot().matches("awaitingApproval")).toBe(true);
     expect(actor.getSnapshot().context.toolCallId).toBe("123");
     expect(actor.getSnapshot().context.actionType).toBe("create");
   });
@@ -30,7 +30,7 @@ describe("proposedActionCardMachine", () => {
       payload: { toolCallId: "123", actionType: "create", payload: {} },
     });
     actor.send({ type: "APPROVE" });
-    expect(actor.getSnapshot().value).toBe("approved");
+    expect(actor.getSnapshot().matches("approved")).toBe(true);
   });
 
   it("should transition to denied on DENY", () => {
@@ -40,6 +40,6 @@ describe("proposedActionCardMachine", () => {
       payload: { toolCallId: "123", actionType: "create", payload: {} },
     });
     actor.send({ type: "DENY" });
-    expect(actor.getSnapshot().value).toBe("denied");
+    expect(actor.getSnapshot().matches("denied")).toBe(true);
   });
 });

@@ -24,11 +24,11 @@ describe("leftSidebarMachine", () => {
     });
 
     const actor = createActor(leftSidebarMachine).start();
-    expect(actor.getSnapshot().value).toBe("loadingInitial");
+    expect(actor.getSnapshot().matches("loadingInitial")).toBe(true);
 
     await waitFor(actor, (state) => state.matches("idle"), { timeout: 5000 });
 
-    expect(actor.getSnapshot().value).toBe("idle");
+    expect(actor.getSnapshot().matches("idle")).toBe(true);
     expect(actor.getSnapshot().context.threads.length).toBe(1);
     expect(actor.getSnapshot().context.threads[0].id).toBe(threadId);
     expect(actor.getSnapshot().context.hasMore).toBe(false);
@@ -40,11 +40,11 @@ describe("leftSidebarMachine", () => {
     await waitFor(actor, (state) => state.matches("idle"), { timeout: 5000 });
 
     actor.send({ type: "FILTER_THREADS", query: "hello" });
-    expect(actor.getSnapshot().value).toBe("loadingInitial");
+    expect(actor.getSnapshot().matches("loadingInitial")).toBe(true);
     expect(actor.getSnapshot().context.searchQuery).toBe("hello");
 
     await waitFor(actor, (state) => state.matches("idle"), { timeout: 5000 });
-    expect(actor.getSnapshot().value).toBe("idle");
+    expect(actor.getSnapshot().matches("idle")).toBe(true);
   });
 
   it("should load more threads when requested and append them", async () => {
@@ -70,10 +70,10 @@ describe("leftSidebarMachine", () => {
     expect(actor.getSnapshot().context.threads.length).toBe(50);
 
     actor.send({ type: "LOAD_MORE" });
-    expect(actor.getSnapshot().value).toBe("loadingMore");
+    expect(actor.getSnapshot().matches("loadingMore")).toBe(true);
 
     await waitFor(actor, (state) => state.matches("idle"), { timeout: 5000 });
-    expect(actor.getSnapshot().value).toBe("idle");
+    expect(actor.getSnapshot().matches("idle")).toBe(true);
     expect(actor.getSnapshot().context.threads.length).toBe(60);
     expect(actor.getSnapshot().context.page).toBe(2);
     expect(actor.getSnapshot().context.hasMore).toBe(false);
@@ -98,17 +98,17 @@ describe("leftSidebarMachine", () => {
     await waitFor(actor, (state) => state.matches("idle"), { timeout: 5000 });
 
     actor.send({ type: "TRIGGER_DELETE", threadId });
-    expect(actor.getSnapshot().value).toBe("confirmingDelete");
+    expect(actor.getSnapshot().matches("confirmingDelete")).toBe(true);
     expect(actor.getSnapshot().context.deletingThreadId).toBe(threadId);
 
     actor.send({ type: "CONFIRM_DELETE" });
-    expect(actor.getSnapshot().value).toBe("deleting");
+    expect(actor.getSnapshot().matches("deleting")).toBe(true);
     expect(actor.getSnapshot().context.threads.find((t) => t.id === threadId)?.status).toBe(
       "deleting",
     );
 
     await waitFor(actor, (state) => state.matches("idle"), { timeout: 5000 });
-    expect(actor.getSnapshot().value).toBe("idle");
+    expect(actor.getSnapshot().matches("idle")).toBe(true);
     while (await db.getThread(threadId)) {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }

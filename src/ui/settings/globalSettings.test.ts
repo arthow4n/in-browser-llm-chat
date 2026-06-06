@@ -19,14 +19,14 @@ describe("globalSettingsMachine", () => {
     // The machine starts in 'loading' and automatically invokes loadSettings
     await new Promise<void>((resolve) => {
       actor.subscribe((state) => {
-        if (state.value && typeof state.value === "object" && "idle" in state.value) {
+        if (state.matches("idle")) {
           resolve();
         }
       });
     });
 
     const snapshot = actor.getSnapshot();
-    expect(snapshot.value).toEqual({ idle: "clean" });
+    expect(snapshot.matches({ idle: "clean" })).toBe(true);
     expect(snapshot.context.openRouterApiKey).toBe("or-key");
     expect(snapshot.context.geminiApiKey).toBe("gem-key");
     expect(snapshot.context.theme).toBe("dark");
@@ -39,7 +39,7 @@ describe("globalSettingsMachine", () => {
 
     await new Promise<void>((resolve) => {
       actor.subscribe((state) => {
-        if (state.value && typeof state.value === "object" && "idle" in state.value) {
+        if (state.matches("idle")) {
           resolve();
         }
       });
@@ -48,7 +48,7 @@ describe("globalSettingsMachine", () => {
     actor.send({ type: "EDIT_FIELD", field: "theme", value: "light" });
 
     const snapshot = actor.getSnapshot();
-    expect(snapshot.value).toEqual({ idle: "dirty" });
+    expect(snapshot.matches({ idle: "dirty" })).toBe(true);
     expect(snapshot.context.theme).toBe("light");
     expect(snapshot.context.isDirty).toBe(true);
   });
@@ -58,7 +58,7 @@ describe("globalSettingsMachine", () => {
 
     await new Promise<void>((resolve) => {
       actor.subscribe((state) => {
-        if (state.value && typeof state.value === "object" && "idle" in state.value) {
+        if (state.matches("idle")) {
           resolve();
         }
       });
@@ -72,19 +72,14 @@ describe("globalSettingsMachine", () => {
     await new Promise<void>((resolve) => {
       actor.subscribe((state) => {
         // It should go validating -> saving -> idle.clean
-        if (
-          state.value &&
-          typeof state.value === "object" &&
-          "idle" in state.value &&
-          state.context.isDirty === false
-        ) {
+        if (state.matches("idle") && state.context.isDirty === false) {
           resolve();
         }
       });
     });
 
     const snapshot = actor.getSnapshot();
-    expect(snapshot.value).toEqual({ idle: "clean" });
+    expect(snapshot.matches({ idle: "clean" })).toBe(true);
   });
 
   it("fails validation if depths are not integers", async () => {
@@ -92,7 +87,7 @@ describe("globalSettingsMachine", () => {
 
     await new Promise<void>((resolve) => {
       actor.subscribe((state) => {
-        if (state.value && typeof state.value === "object" && "idle" in state.value) {
+        if (state.matches("idle")) {
           resolve();
         }
       });
@@ -109,7 +104,7 @@ describe("globalSettingsMachine", () => {
     actor.send({ type: "SAVE" });
 
     const snapshot = actor.getSnapshot();
-    expect(snapshot.value).toEqual({ idle: "dirty" });
+    expect(snapshot.matches({ idle: "dirty" })).toBe(true);
     expect(snapshot.context.validationErrors.general).toBeDefined();
   });
 });

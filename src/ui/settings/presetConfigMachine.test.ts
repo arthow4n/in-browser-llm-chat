@@ -13,11 +13,11 @@ describe("presetConfigMachine", () => {
       input: { presetId: null },
     }).start();
 
-    expect(actor.getSnapshot().value).toBe("loading");
+    expect(actor.getSnapshot().matches("loading")).toBe(true);
 
     await waitFor(actor, (state) => state.matches({ idle: "clean" }), { timeout: 5000 });
 
-    expect(actor.getSnapshot().value).toEqual({ idle: "clean" });
+    expect(actor.getSnapshot().matches({ idle: "clean" })).toBe(true);
     expect(actor.getSnapshot().context.name).toBe("New Preset");
     expect(actor.getSnapshot().context.provider).toBe("gemini");
   });
@@ -40,7 +40,7 @@ describe("presetConfigMachine", () => {
 
     await waitFor(actor, (state) => state.matches({ idle: "clean" }), { timeout: 5000 });
 
-    expect(actor.getSnapshot().value).toEqual({ idle: "clean" });
+    expect(actor.getSnapshot().matches({ idle: "clean" })).toBe(true);
     expect(actor.getSnapshot().context.name).toBe("My Preset");
     expect(actor.getSnapshot().context.provider).toBe("openrouter");
     expect(actor.getSnapshot().context.apiKey).toBe("override-key");
@@ -57,7 +57,7 @@ describe("presetConfigMachine", () => {
     await waitFor(actor, (state) => state.matches({ idle: "clean" }), { timeout: 5000 });
 
     actor.send({ type: "EDIT_FIELD", field: "name", value: "Updated Name" });
-    expect(actor.getSnapshot().value).toEqual({ idle: "dirty" });
+    expect(actor.getSnapshot().matches({ idle: "dirty" })).toBe(true);
     expect(actor.getSnapshot().context.name).toBe("Updated Name");
     expect(actor.getSnapshot().context.isDirty).toBe(true);
   });
@@ -74,7 +74,7 @@ describe("presetConfigMachine", () => {
 
     await waitFor(actor, (state) => state.matches("saveSuccess"), { timeout: 5000 });
 
-    expect(actor.getSnapshot().value).toBe("saveSuccess");
+    expect(actor.getSnapshot().matches("saveSuccess")).toBe(true);
     const presets = await db.getAllPresets();
     expect(presets.length).toBe(1);
     expect(presets[0].name).toBe("Valid Name");
@@ -92,7 +92,7 @@ describe("presetConfigMachine", () => {
 
     actor.send({ type: "SAVE" });
 
-    expect(actor.getSnapshot().value).toEqual({ idle: "dirty" });
+    expect(actor.getSnapshot().matches({ idle: "dirty" })).toBe(true);
     expect(actor.getSnapshot().context.validationErrors.name).toBeDefined();
     expect(actor.getSnapshot().context.validationErrors.temperature).toBeDefined();
   });
@@ -116,7 +116,7 @@ describe("presetConfigMachine", () => {
 
     await waitFor(actor, (state) => state.matches("deleteSuccess"), { timeout: 5000 });
 
-    expect(actor.getSnapshot().value).toBe("deleteSuccess");
+    expect(actor.getSnapshot().matches("deleteSuccess")).toBe(true);
     const deletedPreset = await db.getPreset(presetId);
     expect(deletedPreset).toBeUndefined();
   });
