@@ -60,11 +60,9 @@ This tool executes a separate `pi` subprocess with a delegated system prompt and
 
 **Project-local agents** (`.pi/agents/*.md`) are repo-controlled prompts that can instruct the model to read files, run bash commands, etc.
 
-**Default behavior:** Only loads **user-level agents** from `~/.pi/agent/agents`.
+**Default behavior:** Loads both **user-level agents** from `~/.pi/agent/agents` and **project-local agents** from `.pi/agents`.
 
-To enable project-local agents, pass `agentScope: "both"` (or `"project"`). Only do this for repositories you trust.
-
-When running interactively, the tool prompts for confirmation before running project-local agents. Set `confirmProjectAgents: false` to disable.
+To change this, pass `agentScope: "user"` or `"project"`. Only use project-local agents for repositories you trust.
 
 ## Usage
 
@@ -140,8 +138,8 @@ System prompt for the agent goes here.
 ```
 
 **Locations:**
-- `~/.pi/agent/agents/*.md` - User-level (always loaded)
-- `.pi/agents/*.md` - Project-level (only with `agentScope: "project"` or `"both"`)
+- `~/.pi/agent/agents/*.md` - User-level
+- `.pi/agents/*.md` - Project-level (loaded by default)
 
 Project agents override user agents with the same name when `agentScope: "both"`.
 
