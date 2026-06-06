@@ -3,14 +3,14 @@ import { useLocation, Routes, Route } from "react-router";
 import { useMachine } from "@xstate/react";
 import { Theme, Header, HeaderName, HeaderGlobalBar, Content, Button } from "@carbon/react";
 import { Menu } from "@carbon/icons-react";
-import { parentCoordinatorMachine } from "./workflow/parentCoordinator";
+import { useCoordinator } from "./context/CoordinatorContext";
 import { NewChatForm } from "./ui/sidebar/NewChatForm.js";
 import { LeftSidebar } from "./ui/sidebar/LeftSidebar.js";
 import { ChatInterface } from "./ui/chat/ChatInterface";
 import { layoutMachine } from "./ui/layoutMachine";
 
 export function App() {
-  const [, send] = useMachine(parentCoordinatorMachine);
+  const { send } = useCoordinator();
   const [layoutState, sendLayout] = useMachine(layoutMachine);
   const location = useLocation();
   const isSidebarOpen = layoutState.matches("sidebarOpen");

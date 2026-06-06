@@ -48,11 +48,11 @@ Ensure the entire application is wrapped in the new provider.
 
 Replace the local machine instance in `App.tsx` with the global one.
 
-- [ ] Remove `useMachine(parentCoordinatorMachine)` from `src/App.tsx`.
-- [ ] Use `useCoordinator()` to obtain `state` and `send`.
-- [ ] Ensure the `useEffect` for `ROUTE_CHANGED` continues to work with the global `send` function.
-- [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run build`).
-- [ ] Commit: `(Agent Name) Refactor App.tsx to use global coordinator`.
+- [x] Remove `useMachine(parentCoordinatorMachine)` from `src/App.tsx`.
+- [x] Use `useCoordinator()` to obtain `state` and `send`.
+- [x] Ensure the `useEffect` for `ROUTE_CHANGED` continues to work with the global `send` function.
+- [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run build`).
+- [x] Commit: `(Agent Name) Refactor App.tsx to use global coordinator`.
 
 ### Step 1.4: Refactor `ChatInterface.tsx` to use `useCoordinator`
 
