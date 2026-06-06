@@ -1,6 +1,14 @@
 import { describe, beforeEach, it, expect } from "vitest";
 import { createActor } from "xstate";
-import { clearDatabase, getSetting, getAllPresets, createNewThread, getThread } from "../../db/db";
+import {
+  clearDatabase,
+  getSetting,
+  getAllPresets,
+  createNewThread,
+  getThread,
+  getMessagesForThread,
+  getCheckpoint,
+} from "../../db/db";
 import { globalSettingsMachine } from "../../ui/settings/globalSettings";
 import { BUILT_IN_WORKFLOWS } from "../../workflow/builtInWorkflows";
 import { graphRunnerActor } from "../../workflow/graphRunnerActor";
@@ -179,6 +187,10 @@ describe("Main User Flow Integration Test", () => {
           state.matches("interrupted") ||
           state.matches("paused")
         ) {
+          console.log("Actor reached state:", state.value);
+          if (state.matches("failed")) {
+            console.log("Actor error:", state.context.errorMessage);
+          }
           subscription.unsubscribe();
           resolve();
         }
@@ -191,6 +203,30 @@ describe("Main User Flow Integration Test", () => {
     // We check if the thread status has been updated to 'executing' or 'awaiting_input' or 'inactive' etc.
     const thread = await getThread(threadId);
     expect(["executing", "awaiting_input", "inactive", "error"]).toContain(thread?.status);
+
+    // Verify messages
+    const messages = await getMessagesForThread(threadId);
+    expect(messages).toHaveLength(2);
+    expect(messages[0].role).toBe("user");
+    expect(messages[0].content).toBe("Hello world");
+    expect(messages[1].role).toBe("assistant");
+    expect(messages[1].content).toMatch(/mocked (OpenRouter|Gemini) response/);
+
+    // Verify checkpoints
+    expect(thread).toBeDefined();
+    console.log("Thread checkpoints:", {
+      id: thread?.latestCheckpointId,
+      ns: thread?.latestCheckpointNs,
+    });
+    expect(thread?.latestCheckpointId).toBeDefined();
+    expect(thread?.latestCheckpointNs).toBeDefined();
+
+    const checkpoint = await getCheckpoint(
+      threadId,
+      thread!.latestCheckpointNs!,
+      thread!.latestCheckpointId!,
+    );
+    expect(checkpoint).toBeDefined();
 
     // Cleanup: stop the actor to avoid leaking promises in tests
     runnerActor.stop();

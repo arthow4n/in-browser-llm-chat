@@ -14,7 +14,17 @@ export const llmHandlers = [
             controller.enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({
-                  choices: [{ delta: { content: chunk } }],
+                  id: "mock-id",
+                  object: "chat.completion.chunk",
+                  created: Date.now(),
+                  model: "mock-model",
+                  choices: [
+                    {
+                      index: 0,
+                      delta: { content: chunk },
+                      finish_reason: null,
+                    },
+                  ],
                 })}\n\n`,
               ),
             );
@@ -53,7 +63,7 @@ export const llmHandlers = [
 
   // Google Gemini API
   http.post(
-    "https://generativelanguage.googleapis.com/v1beta/models/:model:generateContent",
+    /https:\/\/generativelanguage\.googleapis\.com\/v1beta\/models\/.*:(stream)?generateContent/,
     async ({ request }) => {
       // Note: Google SDK uses a different format for streaming if requested via query param or body
       // But generateContentStream usually results in a specific response format.

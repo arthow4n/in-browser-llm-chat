@@ -116,11 +116,11 @@ Implement a robust mechanism to wait for the asynchronous LangGraph execution to
 
 Assert that the conversation and the execution state were correctly persisted.
 
-- [ ] Query the `messages` table and assert that both the `user` message and the `assistant` message (from the MSW mock) are present and correctly linked to the thread.
-- [ ] Query the `checkpoints` table and assert that the LangGraph checkpoint for the final state was persisted.
-- [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-- [ ] Perform code review.
-- [ ] Commit the changes.
+- [x] Query the `messages` table and assert that both the `user` message and the `assistant` message (from the MSW mock) are present and correctly linked to the thread.
+- [x] Query the `checkpoints` table and assert that the LangGraph checkpoint for the final state was persisted.
+- [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+- [x] Perform code review.
+- [x] Commit the changes.
 
 ## 4. Failure Analysis & Refinement
 

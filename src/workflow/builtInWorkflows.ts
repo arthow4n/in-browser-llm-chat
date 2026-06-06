@@ -8,23 +8,13 @@ export const BUILT_IN_WORKFLOWS: WorkflowStore[] = [
     isBuiltIn: true,
     nodes: [
       {
-        id: "builtin-standard-input",
-        type: "input",
-        name: "Input",
-      },
-      {
         id: "builtin-standard-agent",
         type: "agent",
         name: "Agent",
         systemPrompt: "You are a helpful assistant.",
       },
     ],
-    edges: [
-      {
-        from: "builtin-standard-input",
-        to: "builtin-standard-agent",
-      },
-    ],
+    edges: [],
   },
   {
     id: "builtin-debate-workflow",

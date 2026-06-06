@@ -8,6 +8,7 @@ import {
   saveMessage,
   getThread,
   saveThread,
+  getMessagesForThread,
   type PresetStore,
   type WorkflowStore,
 } from "../db/db.js";
@@ -625,8 +626,10 @@ export const graphRunnerActor = createMachine(
                       streamMode: "updates",
                     });
                   } else {
+                    // If it's a new thread or we're starting fresh, load existing messages from the DB to seed the graph state
+                    const existingMessages = await getMessagesForThread(context.threadId);
                     runStream = await compiled.stream(
-                      { messages: [] },
+                      { messages: existingMessages },
                       { ...config, streamMode: "updates" },
                     );
                   }
@@ -714,7 +717,7 @@ export const graphRunnerActor = createMachine(
                       threadObj.latestCheckpointId =
                         stateVal.config.configurable?.checkpoint_id || null;
                       threadObj.latestCheckpointNs =
-                        stateVal.config.configurable?.checkpoint_ns || null;
+                        stateVal.config.configurable?.checkpoint_ns || "";
 
                       // Update cumulative tokens
                       const currentStats = threadObj.tokenStats || {
@@ -752,7 +755,7 @@ export const graphRunnerActor = createMachine(
                     finalThreadObj.latestCheckpointId =
                       finalState.config.configurable?.checkpoint_id || null;
                     finalThreadObj.latestCheckpointNs =
-                      finalState.config.configurable?.checkpoint_ns || null;
+                      finalState.config.configurable?.checkpoint_ns || "";
                     await saveThread(finalThreadObj);
                   }
 
