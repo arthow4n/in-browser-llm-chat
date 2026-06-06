@@ -99,14 +99,14 @@
 
 ## 7. Thread Integration & Stability
 
-- [ ] **Step 7.1: Verify Workflow Snapshot Capture**
+- [x] **Step 7.1: Verify Workflow Snapshot Capture**
   - Review the `createNewThread` logic.
   - Ensure that when a thread is created, the `workflowSnapshot` is captured from the merged list provided by `getEffectiveWorkflows()`.
   - This ensures that even if a built-in workflow definition changes in the code later, existing threads remain stable with the snapshot they were created with.
-  - [ ] Verify/Update `createNewThread` logic.
-  - [ ] Verify worktree state.
-  - [ ] Perform code review.
-  - [ ] Commit changes.
+  - [x] Verify/Update `createNewThread` logic.
+  - [x] Verify worktree state.
+  - [x] Perform code review.
+  - [x] Commit changes.
 
 ## 8. Testing & Verification
 
