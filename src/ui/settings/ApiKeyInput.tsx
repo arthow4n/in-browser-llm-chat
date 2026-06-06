@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { PasswordInput, InlineLoading, Tooltip } from "@carbon/react";
 import { CheckmarkOutline, ErrorOutline } from "@carbon/icons-react";
 import { useMachine } from "@xstate/react";
@@ -27,26 +27,16 @@ export const ApiKeyInput: React.FC<ApiKeyInputProps> = ({
     input: { provider },
   });
 
-  const [debouncedValue, setDebouncedValue] = useState(value);
-
   useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, 500);
-    return () => clearTimeout(handler);
-  }, [value]);
-
-  useEffect(() => {
-    if (debouncedValue) {
-      send({ type: "START_VALIDATION", apiKey: debouncedValue });
+    if (value) {
+      send({ type: "INPUT_CHANGED", apiKey: value });
     } else {
-      send({ type: "INPUT_CHANGED" });
+      send({ type: "INPUT_CHANGED", apiKey: "" });
     }
-  }, [debouncedValue, send]);
+  }, [value, send]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     onChange(e.target.value);
-    send({ type: "INPUT_CHANGED" });
   };
 
   return (

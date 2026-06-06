@@ -94,11 +94,11 @@
   - [x] Perform code review (self/subagent).
   - [x] Commit the changes following `AGENTS.md`.
 
-- [ ] **Step 3.8:** Migrate state in `src/ui/settings/ApiKeyInput.tsx`
-  - [ ] Create an XState machine to manage `debouncedValue` and migrate the component from `useState` to `@xstate/react`.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Perform code review (self/subagent).
-  - [ ] Commit the changes following `AGENTS.md`.
+- [x] **Step 3.8:** Migrate state in `src/ui/settings/ApiKeyInput.tsx`
+  - [x] Create an XState machine to manage `debouncedValue` and migrate the component from `useState` to `@xstate/react`.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Perform code review (self/subagent).
+  - [x] Commit the changes following `AGENTS.md`.
 
 - [ ] **Step 3.9:** Migrate state in `src/ui/settings/PresetConfig.tsx`
   - [ ] Create an XState machine to manage `isCustomModel`, `customModelId` and migrate the component from `useState` to `@xstate/react`.

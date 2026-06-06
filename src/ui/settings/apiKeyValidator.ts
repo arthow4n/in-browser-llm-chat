@@ -11,7 +11,7 @@ export type ApiKeyValidatorEvent =
   | { type: "START_VALIDATION"; apiKey: string }
   | { type: "VALIDATION_SUCCESS" }
   | { type: "VALIDATION_FAILURE"; error: string }
-  | { type: "INPUT_CHANGED" };
+  | { type: "INPUT_CHANGED"; apiKey: string };
 
 export interface ApiKeyValidatorInput {
   provider: "openrouter" | "gemini";
@@ -82,7 +82,8 @@ export const apiKeyValidatorMachine = setup({
       }
     },
     updateKeyAndController: assign({
-      apiKey: ({ event }) => (event.type === "START_VALIDATION" ? event.apiKey : ""),
+      apiKey: ({ context, event }) =>
+        event.type === "START_VALIDATION" ? event.apiKey : context.apiKey,
       abortController: () => new AbortController(),
       errorMessage: null,
     }),
@@ -109,10 +110,37 @@ export const apiKeyValidatorMachine = setup({
   states: {
     idle: {
       on: {
+        INPUT_CHANGED: {
+          target: "debouncing",
+          actions: assign({
+            apiKey: ({ event }) => (event.type === "INPUT_CHANGED" ? event.apiKey : ""),
+          }),
+        },
         START_VALIDATION: {
           target: "validating",
           actions: ["abortActiveRequest", "updateKeyAndController"],
         },
+      },
+    },
+    debouncing: {
+      after: {
+        500: {
+          target: "validating",
+          guard: ({ context }) => context.apiKey.trim().length > 0,
+          actions: ["abortActiveRequest", "updateKeyAndController"],
+        },
+      },
+      on: {
+        INPUT_CHANGED: {
+          actions: assign({
+            apiKey: ({ event }) => (event.type === "INPUT_CHANGED" ? event.apiKey : ""),
+          }),
+        },
+      },
+      always: {
+        target: "idle",
+        guard: ({ context }) => context.apiKey.trim().length === 0,
+        actions: ["abortActiveRequest", "clearController"],
       },
     },
     validating: {
@@ -145,7 +173,7 @@ export const apiKeyValidatorMachine = setup({
           reenter: true,
         },
         INPUT_CHANGED: {
-          target: "idle",
+          target: "debouncing",
           actions: ["abortActiveRequest", "clearController"],
         },
       },
@@ -157,7 +185,10 @@ export const apiKeyValidatorMachine = setup({
           actions: ["abortActiveRequest", "updateKeyAndController"],
         },
         INPUT_CHANGED: {
-          target: "idle",
+          target: "debouncing",
+          actions: assign({
+            apiKey: ({ event }) => (event.type === "INPUT_CHANGED" ? event.apiKey : ""),
+          }),
         },
       },
     },
@@ -168,7 +199,10 @@ export const apiKeyValidatorMachine = setup({
           actions: ["abortActiveRequest", "updateKeyAndController"],
         },
         INPUT_CHANGED: {
-          target: "idle",
+          target: "debouncing",
+          actions: assign({
+            apiKey: ({ event }) => (event.type === "INPUT_CHANGED" ? event.apiKey : ""),
+          }),
         },
       },
     },

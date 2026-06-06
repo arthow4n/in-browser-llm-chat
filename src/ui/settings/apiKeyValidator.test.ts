@@ -110,7 +110,7 @@ describe("apiKeyValidatorMachine", () => {
       });
     });
 
-    actor.send({ type: "INPUT_CHANGED" });
+    actor.send({ type: "INPUT_CHANGED", apiKey: "" });
     expect(actor.getSnapshot().matches("idle")).toBe(true);
   });
 });
