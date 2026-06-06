@@ -70,11 +70,11 @@
   - [x] Perform code review (self/subagent).
   - [x] Commit the changes following `AGENTS.md`.
 
-- [ ] **Step 3.4:** Migrate preview state in `src/ui/chat/ChatInterface.tsx`
-  - [ ] Extend the `ChatInterface` state machine to manage preview state (`previewAgentId`, `previewPayload`).
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Perform code review (self/subagent).
-  - [ ] Commit the changes following `AGENTS.md`.
+- [x] **Step 3.4:** Migrate preview state in `src/ui/chat/ChatInterface.tsx`
+  - [x] Extend the `ChatInterface` state machine to manage preview state (`previewAgentId`, `previewPayload`).
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Perform code review (self/subagent).
+  - [x] Commit the changes following `AGENTS.md`.
 
 - [ ] **Step 3.5:** Migrate chat data state in `src/ui/chat/ChatInterface.tsx`
   - [ ] Extend the `ChatInterface` state machine to manage chat data state (`thread`, `messages`, `draftAnswers`).
