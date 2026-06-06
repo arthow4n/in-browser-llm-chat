@@ -1,7 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect } from "react";
 import { TextInput, Checkbox, Button, Stack, Layer } from "@carbon/react";
 import { saveThread, getThread } from "../db/db";
 import { AskQuestionsResponse } from "../schemas/tools";
+
+import { askQuestionsMachine, Answer } from "./askQuestionsMachine";
+import { useMachine } from "@xstate/react";
 
 interface Question {
   id: string;
@@ -10,13 +13,6 @@ interface Question {
   options?: string[];
   allowFreetext: boolean;
   required: boolean;
-}
-
-interface Answer {
-  selected?: string[];
-  text?: string;
-  refused?: boolean;
-  refusalReason?: string;
 }
 
 interface AskQuestionsFormProps {
@@ -36,19 +32,29 @@ export const AskQuestionsForm: React.FC<AskQuestionsFormProps> = ({
   onSubmit,
   onUpdateDraft,
 }) => {
-  const [answers, setAnswers] = useState<Record<string, Answer>>(() => {
-    return (initialDrafts?.[toolCallId] as Record<string, Answer>) || {};
+  const [state, send] = useMachine(askQuestionsMachine, {
+    input: {
+      initialDrafts: initialDrafts?.[toolCallId] as Record<string, Answer>,
+    },
   });
+
+  const answers = state.context.answers;
 
   useEffect(() => {
     if (initialDrafts?.[toolCallId]) {
-      setAnswers(initialDrafts[toolCallId] as Record<string, Answer>);
+      send({
+        type: "LOAD_INITIAL_DRAFTS",
+        drafts: initialDrafts[toolCallId] as Record<string, Answer>,
+      });
     }
-  }, [initialDrafts, toolCallId]);
+  }, [initialDrafts, toolCallId, send]);
 
   const updateAnswer = (questionId: string, value: Partial<Answer>) => {
+    send({ type: "UPDATE_ANSWER", questionId, value });
+
+    // We compute the next state manually here to save/persist immediately,
+    // though ideally we could listen to state transitions.
     const newAnswers = { ...answers, [questionId]: { ...answers[questionId], ...value } };
-    setAnswers(newAnswers);
     onUpdateDraft({ [toolCallId]: newAnswers });
 
     // Also persist to DB for reliability
