@@ -64,14 +64,14 @@
   - [x] Perform code review.
   - [x] Commit changes.
 
-- [ ] **Step 4.2: Protect Built-in Workflows in UI**
+- [x] **Step 4.2: Protect Built-in Workflows in UI**
   - Update `src/ui/workflow/WorkflowList.tsx` (or the corresponding component).
   - Locate the delete button/action for workflows.
   - Disable or hide the delete button if the workflow has `isBuiltIn === true`.
-  - [ ] Implement UI protection for built-in workflows.
-  - [ ] Verify worktree state.
-  - [ ] Perform code review.
-  - [ ] Commit changes.
+  - [x] Implement UI protection for built-in workflows.
+  - [x] Verify worktree state.
+  - [x] Perform code review.
+  - [x] Commit changes.
 
 ## 5. UI Integration - Workflow Editor
 
