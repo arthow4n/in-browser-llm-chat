@@ -63,12 +63,12 @@
   - [x] Perform code review (self/subagent).
   - [x] Commit the changes following `AGENTS.md`.
 
-- [ ] **Step 3.3:** Migrate display/visibility state in `src/ui/chat/ChatInterface.tsx`
-  - [ ] Create a new XState state machine for `ChatInterface` to manage display/visibility state (`showSettings`, `showPayloadPreview`).
-  - [ ] Migrate the component to use the new machine.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Perform code review (self/subagent).
-  - [ ] Commit the changes following `AGENTS.md`.
+- [x] **Step 3.3:** Migrate display/visibility state in `src/ui/chat/ChatInterface.tsx`
+  - [x] Create a new XState state machine for `ChatInterface` to manage display/visibility state (`showSettings`, `showPayloadPreview`).
+  - [x] Migrate the component to use the new machine.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Perform code review (self/subagent).
+  - [x] Commit the changes following `AGENTS.md`.
 
 - [ ] **Step 3.4:** Migrate preview state in `src/ui/chat/ChatInterface.tsx`
   - [ ] Extend the `ChatInterface` state machine to manage preview state (`previewAgentId`, `previewPayload`).
