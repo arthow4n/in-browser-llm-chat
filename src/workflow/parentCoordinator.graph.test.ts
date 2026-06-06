@@ -81,7 +81,8 @@ describe("parentCoordinatorMachine model-based testing (ViewState)", () => {
       }
 
       const actualState = actor.getSnapshot();
-      expect(actualState.matches({ ViewState: path.state.value.ViewState as any })).toBe(true);
+      const expectedViewState = (path.state.value as Record<string, string>).ViewState;
+      expect(actualState.matches({ ViewState: expectedViewState })).toBe(true);
       actor.stop();
     });
   }
