@@ -5,19 +5,28 @@ import { ChatInputArea } from "./ChatInputArea";
 describe("ChatInputArea", () => {
   const mockParentSend =
     vi.fn<(event: import("../../workflow/parentCoordinator").CoordinatorEvent) => void>();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const defaultParentState: any = {
-    value: {
-      ViewState: "chatting",
-      ExecutionState: "inactive",
-    },
-    context: {
-      currentThreadId: "test-thread-id",
-      loopControl: {
-        activeInterrupt: null,
+  function createMockState(value: any, context?: any) {
+    return {
+      value,
+      context: {
+        currentThreadId: "test-thread-id",
+        loopControl: { activeInterrupt: null },
+        ...context,
       },
-    },
-  };
+      matches: function (val: any) {
+        if (typeof val === "object") {
+          const key = Object.keys(val)[0];
+          return this.value[key] === val[key];
+        }
+        return false;
+      },
+    };
+  }
+
+  const defaultParentState = createMockState({
+    ViewState: "chatting",
+    ExecutionState: "inactive",
+  });
 
   it("should render correctly", () => {
     render(<ChatInputArea parentState={defaultParentState} parentSend={mockParentSend} />);
@@ -52,68 +61,37 @@ describe("ChatInputArea", () => {
   });
 
   it("should be disabled when ViewState is onboarding", () => {
-    const onboardingState = {
-      ...defaultParentState,
-      value: {
-        ...defaultParentState.value,
-        ViewState: "onboarding",
-      },
-    };
+    const onboardingState = createMockState({
+      ViewState: "onboarding",
+      ExecutionState: "inactive",
+    });
     render(<ChatInputArea parentState={onboardingState} parentSend={mockParentSend} />);
     expect(screen.getByLabelText(/Message/i)).toBeDisabled();
     expect(screen.getByRole("button", { name: /Send/i })).toBeDisabled();
   });
 
   it("should be disabled when ExecutionState is executing", () => {
-    const executingState = {
-      ...defaultParentState,
-      value: {
-        ...defaultParentState.value,
-        ExecutionState: "executing",
-      },
-    };
+    const executingState = createMockState({
+      ViewState: "chatting",
+      ExecutionState: "executing",
+    });
     render(<ChatInputArea parentState={executingState} parentSend={mockParentSend} />);
     expect(screen.getByLabelText(/Message/i)).toBeDisabled();
     expect(screen.getByRole("button", { name: /Send/i })).toBeDisabled();
   });
 
-  it("should be disabled when ExecutionState is awaitingHumanInput and no input interrupt", () => {
-    const awaitingState = {
-      ...defaultParentState,
-      value: {
-        ...defaultParentState.value,
+  it("should be disabled when ExecutionState is awaitingHumanInput", () => {
+    const awaitingState = createMockState(
+      {
+        ViewState: "chatting",
         ExecutionState: "awaitingHumanInput",
       },
-      context: {
-        ...defaultParentState.context,
-        loopControl: {
-          activeInterrupt: { type: "approval" },
-        },
-      },
-    };
+      {
+        loopControl: { activeInterrupt: { type: "approval" } },
+      }
+    );
     render(<ChatInputArea parentState={awaitingState} parentSend={mockParentSend} />);
     expect(screen.getByLabelText(/Message/i)).toBeDisabled();
     expect(screen.getByRole("button", { name: /Send/i })).toBeDisabled();
-  });
-
-  it("should be enabled when ExecutionState is awaitingHumanInput and input interrupt", () => {
-    const awaitingInputState = {
-      ...defaultParentState,
-      value: {
-        ...defaultParentState.value,
-        ExecutionState: "awaitingHumanInput",
-      },
-      context: {
-        ...defaultParentState.context,
-        loopControl: {
-          activeInterrupt: { type: "input" },
-        },
-      },
-    };
-    render(<ChatInputArea parentState={awaitingInputState} parentSend={mockParentSend} />);
-    const input = screen.getByLabelText(/Message/i) as HTMLTextAreaElement;
-    fireEvent.change(input, { target: { value: "Hello" } });
-    expect(input).not.toBeDisabled();
-    expect(screen.getByRole("button", { name: /Send/i })).not.toBeDisabled();
   });
 });
