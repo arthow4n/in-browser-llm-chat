@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { createActor } from "xstate";
+import { createActor, waitFor } from "xstate";
 import { newChatFormMachine } from "./newChatFormMachine.js";
 import * as db from "../../db/db.js";
 
@@ -34,7 +34,7 @@ describe("newChatFormMachine", () => {
     const actor = createActor(newChatFormMachine).start();
     expect(actor.getSnapshot().matches("loading")).toBe(true);
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.matches("idle"), { timeout: 1000 });
 
     const snap = actor.getSnapshot();
     expect(snap.matches("idle")).toBe(true);
@@ -58,7 +58,7 @@ describe("newChatFormMachine", () => {
     await db.setSetting("default_preset_id", "p2");
 
     const actor = createActor(newChatFormMachine).start();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.matches("idle"), { timeout: 1000 });
 
     expect(actor.getSnapshot().context.selectedPresetId).toBe("p2");
   });
@@ -67,7 +67,7 @@ describe("newChatFormMachine", () => {
     const spy = vi.spyOn(db, "getAllWorkflows").mockRejectedValue(new Error("DB unavailable"));
 
     const actor = createActor(newChatFormMachine).start();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.matches("error"), { timeout: 1000 });
 
     const snap = actor.getSnapshot();
     expect(snap.matches("error")).toBe(true);
@@ -91,7 +91,7 @@ describe("newChatFormMachine", () => {
     await db.savePreset(mockPreset);
 
     const actor = createActor(newChatFormMachine).start();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.matches("idle"), { timeout: 1000 });
 
     actor.send({ type: "CHANGE_WORKFLOW", workflowId: "w2" });
     expect(actor.getSnapshot().context.selectedWorkflowId).toBe("w2");
@@ -105,7 +105,7 @@ describe("newChatFormMachine", () => {
     await db.savePreset(mockPreset);
 
     const actor = createActor(newChatFormMachine).start();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.matches("idle"), { timeout: 1000 });
 
     actor.send({ type: "UPDATE_MESSAGE", message: "Hello world" });
     expect(actor.getSnapshot().context.initialMessage).toBe("Hello world");
@@ -116,14 +116,14 @@ describe("newChatFormMachine", () => {
     await db.savePreset(mockPreset);
 
     const actor = createActor(newChatFormMachine).start();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.matches("idle"), { timeout: 1000 });
 
     actor.send({ type: "UPDATE_MESSAGE", message: "Let's debate AI" });
     actor.send({ type: "SUBMIT" });
 
     expect(actor.getSnapshot().matches("submitting")).toBe(true);
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.matches("idle"), { timeout: 1000 });
 
     const snap = actor.getSnapshot();
     expect(snap.matches("idle")).toBe(true);
@@ -140,10 +140,10 @@ describe("newChatFormMachine", () => {
       .mockRejectedValue(new Error("IndexedDB write failed"));
 
     const actor = createActor(newChatFormMachine).start();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.matches("idle"), { timeout: 1000 });
 
     actor.send({ type: "SUBMIT" });
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.matches("error"), { timeout: 1000 });
 
     const snap = actor.getSnapshot();
     expect(snap.matches("error")).toBe(true);
@@ -156,7 +156,7 @@ describe("newChatFormMachine", () => {
     const spy = vi.spyOn(db, "getAllWorkflows").mockRejectedValue(new Error("DB error"));
 
     const actor = createActor(newChatFormMachine).start();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.matches("error"), { timeout: 1000 });
 
     expect(actor.getSnapshot().matches("error")).toBe(true);
     actor.send({ type: "DISMISS_ERROR" });
@@ -170,7 +170,7 @@ describe("newChatFormMachine", () => {
     const spy = vi.spyOn(db, "getAllWorkflows").mockRejectedValueOnce(new Error("DB error"));
 
     const actor = createActor(newChatFormMachine).start();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.matches("error"), { timeout: 1000 });
 
     expect(actor.getSnapshot().matches("error")).toBe(true);
 
@@ -181,7 +181,7 @@ describe("newChatFormMachine", () => {
     actor.send({ type: "LOAD" });
     expect(actor.getSnapshot().matches("loading")).toBe(true);
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.matches("idle"), { timeout: 1000 });
     expect(actor.getSnapshot().matches("idle")).toBe(true);
     expect(actor.getSnapshot().context.workflows).toEqual([mockWorkflow]);
 
@@ -194,11 +194,11 @@ describe("newChatFormMachine", () => {
     const spy = vi.spyOn(db, "createNewThread");
 
     const actor = createActor(newChatFormMachine).start();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.matches("idle"), { timeout: 1000 });
 
     actor.send({ type: "UPDATE_MESSAGE", message: "My topic" });
     actor.send({ type: "SUBMIT" });
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.matches("idle"), { timeout: 1000 });
 
     expect(spy).toHaveBeenCalledWith({
       workflowId: "w1",
