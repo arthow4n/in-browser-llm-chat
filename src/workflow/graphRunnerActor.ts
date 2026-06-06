@@ -1,4 +1,4 @@
-import { assign, createMachine, fromPromise, sendTo } from "xstate";
+import { assign, createMachine, fromPromise, sendTo, type ErrorActorEvent } from "xstate";
 import { type MessageStore } from "../db/db";
 import { GoogleGenAI } from "@google/genai";
 import { OpenRouter } from "@openrouter/sdk";
@@ -12,8 +12,14 @@ import {
   type WorkflowStore,
 } from "../db/db.js";
 import { IndexedDBSaver } from "../db/checkpointer.js";
-import { compileWorkflow } from "./compiler.js";
+import { compileWorkflow, type GraphStateType } from "./compiler.js";
 import { Command } from "@langchain/langgraph";
+import {
+  type OpenRouterUsage,
+  type GraphMessage,
+  type CompiledPayloadMessage,
+  type RunnerInterrupt,
+} from "./types.js";
 
 // Types
 export interface RunnerContext {
@@ -29,7 +35,7 @@ export interface RunnerContext {
   currentStepIndex: number;
   errorMessage: string | null;
   abortController: AbortController | null;
-  activeInterrupt: unknown;
+  activeInterrupt: RunnerInterrupt | null;
   compiledGraph: unknown;
   accumulatedTokensThisStep: { promptTokens: number; completionTokens: number };
   lastEmitTime: number;
@@ -52,32 +58,30 @@ export type RunnerEvent =
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // Cast-free helper functions for safe type access
-function getEventErrorMessage(event: any): string | undefined {
+function getEventErrorMessage(event: ErrorActorEvent<any, any>): string | undefined {
   return event?.error?.message;
 }
 
-function getChunkUsage(
-  chunk: any,
-): { prompt_tokens?: number; completion_tokens?: number } | undefined {
+function getChunkUsage(chunk: any): OpenRouterUsage | undefined {
   return chunk?.usage;
 }
 
-function getMessages(out: any): any[] | undefined {
+function getMessages(out: Partial<GraphStateType>): GraphMessage[] | undefined {
   if (out && typeof out === "object" && "messages" in out && Array.isArray(out.messages)) {
     return out.messages;
   }
   return undefined;
 }
 
-function getInterruptType(activeInterrupt: any): string | undefined {
+function getInterruptType(activeInterrupt: RunnerInterrupt | null | undefined): string | undefined {
   return activeInterrupt?.type;
 }
 
-function getEventInterrupt(event: any): unknown {
+function getEventInterrupt(event: { output?: { interrupt?: unknown } }): unknown {
   return event?.output?.interrupt;
 }
 
-function toOpenRouterMessage(msg: any): any {
+function toOpenRouterMessage(msg: CompiledPayloadMessage): any {
   return msg;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -150,7 +154,7 @@ export function compileMessagesForLLM(params: {
   injectedSystemMessages: Array<{ content: string; depth: number }>;
   isGemini: boolean;
 }): {
-  compiledMessages: Record<string, unknown>[];
+  compiledMessages: CompiledPayloadMessage[];
   systemInstruction?: string;
 } {
   const { activeAgentName, messages, maxHistoryMessages, injectedSystemMessages, isGemini } =
@@ -266,16 +270,16 @@ export function compileMessagesForLLM(params: {
   }
 
   // Merge consecutive messages of the same role
-  const merged: Array<{
-    role: string;
-    content: string;
-    tool_calls?: unknown[];
-    tool_call_id?: string;
-    name?: string;
-  }> = [];
+  const merged: CompiledPayloadMessage[] = [];
   for (const msg of mapped) {
     if (merged.length === 0) {
-      merged.push(msg);
+      merged.push({
+        role: msg.role as CompiledPayloadMessage["role"],
+        content: msg.content,
+        tool_calls: msg.tool_calls,
+        tool_call_id: msg.tool_call_id,
+        name: msg.name,
+      });
       continue;
     }
 
@@ -289,7 +293,13 @@ export function compileMessagesForLLM(params: {
         ];
       }
     } else {
-      merged.push(msg);
+      merged.push({
+        role: msg.role as CompiledPayloadMessage["role"],
+        content: msg.content,
+        tool_calls: msg.tool_calls,
+        tool_call_id: msg.tool_call_id,
+        name: msg.name,
+      });
     }
   }
 
@@ -909,7 +919,7 @@ export const graphRunnerActor = createMachine(
         }
       },
       saveInterruptToDB: async ({ context, event }) => {
-        const details = getEventInterrupt(event);
+        const details = getEventInterrupt(event as { output?: { interrupt?: unknown } });
         const thread = await getThread(context.threadId);
         if (thread) {
           thread.status = "awaiting_input";

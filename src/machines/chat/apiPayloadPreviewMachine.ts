@@ -1,5 +1,5 @@
 import { setup, assign } from "xstate";
-import { type CompiledPayloadMessage } from "../../workflow/compiler";
+import { type CompiledPayloadMessage } from "../../workflow/types";
 
 export interface ApiPayloadPreviewContext {
   activeAgentId: string | null;

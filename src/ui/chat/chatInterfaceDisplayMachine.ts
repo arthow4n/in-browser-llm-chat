@@ -1,5 +1,5 @@
 import { setup, assign } from "xstate";
-import { type CompiledPayloadMessage } from "../../workflow/compiler";
+import { type CompiledPayloadMessage } from "../../workflow/types";
 import { type ThreadStore, type MessageStore, type PresetStore } from "../../db/db";
 import { type WorkflowNode } from "../../workflow/schemas";
 

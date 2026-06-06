@@ -1,26 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { StateGraph, Annotation, END, START, interrupt } from "@langchain/langgraph";
 import type { WorkflowNode, WorkflowEdge } from "./schemas.js";
-
-export type GraphMessage = {
-  id?: string;
-  role: "system" | "user" | "assistant" | "tool";
-  content: string;
-  type?: "text" | "tool_call" | "tool_result" | "reasoning";
-  name?: string;
-  toolCallId?: string;
-  metadata?: { tool_calls?: { id: string; name: string; args?: unknown }[] };
-  createdAt?: number;
-  isInjected?: boolean;
-};
-
-export interface CompiledPayloadMessage {
-  role: "system" | "user" | "assistant" | "tool";
-  content: string;
-  name?: string;
-  tool_call_id?: string;
-  isInjected?: boolean;
-}
+import type { GraphMessage, CompiledPayloadMessage } from "./types.js";
 
 export const GraphStateAnnotation = Annotation.Root({
   messages: Annotation<GraphMessage[]>({

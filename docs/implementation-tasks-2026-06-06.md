@@ -39,10 +39,10 @@ Update the following helper functions to use the newly defined types instead of 
 - `getEventInterrupt(event: any)`
 - `toOpenRouterMessage(msg: any)`
 
-- [ ] Refactor each function to use explicit types.
-- [ ] Verify worktree state.
-- [ ] Perform code review.
-- [ ] Commit the changes.
+- [x] Refactor each function to use explicit types.
+- [x] Verify worktree state.
+- [x] Perform code review.
+- [x] Commit the changes.
 
 ### Step 1.3: Remove `any` eslint-disable in `graphRunnerActor.ts`
 

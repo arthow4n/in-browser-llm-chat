@@ -11,9 +11,11 @@ However, there are several instances of "type bypassing" and structural casting 
 ## Findings
 
 ### 1. Strict Typing & Bypasses (High Priority)
+
 The project has several areas where `any` is used or structural casting is applied, which should be refactored to use real, explicitly defined types.
 
 #### `src/workflow/graphRunnerActor.ts`
+
 - **`any` usage in helpers**: The following helper functions use `any` for arguments and return types, bypassing type safety:
   - `getEventErrorMessage(event: any)`
   - `getChunkUsage(chunk: any)`
@@ -24,6 +26,7 @@ The project has several areas where `any` is used or structural casting is appli
 - **`eslint-disable`**: The file uses `/* eslint-disable @typescript-eslint/no-explicit-any */`.
 
 #### `src/ui/chat/ChatInterface.tsx`
+
 - **Structural Casting**: The following casts are used, which are considered code smells:
   - `(thread.workflowSnapshot as Record<string, unknown>)`
   - `workflowInjected as Array<{ content: string; depth: number }>`
@@ -32,16 +35,19 @@ The project has several areas where `any` is used or structural casting is appli
   - `send(event as import("../../workflow/parentCoordinator").CoordinatorEvent)`
 
 #### `src/workflow/compiler.ts`
+
 - **`any` in StateGraph**: The `StateGraph` is instantiated with `any` generics: `new StateGraph<any, any, any, any>(GraphStateAnnotation)`.
 - **`eslint-disable`**: The file uses `/* eslint-disable @typescript-eslint/no-explicit-any */`.
 
 ### 2. UI State Machine Policy (Low Priority)
+
 - **`src/ui/hooks/useWindowSize.ts`**: Uses `useState` to track window dimensions.
-  - *Verdict*: This is likely acceptable as it tracks environmental state (browser window size) rather than interactive UI state (buttons, forms, etc.).
+  - _Verdict_: This is likely acceptable as it tracks environmental state (browser window size) rather than interactive UI state (buttons, forms, etc.).
 
 ## Planned Fixes
 
 ### Typing Improvements
+
 - [ ] **Define interfaces for LLM provider responses**: Create specific types for Google GenAI and OpenRouter response chunks to replace `any` in `graphRunnerActor.ts`.
 - [ ] **Refactor `ChatInterface.tsx` casts**:
   - Improve the `ThreadStore` type definition in `db.ts` to avoid casting `workflowSnapshot`.
@@ -50,5 +56,6 @@ The project has several areas where `any` is used or structural casting is appli
 - [ ] **Remove `eslint-disable @typescript-eslint/no-explicit-any`**: Once the types are implemented, remove these disables.
 
 ## Notes
+
 - The core logic for workflow execution, history rollback, and database management appears sound and logically correct.
 - No violations of the "No-Mocking Policy" were found in the reviewed tests.

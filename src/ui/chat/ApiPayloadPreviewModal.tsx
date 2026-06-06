@@ -2,7 +2,7 @@ import React from "react";
 import { useMachine } from "@xstate/react";
 import { Modal, ModalBody, Dropdown, InlineNotification } from "@carbon/react";
 import { apiPayloadPreviewMachine } from "../../machines/chat/apiPayloadPreviewMachine";
-import { type CompiledPayloadMessage } from "../../workflow/compiler";
+import { type CompiledPayloadMessage } from "../../workflow/types";
 
 interface ApiPayloadPreviewModalProps {
   isOpen: boolean;
