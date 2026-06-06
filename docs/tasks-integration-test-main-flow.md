@@ -139,20 +139,20 @@ Run the complete integration test and identify any implementation gaps or bugs.
 
 Address the identified issues and refine the test assertions.
 
-- [ ] Implement fixes for any bugs discovered in Step 4.1.
-- [ ] Refine test assertions to be more robust (e.g., adding better `waitFor` logic or more specific DB checks).
-- [ ] Ensure the full "Happy Path" integration test passes consistently.
-- [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-- [ ] Perform code review.
-- [ ] Commit the changes.
+- [x] Implement fixes for any bugs discovered in Step 4.1.
+- [x] Refine test assertions to be more robust (e.g., adding better `waitFor` logic or more specific DB checks).
+- [x] Ensure the full "Happy Path" integration test passes consistently.
+- [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+- [x] Perform code review.
+- [x] Commit the changes.
 
 ---
 
 ## 5. Cleanup
 
-- [ ] Move the findings file to the docs.outdated directory.
-  - [ ] Move findings file to `docs.outdated/`.
-  - [ ] Commit the movement of the findings file.
-- [ ] Delete the findings file from `docs.outdated/`.
-  - [ ] Delete the findings file.
-  - [ ] Commit the deletion.
+- [x] Move the findings file to the docs.outdated directory.
+  - [x] Move findings file to `docs.outdated/`.
+  - [x] Commit the movement of the findings file.
+- [x] Delete the findings file from `docs.outdated/`.
+  - [x] Delete the findings file.
+  - [x] Commit the deletion.
