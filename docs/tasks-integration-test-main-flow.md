@@ -63,12 +63,12 @@ Create a helper utility to clear all IndexedDB tables between integration tests 
 
 Implement a test case to verify that API keys are correctly saved using the `globalSettings` logic.
 
-- [ ] Create `src/tests/integration/main-user-flow.test.ts`.
-- [ ] Implement logic to trigger the `saveSettings` action via the `globalSettingsMachine` with a set of mock API keys.
-- [ ] Query the IndexedDB `settings` table and assert that the API keys are stored correctly.
-- [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-- [ ] Perform code review.
-- [ ] Commit the changes.
+- [x] Create `src/tests/integration/main-user-flow.test.ts`.
+- [x] Implement logic to trigger the `saveSettings` action via the `globalSettingsMachine` with a set of mock API keys.
+- [x] Query the IndexedDB `settings` table and assert that the API keys are stored correctly.
+- [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+- [x] Perform code review.
+- [x] Commit the changes.
 
 ### Step 2.2: Verify Default Preset Seeding
 

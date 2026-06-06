@@ -75,9 +75,9 @@ export const globalSettingsMachine = setup({
       return { api_keys, ui_config, injected_system_messages };
     }),
     saveSettings: fromPromise(async ({ input }: { input: GlobalSettingsData }) => {
-      await setSetting("api_keys", { value: input.api_keys });
-      await setSetting("ui_config", { value: input.ui_config });
-      await setSetting("injected_system_messages", { value: input.injected_system_messages });
+      await setSetting("api_keys", input.api_keys);
+      await setSetting("ui_config", input.ui_config);
+      await setSetting("injected_system_messages", input.injected_system_messages);
 
       // Check if we need to seed default presets
       // This is simplified, actual seeding might involve querying the presets store
