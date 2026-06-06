@@ -5,6 +5,7 @@ import { Send } from "@carbon/icons-react";
 import { chatInputMachine } from "./chatInputMachine";
 import { type CoordinatorEvent, type CoordinatorContext } from "../../workflow/parentCoordinator";
 import { v4 as uuidv4 } from "uuid";
+import { z } from "zod";
 
 import { StateValue } from "xstate";
 
@@ -35,8 +36,18 @@ export function ChatInputArea({ parentState, parentSend }: ChatInputAreaProps) {
   };
 
   const handleRoleChange = (data: unknown) => {
-    const item = data as { item?: { value: string }; value?: string };
-    const value = item?.item?.value || item?.value;
+    const RoleChangeSchema = z
+      .object({
+        selectedItem: z.object({ value: z.string() }).optional(),
+        item: z.object({ value: z.string() }).optional(),
+        value: z.string().optional(),
+      })
+      .catchall(z.unknown());
+
+    const parsed = RoleChangeSchema.safeParse(data);
+    if (!parsed.success) return;
+
+    const value = parsed.data.selectedItem?.value || parsed.data.item?.value || parsed.data.value;
     if (value) {
       send({ type: "UPDATE_ROLE", role: value as "User" | "Assistant" | "System" });
     }
