@@ -110,17 +110,17 @@
 
 ## 8. Testing & Verification
 
-- [ ] **Step 8.1: End-to-End Verification**
+- [x] **Step 8.1: End-to-End Verification**
   - Open the application with a fresh database.
   - Verify that "Standard Agent" and "Debate Workflow" are present and selectable.
   - Create a custom workflow and verify it persists across refreshes.
   - Verify that built-in workflows cannot be deleted or edited.
   - Verify that cloning a built-in workflow creates a new, editable custom workflow.
   - Verify that threads can be created using both built-in and custom workflows.
-  - [ ] Perform all verification steps.
-  - [ ] Verify worktree state.
-  - [ ] Perform code review.
-  - [ ] Commit changes.
+  - [x] Perform all verification steps.
+  - [x] Verify worktree state.
+  - [x] Perform code review.
+  - [x] Commit changes.
 
 ## Final Cleanup
 
