@@ -79,16 +79,23 @@ Implement a test step that programmatically creates a new chat thread.
 - [ ] Perform code review.
 - [ ] Commit the changes.
 
-### Step 3.2: Implement `graphRunnerActor` Orchestration
-Implement the core integration test loop: sending a message and waiting for the LLM response via the `graphRunnerActor`.
+### Step 3.2: Implement `graphRunnerActor` Execution Trigger
+Implement the instantiation of the `graphRunnerActor` and the dispatch of the initial message.
 - [ ] Spawn the `graphRunnerActor` using the newly created thread ID.
 - [ ] Send a `START` event to the actor with a user message (e.g., "Hello, who are you?").
-- [ ] Implement a mechanism to wait for the actor to reach a terminal state (e.g., `idle` or `completed`) by monitoring state transitions and `emit` events, handling the asynchronous nature of the LangGraph execution.
 - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
 - [ ] Perform code review.
 - [ ] Commit the changes.
 
-### Step 3.3: Verify Final Database State
+### Step 3.3: Implement Execution Synchronization
+Implement a robust mechanism to wait for the asynchronous LangGraph execution to complete.
+- [ ] Implement a mechanism to wait for the `graphRunnerActor` to reach a terminal state (e.g., `idle` or `completed`).
+- [ ] Use `await` with a promise-based approach or `waitFor` from Testing Library to monitor state transitions and `emit` events, ensuring the test doesn't proceed until the execution is finished.
+- [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+- [ ] Perform code review.
+- [ ] Commit the changes.
+
+### Step 3.4: Verify Final Database State
 Assert that the conversation and the execution state were correctly persisted.
 - [ ] Query the `messages` table and assert that both the `user` message and the `assistant` message (from the MSW mock) are present and correctly linked to the thread.
 - [ ] Query the `checkpoints` table and assert that the LangGraph checkpoint for the final state was persisted.
