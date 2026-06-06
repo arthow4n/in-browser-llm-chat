@@ -82,11 +82,11 @@
   - [x] Perform code review (self/subagent).
   - [x] Commit the changes following `AGENTS.md`.
 
-- [ ] **Step 3.6:** Migrate configuration state in `src/ui/chat/ChatInterface.tsx`
-  - [ ] Extend the `ChatInterface` state machine to manage configuration state (`presets`, `nodes`, `globalInjectedMessages`).
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Perform code review (self/subagent).
-  - [ ] Commit the changes following `AGENTS.md`.
+- [x] **Step 3.6:** Migrate configuration state in `src/ui/chat/ChatInterface.tsx`
+  - [x] Extend the `ChatInterface` state machine to manage configuration state (`presets`, `nodes`, `globalInjectedMessages`).
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Perform code review (self/subagent).
+  - [x] Commit the changes following `AGENTS.md`.
 
 - [ ] **Step 3.7:** Migrate state in `src/ui/chat/ExecutionControlPanel.tsx`
   - [ ] Create an XState machine to manage `isModalOpen` and migrate the component from `useState` to `@xstate/react`.

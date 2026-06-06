@@ -1,6 +1,7 @@
 import { setup, assign } from "xstate";
 import { type CompiledPayloadMessage } from "../../workflow/compiler";
-import { type ThreadStore, type MessageStore } from "../../db/db";
+import { type ThreadStore, type MessageStore, type PresetStore } from "../../db/db";
+import { type WorkflowNode } from "../../workflow/schemas";
 
 export const chatInterfaceDisplayMachine = setup({
   types: {
@@ -12,6 +13,9 @@ export const chatInterfaceDisplayMachine = setup({
       thread: ThreadStore | undefined | null;
       messages: MessageStore[];
       draftAnswers: Record<string, unknown>;
+      presets: PresetStore[];
+      nodes: WorkflowNode[];
+      globalInjectedMessages: Array<{ content: string; depth: number }>;
     },
     events: {} as
       | { type: "OPEN_SETTINGS" }
@@ -22,7 +26,13 @@ export const chatInterfaceDisplayMachine = setup({
       | { type: "SET_PREVIEW_PAYLOAD"; payload: CompiledPayloadMessage[] | null }
       | { type: "SET_THREAD"; thread: ThreadStore | undefined | null }
       | { type: "SET_MESSAGES"; messages: MessageStore[] }
-      | { type: "SET_DRAFT_ANSWERS"; draftAnswers: Record<string, unknown> },
+      | { type: "SET_DRAFT_ANSWERS"; draftAnswers: Record<string, unknown> }
+      | { type: "SET_PRESETS"; presets: PresetStore[] }
+      | { type: "SET_NODES"; nodes: WorkflowNode[] }
+      | {
+          type: "SET_GLOBAL_INJECTED_MESSAGES";
+          messages: Array<{ content: string; depth: number }>;
+        },
   },
   actions: {
     openSettings: assign({ showSettings: true }),
@@ -54,6 +64,19 @@ export const chatInterfaceDisplayMachine = setup({
       draftAnswers: ({ event, context }) =>
         event.type === "SET_DRAFT_ANSWERS" ? event.draftAnswers : context.draftAnswers,
     }),
+    setPresets: assign({
+      presets: ({ event, context }) =>
+        event.type === "SET_PRESETS" ? event.presets : context.presets,
+    }),
+    setNodes: assign({
+      nodes: ({ event, context }) => (event.type === "SET_NODES" ? event.nodes : context.nodes),
+    }),
+    setGlobalInjectedMessages: assign({
+      globalInjectedMessages: ({ event, context }) =>
+        event.type === "SET_GLOBAL_INJECTED_MESSAGES"
+          ? event.messages
+          : context.globalInjectedMessages,
+    }),
   },
 }).createMachine({
   id: "chatInterfaceDisplay",
@@ -66,6 +89,9 @@ export const chatInterfaceDisplayMachine = setup({
     thread: null,
     messages: [],
     draftAnswers: {},
+    presets: [],
+    nodes: [],
+    globalInjectedMessages: [],
   },
   states: {
     active: {
@@ -96,6 +122,15 @@ export const chatInterfaceDisplayMachine = setup({
         },
         SET_DRAFT_ANSWERS: {
           actions: "setDraftAnswers",
+        },
+        SET_PRESETS: {
+          actions: "setPresets",
+        },
+        SET_NODES: {
+          actions: "setNodes",
+        },
+        SET_GLOBAL_INJECTED_MESSAGES: {
+          actions: "setGlobalInjectedMessages",
         },
       },
     },

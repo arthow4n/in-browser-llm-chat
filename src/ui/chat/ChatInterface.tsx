@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useParams } from "react-router";
 import { useMachine } from "@xstate/react";
 import { Header, HeaderName, HeaderGlobalBar, Content, Button, Dropdown } from "@carbon/react";
@@ -19,10 +19,7 @@ import {
   getMessagesForThread,
   getSetting,
   getWorkflow,
-  type PresetStore,
 } from "../../db/db";
-
-import { type WorkflowNode } from "../../workflow/schemas";
 
 export function ChatInterface() {
   const { threadId } = useParams();
@@ -36,12 +33,9 @@ export function ChatInterface() {
   const thread = displayState.context.thread;
   const messages = displayState.context.messages;
   const draftAnswers = displayState.context.draftAnswers;
-
-  const [presets, setPresets] = useState<PresetStore[]>([]);
-  const [nodes, setNodes] = useState<WorkflowNode[]>([]);
-  const [globalInjectedMessages, setGlobalInjectedMessages] = useState<
-    Array<{ content: string; depth: number }>
-  >([]);
+  const presets = displayState.context.presets;
+  const nodes = displayState.context.nodes;
+  const globalInjectedMessages = displayState.context.globalInjectedMessages;
 
   const activePreset = presets.find((p) => p.id === state.context.activePresetId);
   const activePresetName = activePreset?.name || "No preset selected";
@@ -49,11 +43,11 @@ export function ChatInterface() {
   useEffect(() => {
     async function loadData() {
       const p = await getAllPresets();
-      setPresets(p);
+      sendDisplay({ type: "SET_PRESETS", presets: p });
       const injected = await getSetting<Array<{ content: string; depth: number }>>(
         "injected_system_messages",
       );
-      setGlobalInjectedMessages(injected || []);
+      sendDisplay({ type: "SET_GLOBAL_INJECTED_MESSAGES", messages: injected || [] });
       if (threadId) {
         const t = await getThread(threadId);
         sendDisplay({ type: "SET_THREAD", thread: t });
@@ -63,7 +57,7 @@ export function ChatInterface() {
         if (t?.workflowId) {
           const wf = await getWorkflow(t.workflowId);
           if (wf) {
-            setNodes(wf.nodes);
+            sendDisplay({ type: "SET_NODES", nodes: wf.nodes });
           }
         }
       }
