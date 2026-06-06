@@ -3,7 +3,8 @@ import { describe, it, expect, vi } from "vitest";
 import { ChatInputArea } from "./ChatInputArea";
 
 describe("ChatInputArea", () => {
-  const mockParentSend = vi.fn();
+  const mockParentSend =
+    vi.fn<(event: import("../../workflow/parentCoordinator").CoordinatorEvent) => void>();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const defaultParentState: any = {
     value: {
