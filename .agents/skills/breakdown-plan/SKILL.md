@@ -7,7 +7,7 @@ description: Shouldn't be invoked unless explicitly requested by the user. Conve
 
 You are tasked with converting a project plan or scratchpad into a concrete, actionable implementation checklist.
 
-1. **Output Location**: Create the output checklist file inside the `docs/` directory (e.g., `docs/implementation-tasks.md`).
+1. **Output Location**: Create the output checklist file inside the `docs/` directory. The filename must be specific to the plan being broken down, rather than a generic name. For example, if the input is `docs/code-review-findings-20260606-01.md`, the output should be `docs/implementation-tasks-code-review-findings-20260606-01.md` or something similarly descriptive. DO NOT use generic names like `docs/implementation-tasks.md`.
 
 2. **Detail Level Requirement**: The final detail level in the output task file must be highly detailed and actionable. If the input plan is vague, you must expand upon it and fill in the missing details so the coding agents have exact specifications for each step. The goal is to ensure the implementation steps are so clear that a "dumb coding agent" can execute them sequentially without ambiguity.
 
