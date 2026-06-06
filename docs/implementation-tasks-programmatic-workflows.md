@@ -88,14 +88,14 @@
 
 ## 6. Database Refactoring & Seeding Cleanup
 
-- [ ] **Step 6.1: Remove Built-in Workflow Seeding**
+- [x] **Step 6.1: Remove Built-in Workflow Seeding**
   - Identify and remove any code in `src/ui/settings/globalSettings.ts`, `src/db/db.ts`, or other initialization scripts that seeds the default workflows (Standard Agent, Debate) into IndexedDB.
   - Ensure that the `workflows` store only contains user-created workflows moving forward.
   - Verify that `deleteWorkflow` in `src/db/db.ts` handles cases where the workflow to be deleted is not present in the DB (which will be the case for programmatic built-in workflows).
-  - [ ] Remove seeding logic.
-  - [ ] Verify worktree state.
-  - [ ] Perform code review.
-  - [ ] Commit changes.
+  - [x] Remove seeding logic.
+  - [x] Verify worktree state.
+  - [x] Perform code review.
+  - [x] Commit changes.
 
 ## 7. Thread Integration & Stability
 
