@@ -128,12 +128,12 @@ Assert that the conversation and the execution state were correctly persisted.
 
 Run the complete integration test and identify any implementation gaps or bugs.
 
-- [ ] Run the integration test suite.
-- [ ] Document any failures, unexpected state transitions, or missing error handling identified during the run.
-- [ ] Analyze if the failures are due to the test setup or actual bugs in the business logic (e.g., `graphRunnerActor`, DB schema, or compiler).
-- [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-- [ ] Perform code review.
-- [ ] Commit the changes.
+- [x] Run the integration test suite.
+- [x] Document any failures, unexpected state transitions, or missing error handling identified during the run.
+- [x] Analyze if the failures are due to the test setup or actual bugs in the business logic (e.g., `graphRunnerActor`, DB schema, or compiler).
+- [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+- [x] Perform code review.
+- [x] Commit the changes.
 
 ### Step 4.2: Fixes and Refinements
 
