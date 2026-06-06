@@ -4,6 +4,7 @@ import { useMachine } from "@xstate/react";
 import { Header, HeaderName, HeaderGlobalBar, Content, Button, Dropdown } from "@carbon/react";
 import { Settings } from "@carbon/icons-react";
 import { parentCoordinatorMachine } from "../../workflow/parentCoordinator";
+import { chatInterfaceDisplayMachine } from "./chatInterfaceDisplayMachine";
 import { ThreadSettingsModal } from "./ThreadSettingsModal";
 import { ExecutionControlPanel } from "./ExecutionControlPanel";
 import { ChatInputArea } from "./ChatInputArea";
@@ -29,8 +30,10 @@ import { type CompiledPayloadMessage } from "../../workflow/compiler";
 export function ChatInterface() {
   const { threadId } = useParams();
   const [state, send] = useMachine(parentCoordinatorMachine);
-  const [showSettings, setShowSettings] = useState(false);
-  const [showPayloadPreview, setShowPayloadPreview] = useState(false);
+  const [displayState, sendDisplay] = useMachine(chatInterfaceDisplayMachine);
+
+  const showSettings = displayState.context.showSettings;
+  const showPayloadPreview = displayState.context.showPayloadPreview;
   const [previewAgentId, setPreviewAgentId] = useState<string | null>(null);
   const [previewPayload, setPreviewPayload] = useState<CompiledPayloadMessage[] | null>(null);
   const [presets, setPresets] = useState<PresetStore[]>([]);
@@ -76,13 +79,13 @@ export function ChatInterface() {
     }
   }, [threadId, state.context.currentThreadId]);
 
-  const handleOpenSettings = () => setShowSettings(true);
-  const handleCloseSettings = () => setShowSettings(false);
+  const handleOpenSettings = () => sendDisplay({ type: "OPEN_SETTINGS" });
+  const handleCloseSettings = () => sendDisplay({ type: "CLOSE_SETTINGS" });
 
   const handleOpenPayloadPreview = () => {
     const initialAgentId = state.context.activeWorkflowId || nodes[0]?.id || null;
     setPreviewAgentId(initialAgentId);
-    setShowPayloadPreview(true);
+    sendDisplay({ type: "OPEN_PAYLOAD_PREVIEW" });
   };
 
   useEffect(() => {
@@ -222,7 +225,7 @@ export function ChatInterface() {
 
       <ApiPayloadPreviewModal
         isOpen={showPayloadPreview}
-        onClose={() => setShowPayloadPreview(false)}
+        onClose={() => sendDisplay({ type: "CLOSE_PAYLOAD_PREVIEW" })}
         agents={nodes.filter((n) => n.type === "agent").map((n) => ({ id: n.id, name: n.name }))}
         initialAgentId={previewAgentId}
         payload={previewPayload}
