@@ -95,9 +95,9 @@ export function ChatInterface() {
             : [];
         const payload = compilePayloadForAgent(
           agent,
-          messages as any,
+          messages as unknown as import("../../workflow/compiler").GraphMessage[],
           globalInjectedMessages,
-          workflowInjected as any,
+          workflowInjected as Array<{ content: string; depth: number }>,
         );
         setPreviewPayload(payload);
       } else {
@@ -157,7 +157,7 @@ export function ChatInterface() {
           <div style={{ maxWidth: "800px", margin: "0 auto" }}>
             <ChatFeed
               messages={messages}
-              send={(event: unknown) => send(event as unknown as CoordinatorEvent)}
+              send={(event: CoordinatorEvent | { type: string }) => send(event as CoordinatorEvent)}
               currentThreadId={state.context.currentThreadId}
               draftAnswers={draftAnswers}
               budgetExceededCard={

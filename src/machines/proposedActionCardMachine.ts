@@ -38,10 +38,17 @@ export const proposedActionCardMachine = createMachine({
         START_APPROVAL: {
           target: "awaitingApproval",
           actions: assign({
-            toolCallId: ({ event }) => (event as any).payload.toolCallId,
-            actionType: ({ event }) => (event as any).payload.actionType,
-            payload: ({ event }) => (event as any).payload.payload,
-            originalPayload: ({ event }) => (event as any).payload.originalPayload,
+            toolCallId: ({ event }) =>
+              (event as Extract<ProposedActionEvent, { type: "START_APPROVAL" }>).payload
+                .toolCallId,
+            actionType: ({ event }) =>
+              (event as Extract<ProposedActionEvent, { type: "START_APPROVAL" }>).payload
+                .actionType,
+            payload: ({ event }) =>
+              (event as Extract<ProposedActionEvent, { type: "START_APPROVAL" }>).payload.payload,
+            originalPayload: ({ event }) =>
+              (event as Extract<ProposedActionEvent, { type: "START_APPROVAL" }>).payload
+                .originalPayload,
           }),
         },
       },
