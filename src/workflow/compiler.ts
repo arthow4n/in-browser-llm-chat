@@ -46,6 +46,10 @@ export const GraphStateAnnotation = Annotation.Root({
 });
 
 export type GraphStateType = typeof GraphStateAnnotation.State;
+export type GraphState = GraphStateType;
+export type GraphUpdate = Partial<GraphState>;
+export type GraphChannels = GraphState;
+export type GraphEvent = unknown;
 
 export interface CompilationContext {
   callLLM: (

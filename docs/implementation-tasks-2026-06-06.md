@@ -98,10 +98,10 @@ In `src/ui/chat/ChatInterface.tsx`, remove the forced cast `send(event as import
 
 In `src/workflow/compiler.ts`, define the concrete types for State, Event, and Channels used by the `StateGraph`.
 
-- [ ] Define the required types.
-- [ ] Verify worktree state.
-- [ ] Perform code review.
-- [ ] Commit the changes.
+- [x] Define the required types.
+- [x] Verify worktree state.
+- [x] Perform code review.
+- [x] Commit the changes.
 
 ### Step 3.2: Apply Types to `StateGraph` Instantiation
 
