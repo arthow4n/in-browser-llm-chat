@@ -14,7 +14,7 @@ export interface OpenRouterUsage {
 export interface OpenRouterChunk {
   choices?: Array<{
     delta?: {
-      content?: string;
+      content?: string | null;
     };
   }>;
   usage?: OpenRouterUsage;

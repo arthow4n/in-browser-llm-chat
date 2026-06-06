@@ -48,10 +48,10 @@ Update the following helper functions to use the newly defined types instead of 
 
 Remove the `/* eslint-disable @typescript-eslint/no-explicit-any */` directive from the top of `src/workflow/graphRunnerActor.ts`.
 
-- [ ] Remove the eslint-disable comment.
-- [ ] Verify worktree state (especially `npm run lint:fix`).
-- [ ] Perform code review.
-- [ ] Commit the changes.
+- [x] Remove the eslint-disable comment.
+- [x] Verify worktree state (especially `npm run lint:fix`).
+- [x] Perform code review.
+- [x] Commit the changes.
 
 ## 2. Refactoring `ChatInterface.tsx`
 

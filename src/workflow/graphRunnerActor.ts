@@ -14,12 +14,7 @@ import {
 import { IndexedDBSaver } from "../db/checkpointer.js";
 import { compileWorkflow, type GraphStateType } from "./compiler.js";
 import { Command } from "@langchain/langgraph";
-import {
-  type OpenRouterUsage,
-  type GraphMessage,
-  type CompiledPayloadMessage,
-  type RunnerInterrupt,
-} from "./types.js";
+import { type GraphMessage, type CompiledPayloadMessage, type RunnerInterrupt } from "./types.js";
 
 // Types
 export interface RunnerContext {
@@ -56,14 +51,25 @@ export type RunnerEvent =
   | { type: "UPDATE_UI_STATE"; state: string }
   | { type: "INTERRUPTED"; details: unknown };
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 // Cast-free helper functions for safe type access
-function getEventErrorMessage(event: ErrorActorEvent<any, any>): string | undefined {
-  return event?.error?.message;
+function getEventErrorMessage(event: ErrorActorEvent): string | undefined {
+  const error = event?.error;
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  return error ? JSON.stringify(error) : undefined;
 }
 
-function getChunkUsage(chunk: any): OpenRouterUsage | undefined {
-  return chunk?.usage;
+interface OpenRouterUsageInternal {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+}
+
+function getChunkUsage(chunk: unknown): OpenRouterUsageInternal | undefined {
+  return (chunk as Record<string, unknown>)?.usage as OpenRouterUsageInternal | undefined;
 }
 
 function getMessages(out: Partial<GraphStateType>): GraphMessage[] | undefined {
@@ -81,10 +87,21 @@ function getEventInterrupt(event: { output?: { interrupt?: unknown } }): unknown
   return event?.output?.interrupt;
 }
 
-function toOpenRouterMessage(msg: CompiledPayloadMessage): any {
-  return msg;
+type ChatMessages =
+  | { role: "system"; content: string; name?: string }
+  | { role: "user"; content: string; name?: string }
+  | { role: "assistant"; content: string; name?: string; tool_calls?: unknown[] }
+  | { role: "tool"; content: string; toolCallId: string };
+
+function toOpenRouterMessage(msg: CompiledPayloadMessage): ChatMessages {
+  return {
+    role: msg.role,
+    content: msg.content,
+    name: msg.name,
+    tool_calls: msg.tool_calls,
+    toolCallId: msg.tool_call_id,
+  } as ChatMessages;
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 // Helper to resolve system prompt placeholders
 
