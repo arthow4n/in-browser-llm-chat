@@ -74,12 +74,14 @@ Add a way for users to trigger the global settings view.
 Ensure that the machine's `ViewState` actually controls the visibility of settings and config views.
 
 - [ ] In `src/App.tsx`, access the global state using `useCoordinator()`.
-- [ ] Find and identify the components responsible for rendering `globalSettings`, `presetConfig`, and `workflowConfig` views.
-- [ ] Check if the current `ViewState` is `globalSettings`, `presetConfig`, or `workflowConfig`.
-- [ ] Conditionally render the identified components as overlays or root-level views in `src/App.tsx` when these states are active.
-- [ ] Verify that the `OPEN_SETTINGS` event now results in the settings UI being displayed.
+- [ ] Ensure that the following components are imported and rendered conditionally based on the `ViewState`:
+  - `globalSettings` state -> `GlobalSettings` (from `src/ui/settings/GlobalSettings.tsx`)
+  - `presetConfig` state -> `PresetConfig` (from `src/ui/settings/PresetConfig.tsx`)
+  - `workflowConfig` state -> The appropriate workflow configuration view (from `src/ui/workflow/`)
+- [ ] Render these components as overlays or root-level views in `src/App.tsx` when their respective states are active.
+- [ ] Verify that the `OPEN_SETTINGS` event now results in the `GlobalSettings` UI being displayed.
 - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run build`).
-- [ ] Commit: `(Agent Name) Render settings views based on ViewState`.
+- [ ] Commit: `(Agent Name) Render settings and workflow views based on ViewState`.
 
 ## 3. Verification and Final Testing
 
