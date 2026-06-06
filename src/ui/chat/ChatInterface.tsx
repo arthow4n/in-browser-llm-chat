@@ -5,6 +5,7 @@ import { Header, HeaderName, HeaderGlobalBar, Content, Button } from "@carbon/re
 import { Settings } from "@carbon/icons-react";
 import { parentCoordinatorMachine } from "../../workflow/parentCoordinator";
 import { ThreadSettingsModal } from "./ThreadSettingsModal";
+import { ExecutionControlPanel } from "./ExecutionControlPanel";
 import { ChatInputArea } from "./ChatInputArea";
 import { ChatFeed } from "../ChatFeed";
 import { BudgetExceededCard } from "../BudgetExceededCard";
@@ -66,25 +67,7 @@ export function ChatInterface() {
       </Header>
 
       <Content style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 3rem)" }}>
-        {/* Execution Control Panel Placeholder */}
-        <div
-          style={{
-            padding: "0.5rem",
-            background: "#f4f4f4",
-            borderBottom: "1px solid #ddd",
-            display: "flex",
-            gap: "1rem",
-            alignItems: "center",
-          }}
-        >
-          <strong>Status: {JSON.stringify(state.value)}</strong>
-          <Button size="sm" disabled={state.value === "executing"}>
-            Pause
-          </Button>
-          <Button size="sm" disabled={state.value !== "inactive"}>
-            Resume
-          </Button>
-        </div>
+        <ExecutionControlPanel state={state} send={send} />
 
         {/* Chat Feed */}
         <div style={{ flex: 1, overflowY: "auto", padding: "1rem" }}>
@@ -95,7 +78,7 @@ export function ChatInterface() {
               currentThreadId={state.context.currentThreadId}
               draftAnswers={draftAnswers}
               budgetExceededCard={
-                (state.value as any).ExecutionState === "awaitingHumanInput.budgetExceeded" && (
+                (state.value as Record<string, unknown>).ExecutionState === "awaitingHumanInput.budgetExceeded" && (
                   <BudgetExceededCard
                     budgetDetails={
                       state.context.loopControl.activeInterrupt?.budgetDetails || {
@@ -110,7 +93,7 @@ export function ChatInterface() {
                 )
               }
               errorBubble={
-                (state.value as any).ExecutionState === "error" && (
+                (state.value as Record<string, unknown>).ExecutionState === "error" && (
                   <ErrorBubble
                     errorMessage={state.context.errorMessage || "An unknown error occurred"}
                     presets={presets}
