@@ -69,10 +69,10 @@ Refactor the `ThreadStore` interface in `src/db/db.ts` to use the `WorkflowStore
 
 In `src/ui/chat/ChatInterface.tsx`, remove the structural cast `workflowInjected as Array<{ content: string; depth: number }>`. Ensure the `Workflow` interface in `src/db/db.ts` (or corresponding type) correctly defines `injectedSystemMessages` to allow the type to propagate naturally to the UI.
 
-- [ ] Refactor `workflowInjected` usage.
-- [ ] Verify worktree state.
-- [ ] Perform code review.
-- [ ] Commit the changes.
+- [x] Refactor `workflowInjected` usage.
+- [x] Verify worktree state.
+- [x] Perform code review.
+- [x] Commit the changes.
 
 ### Step 2.3: Fix Forced Casting of `messages`
 

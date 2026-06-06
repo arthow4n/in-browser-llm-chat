@@ -90,7 +90,7 @@ export function ChatInterface() {
           agent,
           messages as import("../../workflow/types").GraphMessage[],
           globalInjectedMessages,
-          workflowInjected as Array<{ content: string; depth: number }>,
+          workflowInjected,
         );
         sendDisplay({ type: "SET_PREVIEW_PAYLOAD", payload });
       } else {
