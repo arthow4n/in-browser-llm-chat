@@ -38,13 +38,13 @@ Implement the ability to remove all messages in a thread that occur after a spec
 
 Implement the logic to identify and purge LangGraph checkpoints and associated writes that are descendants of a target point.
 
-- [ ] Investigate the current LangGraph checkpointer implementation to determine how checkpoints are indexed and stored.
-- [ ] Implement logic to find all checkpoint IDs created after a given timestamp or sequence number associated with a message.
-- [ ] Implement the deletion of these checkpoints and their corresponding writes in the database.
-- [ ] Verify that the graph state is correctly rolled back to the target checkpoint.
-- [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-- [ ] Perform code review.
-- [ ] Commit changes.
+- [x] Investigate the current LangGraph checkpointer implementation to determine how checkpoints are indexed and stored.
+- [x] Implement logic to find all checkpoint IDs created after a given timestamp or sequence number associated with a message.
+- [x] Implement the deletion of these checkpoints and their corresponding writes in the database.
+- [x] Verify that the graph state is correctly rolled back to the target checkpoint.
+- [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+- [x] Perform code review.
+- [x] Commit changes.
 
 ### Step 1.3: Implement Thread Branching (Cloning)
 
