@@ -34,7 +34,12 @@ This document contains a step-by-step checklist to resolve the issues found in `
 
 ## 2. Fix No-Mocking Policy Violations
 
-- [ ] **Step 2.1:** Remove UI module mocks (`@carbon/react` and `@carbon/icons-react`) from `src/ui/CodeBlock.test.tsx` and ensure the real components are rendered during testing. If DOM limitations prevent rendering, configure Vitest/JSDOM properly or use integration tests.
+- [ ] **Step 2.1:** Remove UI module mocks (`@carbon/react` and `@carbon/icons-react`) from `src/ui/CodeBlock.test.tsx` and attempt to render the real components during testing.
+  - [ ] Implement the logic/feature.
+  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [ ] Perform code review (self/subagent).
+  - [ ] Commit the changes following `AGENTS.md`.
+- [ ] **Step 2.2:** If DOM limitations prevent rendering the Carbon components in `src/ui/CodeBlock.test.tsx`, configure Vitest/JSDOM properly or refactor it into an integration test using `msw` or proper DOM environments.
   - [ ] Implement the logic/feature.
   - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
   - [ ] Perform code review (self/subagent).
@@ -67,7 +72,12 @@ This document contains a step-by-step checklist to resolve the issues found in `
   - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
   - [ ] Perform code review (self/subagent).
   - [ ] Commit the changes following `AGENTS.md`.
-- [ ] **Step 3.6:** Perform a codebase-wide search for any other remaining instances of `state.value ===` or `snapshot.value ===` (or `actor.getSnapshot().value`) and replace them with `.matches()`.
+- [ ] **Step 3.6:** Perform a codebase-wide search for any other remaining instances of `state.value ===`, `snapshot.value ===`, or `actor.getSnapshot().value` (including in test files). Identify and list the files requiring modification.
+  - [ ] Implement the logic/feature.
+  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [ ] Perform code review (self/subagent).
+  - [ ] Commit the changes following `AGENTS.md`.
+- [ ] **Step 3.7:** Replace the remaining instances identified in Step 3.6 with `.matches()` across all affected files, ensuring tests are also updated to assert using `.matches()`.
   - [ ] Implement the logic/feature.
   - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
   - [ ] Perform code review (self/subagent).
