@@ -4,9 +4,9 @@ import { CodeBlock } from "./CodeBlock";
 
 describe("CodeBlock", () => {
   it("renders the code and language", () => {
-    render(<CodeBlock code="console.log('hello')" language="typescript" />);
+    render(<CodeBlock code="String('hello')" language="typescript" />);
     expect(screen.getByText("TYPESCRIPT")).toBeInTheDocument();
-    expect(screen.getByText("console.log('hello')")).toBeInTheDocument();
+    expect(screen.getByText("String('hello')")).toBeInTheDocument();
   });
 
   it("handles copy functionality", async () => {
@@ -19,11 +19,11 @@ describe("CodeBlock", () => {
       configurable: true,
     });
 
-    render(<CodeBlock code="console.log('hello')" />);
+    render(<CodeBlock code="String('hello')" />);
     const buttons = screen.getAllByRole("button");
     fireEvent.click(buttons[0]);
 
-    expect(writeTextMock).toHaveBeenCalledWith("console.log('hello')");
+    expect(writeTextMock).toHaveBeenCalledWith("String('hello')");
 
     await waitFor(() => {
       expect(screen.getByText("Copied!")).toBeInTheDocument();
@@ -43,7 +43,7 @@ describe("CodeBlock", () => {
       return originalCreateElement(tagName);
     });
 
-    render(<CodeBlock code="console.log('hello')" language="ts" />);
+    render(<CodeBlock code="String('hello')" language="ts" />);
     const buttons = screen.getAllByRole("button");
     fireEvent.click(buttons[1]);
 

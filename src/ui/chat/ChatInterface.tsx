@@ -195,8 +195,7 @@ export function ChatInterface() {
                     }
                     onEditResubmit={() => {
                       // Focus/scroll to last message logic
-                      // For now, we can just log it or implement a simple scroll
-                      console.log("Edit & Resubmit clicked");
+                      // TODO: implement a simple scroll
                     }}
                   />
                 )
