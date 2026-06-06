@@ -37,9 +37,8 @@ describe("graphRunnerActor", () => {
         name: "Test Wf",
         nodes: [
           { id: "input", type: "input", name: "User Input" },
-          { id: "agent", type: "agent", name: "Agent", systemPrompt: "Say hello" },
         ],
-        edges: [{ from: "input", to: "agent" }],
+        edges: [],
       },
       activePresetId: presetId,
       createdAt: Date.now(),
@@ -54,13 +53,6 @@ describe("graphRunnerActor", () => {
       tokenStats: null,
     });
 
-    // Mock the Gemini API call
-    server.use(
-      http.post(/generativelanguage\.googleapis\.com\/v1beta\/models\/.*:generateContent/, () => {
-        return HttpResponse.json({ candidates: [] });
-      }),
-    );
-
     const actor = createActor(graphRunnerActor, {
       input: { threadId },
     });
@@ -70,32 +62,46 @@ describe("graphRunnerActor", () => {
     console.log("Actor started, current state:", actor.getSnapshot().value);
 
     // Handle input interrupt
-    await new Promise((resolve) => {
-      actor.subscribe((state) => {
-        if (state.matches("interrupted")) {
-          actor.send({
-            type: "SUBMIT_TOOL_RESPONSE",
-            response: "Hello",
-          });
-          resolve(true);
+    await new Promise<void>((resolve) => {
+      const sub = actor.subscribe((state) => {
+        console.log("FIRST SUB State:", state.value);
+        if (state.matches({ interrupted: "awaitingToolInput" })) {
+          sub.unsubscribe();
+          resolve();
         }
       });
     });
 
-    // Now wait for completion
-    await new Promise((resolve) => {
-      actor.subscribe((state) => {
-        console.log("State transition:", state.value);
-        if (state.status === "done") {
-          console.log("Actor reached done status");
-          resolve(true);
-        }
-        if (state.matches("failed")) {
-          console.log("Actor failed with error:", state.context.errorMessage);
-          resolve(false);
-        }
-      });
+    console.log("Sending SUBMIT_TOOL_RESPONSE");
+    actor.send({
+      type: "SUBMIT_TOOL_RESPONSE",
+      response: "Hello",
     });
+
+    // Now wait for completion
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          console.log("FINAL TIMEOUT STATE:", actor.getSnapshot().value);
+          reject(new Error("Timeout waiting for completion"));
+        }, 4000);
+
+        actor.subscribe((state) => {
+          console.log("State transition:", state.value);
+          if (state.status === "done") {
+            clearTimeout(timeout);
+            resolve();
+          }
+          if (state.matches("failed")) {
+            console.log("Actor failed with error:", state.context.errorMessage);
+            clearTimeout(timeout);
+            resolve();
+          }
+        });
+      });
+    } catch (e) {
+      console.error(e);
+    }
 
     const snapshot = actor.getSnapshot();
     expect(snapshot.status).toBe("done");

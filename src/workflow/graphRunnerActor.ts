@@ -13,6 +13,7 @@ import {
 } from "../db/db.js";
 import { IndexedDBSaver } from "../db/checkpointer.js";
 import { compileWorkflow } from "./compiler.js";
+import { Command } from "@langchain/langgraph";
 
 // Types
 export interface RunnerContext {
@@ -32,6 +33,7 @@ export interface RunnerContext {
   compiledGraph: unknown;
   accumulatedTokensThisStep: { promptTokens: number; completionTokens: number };
   lastEmitTime: number;
+  toolResponse?: unknown;
 }
 
 export type RunnerEvent =
@@ -375,6 +377,7 @@ export const graphRunnerActor = createMachine(
         initial: "requesting",
         states: {
           requesting: {
+            id: "requesting",
             invoke: {
               src: fromPromise(
                 async ({
@@ -576,7 +579,8 @@ export const graphRunnerActor = createMachine(
                   const state = await compiled.getState(config);
                   let runStream;
                   if (state.next && state.next.length > 0) {
-                    runStream = await compiled.stream(null, { ...config, streamMode: "updates" });
+                    const payload = context.toolResponse !== undefined ? new Command({ resume: context.toolResponse }) : null;
+                    runStream = await compiled.stream(payload, { ...config, streamMode: "updates" });
                   } else {
                     runStream = await compiled.stream(
                       { messages: [] },
@@ -695,7 +699,18 @@ export const graphRunnerActor = createMachine(
                   }
 
                   // Check if interrupted by LangGraph itself (e.g. input/tool node)
-                  const finalState = await compiled.getState(config);
+                  const finalState = await compiled.getState({
+                    configurable: { thread_id: context.threadId }
+                  });
+                  
+                  // Always save the latest checkpoint after stream finishes (in case it interrupted)
+                  const finalThreadObj = await getThread(context.threadId);
+                  if (finalThreadObj) {
+                    finalThreadObj.latestCheckpointId = finalState.config.configurable?.checkpoint_id || null;
+                    finalThreadObj.latestCheckpointNs = finalState.config.configurable?.checkpoint_ns || null;
+                    await saveThread(finalThreadObj);
+                  }
+
                   if (
                     finalState.tasks &&
                     finalState.tasks.some(
@@ -801,11 +816,12 @@ export const graphRunnerActor = createMachine(
           awaitingToolInput: {
             on: {
               SUBMIT_TOOL_RESPONSE: {
-                target: "#graphRunnerActor.running.requesting",
-                actions: assign(() => ({
+                target: "#requesting",
+                actions: assign(({ event }) => ({
                   activeInterrupt: null,
                   stepsInCurrentRun: 0,
                   tokensInCurrentRun: 0,
+                  toolResponse: (event as any).response,
                 })),
               },
             },
@@ -813,10 +829,11 @@ export const graphRunnerActor = createMachine(
           awaitingApproval: {
             on: {
               SUBMIT_TOOL_RESPONSE: {
-                target: "#graphRunnerActor.running.requesting",
-                actions: assign(() => ({
+                target: "#requesting",
+                actions: assign(({ event }) => ({
                   activeInterrupt: null,
                   stepsInCurrentRun: 0,
+                  toolResponse: (event as any).response,
                   tokensInCurrentRun: 0,
                 })),
               },
