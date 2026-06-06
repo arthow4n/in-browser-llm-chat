@@ -7,6 +7,8 @@ import { parentCoordinatorMachine } from "../../workflow/parentCoordinator";
 import { ThreadSettingsModal } from "./ThreadSettingsModal";
 import { ChatInputArea } from "./ChatInputArea";
 import { ChatFeed } from "../ChatFeed";
+import { BudgetExceededCard } from "../BudgetExceededCard";
+import { ErrorBubble } from "../ErrorBubble";
 import {
   getAllPresets,
   getThread,
@@ -92,6 +94,39 @@ export function ChatInterface() {
               send={(event: unknown) => send(event as unknown as CoordinatorEvent)}
               currentThreadId={state.context.currentThreadId}
               draftAnswers={draftAnswers}
+              budgetExceededCard={
+                (state.value as any).ExecutionState === "awaitingHumanInput.budgetExceeded" && (
+                  <BudgetExceededCard
+                    budgetDetails={
+                      state.context.loopControl.activeInterrupt?.budgetDetails || {
+                        currentTokens: 0,
+                        maxTokens: null,
+                        stepCount: 0,
+                      }
+                    }
+                    onIncreaseBudget={() => send({ type: "RESUME_WITH_BUDGET_OVERRIDE" })}
+                    onAbort={() => send({ type: "CANCEL_EXECUTION" })}
+                  />
+                )
+              }
+              errorBubble={
+                (state.value as any).ExecutionState === "error" && (
+                  <ErrorBubble
+                    errorMessage={state.context.errorMessage || "An unknown error occurred"}
+                    presets={presets}
+                    onRetry={() => send({ type: "RETRY_STEP" })}
+                    onDismiss={() => send({ type: "DISMISS_ERROR" })}
+                    onChangePreset={(presetId) =>
+                      send({ type: "CHANGE_PRESET_AND_RESUME", presetId })
+                    }
+                    onEditResubmit={() => {
+                      // Focus/scroll to last message logic
+                      // For now, we can just log it or implement a simple scroll
+                      console.log("Edit & Resubmit clicked");
+                    }}
+                  />
+                )
+              }
             />
           </div>
         </div>

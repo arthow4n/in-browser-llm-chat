@@ -49,10 +49,22 @@ function getEventErrorMessage(event: any): string | undefined {
   return event?.error?.message;
 }
 
-function getInterruptType(activeInterrupt: any): string | undefined {
+function getInterruptType(activeInterrupt: ActiveInterrupt | null): string | undefined {
   return activeInterrupt?.type;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
+
+export interface BudgetDetails {
+  currentTokens: number;
+  maxTokens: number | null;
+  stepCount: number;
+}
+
+export interface ActiveInterrupt {
+  type: "ask_questions" | "approval" | "budget_exceeded";
+  toolCallId?: string;
+  budgetDetails?: BudgetDetails;
+}
 
 export interface CoordinatorContext {
   currentThreadId: string | null;
@@ -64,7 +76,7 @@ export interface CoordinatorContext {
     currentRound: number;
     turnCount: number;
     tokenStats: { promptTokens: number; completionTokens: number; totalTokens: number } | null;
-    activeInterrupt: unknown;
+    activeInterrupt: ActiveInterrupt | null;
   };
   errorMessage: string | null;
   apiKeysConfigured: boolean;
@@ -91,7 +103,7 @@ export type CoordinatorEvent =
   | { type: "DISMISS_ERROR" }
   | { type: "COMPLETE" }
   | { type: "ERROR"; error: string | null }
-  | { type: "INTERRUPT"; details: unknown }
+  | { type: "INTERRUPT"; details: ActiveInterrupt }
   | { type: "BUDGET_EXCEEDED"; currentTokens: number; maxTokens: number | null; stepCount: number }
   | { type: "STEP"; steps: number; tokens: number }
   | { type: "RECEIVE_TOKEN"; token: string; reasoning: string; delta: string }
@@ -437,7 +449,7 @@ export const parentCoordinatorMachine = createMachine(
                   loopControl: ({ context, event }) => ({
                     ...context.loopControl,
                     activeInterrupt: {
-                      type: "budget_exceeded",
+                      type: "budget_exceeded" as const,
                       budgetDetails: {
                         currentTokens: event.currentTokens,
                         maxTokens: event.maxTokens,
@@ -559,6 +571,12 @@ export const parentCoordinatorMachine = createMachine(
               },
               RESUME: {
                 target: "executing",
+              },
+              CHANGE_PRESET_AND_RESUME: {
+                target: "executing",
+                actions: assign({
+                  activePresetId: ({ event }) => event.presetId,
+                }),
               },
               ROUTE_CHANGED: {
                 target: "checkingStatus",

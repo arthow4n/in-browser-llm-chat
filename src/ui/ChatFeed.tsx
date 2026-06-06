@@ -9,6 +9,8 @@ interface ChatFeedProps {
   send: (event: unknown) => void;
   currentThreadId: string | null;
   draftAnswers: Record<string, unknown>;
+  budgetExceededCard?: React.ReactNode;
+  errorBubble?: React.ReactNode;
 }
 
 export const ChatFeed: React.FC<ChatFeedProps> = ({
@@ -16,6 +18,8 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({
   send,
   currentThreadId,
   draftAnswers,
+  budgetExceededCard,
+  errorBubble,
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [state, scrollSend] = useMachine(chatAutoScrollMachine);
@@ -61,16 +65,20 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({
           No messages yet. Start a conversation!
         </div>
       ) : (
-        messages.map((msg) => (
-          <ChatMessage
-            key={msg.id}
-            message={msg}
-            allMessages={messages}
-            send={send}
-            currentThreadId={currentThreadId!}
-            draftAnswers={draftAnswers}
-          />
-        ))
+        <>
+          {messages.map((msg) => (
+            <ChatMessage
+              key={msg.id}
+              message={msg}
+              allMessages={messages}
+              send={send}
+              currentThreadId={currentThreadId!}
+              draftAnswers={draftAnswers}
+            />
+          ))}
+          {budgetExceededCard}
+          {errorBubble}
+        </>
       )}
     </div>
   );
