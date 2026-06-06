@@ -219,9 +219,7 @@ export function compileWorkflow(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
   context: CompilationContext,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): StateGraph<any, any, any, any> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const graph = new StateGraph<any, any, any, any>(GraphStateAnnotation);
 
   // Find preceding node from outside for each loopHeader node
@@ -249,7 +247,6 @@ export function compileWorkflow(
   // Define node execution functions
   for (const node of nodes) {
     if (node.type === "agent") {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       graph.addNode(node.id, async (state: any) => {
         let currentRound = state.currentRound;
         if (node.loopHeader) {
@@ -300,7 +297,6 @@ export function compileWorkflow(
         };
       });
     } else if (node.type === "input") {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       graph.addNode(node.id, async (state: any) => {
         const userInput = interrupt({
           type: "input",
@@ -330,7 +326,6 @@ export function compileWorkflow(
         };
       });
     } else if (node.type === "tool") {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       graph.addNode(node.id, async (state: any) => {
         const lastMsg = state.messages[state.messages.length - 1];
         const toolCalls = lastMsg?.metadata?.tool_calls || [];
@@ -376,7 +371,6 @@ export function compileWorkflow(
         };
       });
     } else if (node.type === "consensus_check") {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       graph.addNode(node.id, async (state: any) => {
         let consensusReached = state.consensusReached;
 
@@ -408,7 +402,6 @@ export function compileWorkflow(
         };
       });
     } else if (node.type === "summary") {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       graph.addNode(node.id, async (state: any) => {
         const resolvedPrompt = resolvePrompt(node.systemPrompt, state.messages);
         const llmResult = await context.callLLM(node.presetId, resolvedPrompt, state.messages);
@@ -456,7 +449,6 @@ export function compileWorkflow(
 
         graph.addConditionalEdges(
           node.id,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (state: any): "on_tool_call" | "fallback" => {
             const lastMsg = state.messages[state.messages.length - 1];
             const hasToolCalls =
@@ -484,7 +476,6 @@ export function compileWorkflow(
 
         graph.addConditionalEdges(
           node.id,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (state: any): string => {
             if (state.lastAgentId && pathMap[state.lastAgentId]) {
               return state.lastAgentId;
@@ -508,7 +499,6 @@ export function compileWorkflow(
 
         graph.addConditionalEdges(
           node.id,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (state: any): "on_consensus" | "on_no_consensus" | "fallback" => {
             const shouldTerminate =
               state.consensusReached || state.forceSummarize || state.currentRound >= maxLoopLimit;

@@ -3,13 +3,10 @@ import { createActor } from "xstate";
 import { getShortestPaths } from "xstate/graph";
 import { parentCoordinatorMachine } from "./parentCoordinator.js";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createTestableMachine(machine: any) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function clone(obj: any): any {
     if (obj === null || typeof obj !== "object") return obj;
     if (Array.isArray(obj)) return obj.map(clone);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result: any = {};
     for (const key in obj) {
       if (key === "invoke") continue;

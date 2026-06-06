@@ -3,7 +3,6 @@ import { createActor } from "xstate";
 import { graphRunnerActor } from "./graphRunnerActor.js";
 import * as db from "../db/db.js";
 
-
 describe("graphRunnerActor", () => {
   beforeEach(async () => {
     const dbInstance = await db.getDB();
@@ -34,9 +33,7 @@ describe("graphRunnerActor", () => {
       workflowSnapshot: {
         id: "wf-1",
         name: "Test Wf",
-        nodes: [
-          { id: "input", type: "input", name: "User Input" },
-        ],
+        nodes: [{ id: "input", type: "input", name: "User Input" }],
         edges: [],
       },
       activePresetId: presetId,

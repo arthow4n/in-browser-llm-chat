@@ -159,7 +159,9 @@ export function ChatInterface() {
           <div style={{ maxWidth: "800px", margin: "0 auto" }}>
             <ChatFeed
               messages={messages}
-              send={(event: unknown) => send(event as import("../../workflow/parentCoordinator").CoordinatorEvent)}
+              send={(event: unknown) =>
+                send(event as import("../../workflow/parentCoordinator").CoordinatorEvent)
+              }
               currentThreadId={state.context.currentThreadId}
               draftAnswers={draftAnswers}
               budgetExceededCard={

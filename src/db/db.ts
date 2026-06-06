@@ -3,7 +3,6 @@ import { type WorkflowNode, type WorkflowEdge } from "../workflow/schemas";
 
 export interface SettingsStore {
   key: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   value: any;
 }
 
@@ -67,9 +66,7 @@ export interface CheckpointStore {
   threadId: string;
   checkpointNs: string;
   checkpointId: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   checkpoint: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   metadata: any;
   parentCheckpointId: string | null;
   createdAt: number;
@@ -82,7 +79,6 @@ export interface CheckpointWriteStore {
   taskId: string;
   idx: number;
   channel: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   value: any;
   createdAt: number;
 }

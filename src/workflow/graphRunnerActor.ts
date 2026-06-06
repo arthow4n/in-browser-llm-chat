@@ -207,7 +207,6 @@ export function compileMessagesForLLM(params: {
 
   // Map roles and assign prefixes
   let systemInstruction: string | undefined = undefined;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapped: any[] = [];
 
   for (let i = 0; i < H.length; i++) {
@@ -261,7 +260,6 @@ export function compileMessagesForLLM(params: {
   }
 
   // Merge consecutive messages of the same role
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const merged: any[] = [];
   for (const msg of mapped) {
     if (merged.length === 0) {
@@ -579,8 +577,14 @@ export const graphRunnerActor = createMachine(
                   const state = await compiled.getState(config);
                   let runStream;
                   if (state.next && state.next.length > 0) {
-                    const payload = context.toolResponse !== undefined ? new Command({ resume: context.toolResponse }) : null;
-                    runStream = await compiled.stream(payload, { ...config, streamMode: "updates" });
+                    const payload =
+                      context.toolResponse !== undefined
+                        ? new Command({ resume: context.toolResponse })
+                        : null;
+                    runStream = await compiled.stream(payload, {
+                      ...config,
+                      streamMode: "updates",
+                    });
                   } else {
                     runStream = await compiled.stream(
                       { messages: [] },
@@ -700,14 +704,16 @@ export const graphRunnerActor = createMachine(
 
                   // Check if interrupted by LangGraph itself (e.g. input/tool node)
                   const finalState = await compiled.getState({
-                    configurable: { thread_id: context.threadId }
+                    configurable: { thread_id: context.threadId },
                   });
-                  
+
                   // Always save the latest checkpoint after stream finishes (in case it interrupted)
                   const finalThreadObj = await getThread(context.threadId);
                   if (finalThreadObj) {
-                    finalThreadObj.latestCheckpointId = finalState.config.configurable?.checkpoint_id || null;
-                    finalThreadObj.latestCheckpointNs = finalState.config.configurable?.checkpoint_ns || null;
+                    finalThreadObj.latestCheckpointId =
+                      finalState.config.configurable?.checkpoint_id || null;
+                    finalThreadObj.latestCheckpointNs =
+                      finalState.config.configurable?.checkpoint_ns || null;
                     await saveThread(finalThreadObj);
                   }
 

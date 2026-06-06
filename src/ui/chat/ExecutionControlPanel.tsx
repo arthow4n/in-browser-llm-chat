@@ -17,10 +17,17 @@ export function ExecutionControlPanel({ state, send }: ExecutionControlPanelProp
   const { loopControl } = state.context;
 
   const canPause = state.matches({ ExecutionState: "executing" });
-  const canResume = state.matches({ ExecutionState: "inactive" }) || state.matches({ ExecutionState: "error" });
-  const canAbort = state.matches({ ExecutionState: "executing" }) || state.matches({ ExecutionState: "awaitingHumanInput" });
-  const canForceConsensus = state.matches({ ExecutionState: "inactive" }) || state.matches({ ExecutionState: "awaitingHumanInput" });
-  const canForceSummarize = state.matches({ ExecutionState: "inactive" }) || state.matches({ ExecutionState: "awaitingHumanInput" });
+  const canResume =
+    state.matches({ ExecutionState: "inactive" }) || state.matches({ ExecutionState: "error" });
+  const canAbort =
+    state.matches({ ExecutionState: "executing" }) ||
+    state.matches({ ExecutionState: "awaitingHumanInput" });
+  const canForceConsensus =
+    state.matches({ ExecutionState: "inactive" }) ||
+    state.matches({ ExecutionState: "awaitingHumanInput" });
+  const canForceSummarize =
+    state.matches({ ExecutionState: "inactive" }) ||
+    state.matches({ ExecutionState: "awaitingHumanInput" });
 
   const stats = (
     <div style={{ display: "flex", gap: "1rem", fontSize: "0.875rem", color: "#525252" }}>

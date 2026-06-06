@@ -88,7 +88,7 @@ describe("ChatInputArea", () => {
       },
       {
         loopControl: { activeInterrupt: { type: "approval" } },
-      }
+      },
     );
     render(<ChatInputArea parentState={awaitingState} parentSend={mockParentSend} />);
     expect(screen.getByLabelText(/Message/i)).toBeDisabled();
