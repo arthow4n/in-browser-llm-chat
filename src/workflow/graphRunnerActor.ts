@@ -341,7 +341,7 @@ export function compileMessagesForLLM(params: {
 // XState graphRunnerActor definition
 export const graphRunnerActor = createMachine(
   {
-    types: {} as { context: RunnerContext; events: RunnerEvent; input: { threadId: string } },
+    types: {} as { context: RunnerContext; events: RunnerEvent; input: RunnerInput },
     id: "graphRunnerActor",
     initial: "initializing",
     context: ({ input }) => ({
@@ -370,7 +370,7 @@ export const graphRunnerActor = createMachine(
       },
     },
     states: {
-          initializing: {
+      initializing: {
         invoke: {
           src: fromPromise(async ({ input }: { input: { context: RunnerContext } }) => {
             const context = input.context;
@@ -393,9 +393,10 @@ export const graphRunnerActor = createMachine(
 
             // Get current max sequence
             const existingMessages = await getMessagesForThread(context.threadId);
-            const maxSequence = existingMessages.length > 0 
-              ? Math.max(...existingMessages.map(m => m.sequence)) 
-              : -1;
+            const maxSequence =
+              existingMessages.length > 0
+                ? Math.max(...existingMessages.map((m) => m.sequence))
+                : -1;
 
             return {
               thread,
@@ -408,7 +409,7 @@ export const graphRunnerActor = createMachine(
           onDone: {
             target: "ready",
             actions: assign(({ event }) => {
-              console.log('DEBUG: initializing onDone', JSON.stringify(event.output, null, 2));
+              console.log("DEBUG: initializing onDone", JSON.stringify(event.output, null, 2));
               return {
                 workflowSnapshot: event.output.thread.workflowSnapshot,
                 presetConfig: event.output.preset,
@@ -421,7 +422,7 @@ export const graphRunnerActor = createMachine(
           onError: {
             target: "failed.graphError",
             actions: assign(({ event }) => {
-              console.log('DEBUG: initializing onError', JSON.stringify(event, null, 2));
+              console.log("DEBUG: initializing onError", JSON.stringify(event, null, 2));
               return {
                 errorMessage: getEventErrorMessage(event) || "Failed to initialize",
               };
@@ -466,7 +467,12 @@ export const graphRunnerActor = createMachine(
                     {
                       callLLM: async (presetId, systemPrompt, messages, _tools) => {
                         if (context.llmProvider) {
-                          return context.llmProvider({ presetId, systemPrompt, messages, tools: _tools });
+                          return context.llmProvider({
+                            presetId,
+                            systemPrompt,
+                            messages,
+                            tools: _tools,
+                          });
                         }
 
                         // Budget checks before starting LLM execution
@@ -644,8 +650,8 @@ export const graphRunnerActor = createMachine(
 
                   // Consume step-by-step
                   const state = await compiled.getState(config);
-                  console.log('DEBUG: state', JSON.stringify(state, null, 2));
-                  console.log('DEBUG: state.next', JSON.stringify(state.next, null, 2));
+                  console.log("DEBUG: state", JSON.stringify(state, null, 2));
+                  console.log("DEBUG: state.next", JSON.stringify(state.next, null, 2));
                   let runStream;
                   if (state.next && state.next.length > 0) {
                     const payload =
@@ -659,7 +665,10 @@ export const graphRunnerActor = createMachine(
                   } else {
                     // If it's a new thread or we're starting fresh, load existing messages from the DB to seed the graph state
                     const existingMessages = await getMessagesForThread(context.threadId);
-                    console.log('DEBUG: existingMessages', JSON.stringify(existingMessages, null, 2));
+                    console.log(
+                      "DEBUG: existingMessages",
+                      JSON.stringify(existingMessages, null, 2),
+                    );
                     runStream = await compiled.stream(
                       { messages: existingMessages },
                       { ...config, streamMode: "updates" },
