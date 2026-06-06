@@ -1,9 +1,10 @@
 import { useEffect } from "react";
 import { useParams } from "react-router";
 import { useMachine } from "@xstate/react";
+import { useCoordinator } from "../../context/CoordinatorContext";
 import { Header, HeaderName, HeaderGlobalBar, Content, Button, Dropdown } from "@carbon/react";
 import { Settings } from "@carbon/icons-react";
-import { parentCoordinatorMachine, type CoordinatorEvent } from "../../workflow/parentCoordinator";
+import { type CoordinatorEvent } from "../../workflow/parentCoordinator";
 import { chatInterfaceDisplayMachine } from "./chatInterfaceDisplayMachine";
 import { ThreadSettingsModal } from "./ThreadSettingsModal";
 import { ExecutionControlPanel } from "./ExecutionControlPanel";
@@ -23,7 +24,7 @@ import {
 
 export function ChatInterface() {
   const { threadId } = useParams();
-  const [state, send] = useMachine(parentCoordinatorMachine);
+  const { state, send } = useCoordinator();
   const [displayState, sendDisplay] = useMachine(chatInterfaceDisplayMachine);
 
   const showSettings = displayState.context.showSettings;

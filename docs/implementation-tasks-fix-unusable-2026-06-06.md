@@ -58,12 +58,12 @@ Replace the local machine instance in `App.tsx` with the global one.
 
 Replace the local machine instance in `ChatInterface.tsx` to fix state desynchronization.
 
-- [ ] Open `src/ui/chat/ChatInterface.tsx`.
-- [ ] Remove `useMachine(parentCoordinatorMachine)`.
-- [ ] Use `useCoordinator()` to obtain the global coordinator state and send function.
-- [ ] Verify that `currentThreadId` is now correctly synchronized with the state in `App.tsx`.
-- [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run build`).
-- [ ] Commit: `(Agent Name) Refactor ChatInterface.tsx to use global coordinator`.
+- [x] Open `src/ui/chat/ChatInterface.tsx`.
+- [x] Remove `useMachine(parentCoordinatorMachine)`.
+- [x] Use `useCoordinator()` to obtain the global coordinator state and send function.
+- [x] Verify that `currentThreadId` is now correctly synchronized with the state in `App.tsx`.
+- [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run build`).
+- [x] Commit: `(Agent Name) Refactor ChatInterface.tsx to use global coordinator`.
 
 ## 2. Global Settings Integration
 
