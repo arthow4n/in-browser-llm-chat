@@ -41,8 +41,8 @@ export class IndexedDBSaver extends BaseCheckpointSaver {
       return undefined;
     }
 
-    const ch = record.checkpoint;
-    const meta = record.metadata;
+    const ch = record.checkpoint as { type: string; value: Uint8Array };
+    const meta = record.metadata as { type: string; value: Uint8Array };
     const deserializedCheckpoint = await this.serde.loadsTyped(ch.type, ch.value);
     const deserializedMetadata = await this.serde.loadsTyped(meta.type, meta.value);
 
@@ -53,7 +53,7 @@ export class IndexedDBSaver extends BaseCheckpointSaver {
 
     const pendingWrites = await Promise.all(
       filteredWrites.map(async (w): Promise<CheckpointPendingWrite> => {
-        const v = w.value;
+        const v = w.value as { type: string; value: Uint8Array };
         const deserializedValue = await this.serde.loadsTyped(v.type, v.value);
         return [w.taskId, w.channel, deserializedValue];
       }),
@@ -233,8 +233,8 @@ export class IndexedDBSaver extends BaseCheckpointSaver {
         break;
       }
 
-      const ch = r.checkpoint;
-      const meta = r.metadata;
+      const ch = r.checkpoint as { type: string; value: Uint8Array };
+      const meta = r.metadata as { type: string; value: Uint8Array };
       const deserializedCheckpoint = await this.serde.loadsTyped(ch.type, ch.value);
       const deserializedMetadata = await this.serde.loadsTyped(meta.type, meta.value);
 
@@ -253,7 +253,7 @@ export class IndexedDBSaver extends BaseCheckpointSaver {
       );
       const pendingWrites = await Promise.all(
         filteredWrites.map(async (w): Promise<CheckpointPendingWrite> => {
-          const v = w.value;
+          const v = w.value as { type: string; value: Uint8Array };
           const deserializedValue = await this.serde.loadsTyped(v.type, v.value);
           return [w.taskId, w.channel, deserializedValue];
         }),

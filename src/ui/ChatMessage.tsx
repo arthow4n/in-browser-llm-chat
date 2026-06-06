@@ -132,7 +132,9 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                     code={
                       Array.isArray(children)
                         ? children.join("").replace(/\n$/, "")
-                        : String(children).replace(/\n$/, "")
+                        : typeof children === "string"
+                          ? children.replace(/\n$/, "")
+                          : ""
                     }
                   />
                 ) : (

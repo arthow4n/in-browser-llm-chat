@@ -3,8 +3,8 @@ import { createMachine, assign, assertEvent } from "xstate";
 export interface ProposedActionContext {
   toolCallId: string;
   actionType: "create" | "update";
-  payload: any;
-  originalPayload?: any;
+  payload: unknown;
+  originalPayload?: unknown;
 }
 
 export type ProposedActionEvent =
@@ -13,8 +13,8 @@ export type ProposedActionEvent =
       payload: {
         toolCallId: string;
         actionType: "create" | "update";
-        payload: any;
-        originalPayload?: any;
+        payload: unknown;
+        originalPayload?: unknown;
       };
     }
   | { type: "APPROVE" }

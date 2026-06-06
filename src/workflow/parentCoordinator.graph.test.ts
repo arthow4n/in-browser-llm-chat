@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, test, expect } from "vitest";
 import { createActor } from "xstate";
 import { getShortestPaths } from "xstate/graph";

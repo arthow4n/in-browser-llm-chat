@@ -3,7 +3,7 @@ import { type WorkflowNode, type WorkflowEdge } from "../workflow/schemas";
 
 export interface SettingsStore {
   key: string;
-  value: any;
+  value: unknown;
 }
 
 export interface PresetStore {
@@ -66,8 +66,8 @@ export interface CheckpointStore {
   threadId: string;
   checkpointNs: string;
   checkpointId: string;
-  checkpoint: any;
-  metadata: any;
+  checkpoint: unknown;
+  metadata: unknown;
   parentCheckpointId: string | null;
   createdAt: number;
 }
@@ -79,7 +79,7 @@ export interface CheckpointWriteStore {
   taskId: string;
   idx: number;
   channel: string;
-  value: any;
+  value: unknown;
   createdAt: number;
 }
 
@@ -194,7 +194,7 @@ export async function closeDB(): Promise<void> {
 export async function getSetting<T = unknown>(key: string): Promise<T | undefined> {
   const db = await getDB();
   const record = await db.get("settings", key);
-  return record ? record.value : undefined;
+  return record ? (record.value as T) : undefined;
 }
 
 export async function setSetting<T = unknown>(key: string, value: T): Promise<void> {

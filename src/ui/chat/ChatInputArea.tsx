@@ -6,10 +6,12 @@ import { chatInputMachine } from "./chatInputMachine";
 import { type CoordinatorEvent, type CoordinatorContext } from "../../workflow/parentCoordinator";
 import { v4 as uuidv4 } from "uuid";
 
+import { StateValue } from "xstate";
+
 export interface ParentState {
   value: unknown;
   context: CoordinatorContext;
-  matches: (val: any) => boolean;
+  matches: (val: StateValue) => boolean;
 }
 
 interface ChatInputAreaProps {
@@ -32,7 +34,7 @@ export function ChatInputArea({ parentState, parentSend }: ChatInputAreaProps) {
     send({ type: "UPDATE_TEXT", text: e.target.value });
   };
 
-  const handleRoleChange = (data: { item?: { value: string }; value?: string } | unknown) => {
+  const handleRoleChange = (data: unknown) => {
     const item = data as { item?: { value: string }; value?: string };
     const value = item?.item?.value || item?.value;
     if (value) {

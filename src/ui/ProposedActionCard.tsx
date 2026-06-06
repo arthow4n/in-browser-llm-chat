@@ -6,8 +6,8 @@ import { proposedActionCardMachine } from "../machines/proposedActionCardMachine
 interface ProposedActionCardProps {
   toolCallId: string;
   actionType: "create" | "update";
-  payload: any;
-  originalPayload?: any;
+  payload: unknown;
+  originalPayload?: unknown;
   onApprove: (toolCallId: string) => void;
   onDeny: (toolCallId: string) => void;
 }
@@ -27,6 +27,7 @@ export const ProposedActionCard: React.FC<ProposedActionCardProps> = ({
       type: "START_APPROVAL",
       payload: { toolCallId, actionType, payload, originalPayload },
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (state.matches("approved") || state.matches("denied")) {
@@ -43,7 +44,7 @@ export const ProposedActionCard: React.FC<ProposedActionCardProps> = ({
     }
 
     // Simple JSON diff implementation
-    const getDiff = (oldObj: any, newObj: any): React.ReactNode[] => {
+    const getDiff = (oldObj: Record<string, unknown>, newObj: Record<string, unknown>): React.ReactNode[] => {
       const allKeys = Array.from(
         new Set([...Object.keys(oldObj || {}), ...Object.keys(newObj || {})]),
       );
@@ -68,7 +69,7 @@ export const ProposedActionCard: React.FC<ProposedActionCardProps> = ({
         ) {
           return (
             <div key={key} style={{ marginLeft: "1rem", fontWeight: "bold" }}>
-              {key}:{getDiff(oldVal, newVal)}
+              {key}:{getDiff(oldVal as Record<string, unknown>, newVal as Record<string, unknown>)}
             </div>
           );
         }
@@ -87,7 +88,7 @@ export const ProposedActionCard: React.FC<ProposedActionCardProps> = ({
 
     return (
       <div style={{ fontFamily: "monospace", fontSize: "0.875rem", whiteSpace: "pre-wrap" }}>
-        {getDiff(originalPayload, payload)}
+        {getDiff(originalPayload as Record<string, unknown>, payload as Record<string, unknown>)}
       </div>
     );
   };

@@ -207,7 +207,7 @@ export function compileMessagesForLLM(params: {
 
   // Map roles and assign prefixes
   let systemInstruction: string | undefined = undefined;
-  const mapped: any[] = [];
+  const mapped: Array<{ role: string; content: string; tool_calls?: unknown[]; tool_call_id?: string; name?: string }> = [];
 
   for (let i = 0; i < H.length; i++) {
     const msg = H[i];
@@ -260,7 +260,7 @@ export function compileMessagesForLLM(params: {
   }
 
   // Merge consecutive messages of the same role
-  const merged: any[] = [];
+  const merged: Array<{ role: string; content: string; tool_calls?: unknown[]; tool_call_id?: string; name?: string }> = [];
   for (const msg of mapped) {
     if (merged.length === 0) {
       merged.push(msg);
@@ -580,8 +580,9 @@ export const graphRunnerActor = createMachine(
                     const payload =
                       context.toolResponse !== undefined
                         ? new Command({ resume: context.toolResponse })
-                        : null;
-                    runStream = await compiled.stream(payload, {
+                        : undefined;
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    runStream = await compiled.stream(payload as any, {
                       ...config,
                       streamMode: "updates",
                     });

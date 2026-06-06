@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { StateGraph, Annotation, END, START, interrupt } from "@langchain/langgraph";
 import type { WorkflowNode, WorkflowEdge } from "./schemas.js";
 
@@ -219,7 +220,7 @@ export function compileWorkflow(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
   context: CompilationContext,
-): StateGraph<any, any, any, any> {
+) {
   const graph = new StateGraph<any, any, any, any>(GraphStateAnnotation);
 
   // Find preceding node from outside for each loopHeader node
@@ -247,7 +248,7 @@ export function compileWorkflow(
   // Define node execution functions
   for (const node of nodes) {
     if (node.type === "agent") {
-      graph.addNode(node.id, async (state: any) => {
+      graph.addNode(node.id, async (state: GraphStateType) => {
         let currentRound = state.currentRound;
         if (node.loopHeader) {
           const precedingId = loopHeaderPrecedingNodeMap.get(node.id);
@@ -297,7 +298,7 @@ export function compileWorkflow(
         };
       });
     } else if (node.type === "input") {
-      graph.addNode(node.id, async (state: any) => {
+      graph.addNode(node.id, async (state: GraphStateType) => {
         const userInput = interrupt({
           type: "input",
           nodeId: node.id,
@@ -326,7 +327,7 @@ export function compileWorkflow(
         };
       });
     } else if (node.type === "tool") {
-      graph.addNode(node.id, async (state: any) => {
+      graph.addNode(node.id, async (state: GraphStateType) => {
         const lastMsg = state.messages[state.messages.length - 1];
         const toolCalls = lastMsg?.metadata?.tool_calls || [];
         const newMessages: GraphMessage[] = [];
@@ -371,7 +372,7 @@ export function compileWorkflow(
         };
       });
     } else if (node.type === "consensus_check") {
-      graph.addNode(node.id, async (state: any) => {
+      graph.addNode(node.id, async (state: GraphStateType) => {
         let consensusReached = state.consensusReached;
 
         if (node.systemPrompt) {
@@ -402,7 +403,7 @@ export function compileWorkflow(
         };
       });
     } else if (node.type === "summary") {
-      graph.addNode(node.id, async (state: any) => {
+      graph.addNode(node.id, async (state: GraphStateType) => {
         const resolvedPrompt = resolvePrompt(node.systemPrompt, state.messages);
         const llmResult = await context.callLLM(node.presetId, resolvedPrompt, state.messages);
 
@@ -449,7 +450,7 @@ export function compileWorkflow(
 
         graph.addConditionalEdges(
           node.id,
-          (state: any): "on_tool_call" | "fallback" => {
+          (state: GraphStateType): "on_tool_call" | "fallback" => {
             const lastMsg = state.messages[state.messages.length - 1];
             const hasToolCalls =
               lastMsg?.metadata?.tool_calls && lastMsg.metadata.tool_calls.length > 0;
@@ -476,7 +477,7 @@ export function compileWorkflow(
 
         graph.addConditionalEdges(
           node.id,
-          (state: any): string => {
+          (state: GraphStateType): string => {
             if (state.lastAgentId && pathMap[state.lastAgentId]) {
               return state.lastAgentId;
             }
@@ -499,7 +500,7 @@ export function compileWorkflow(
 
         graph.addConditionalEdges(
           node.id,
-          (state: any): "on_consensus" | "on_no_consensus" | "fallback" => {
+          (state: GraphStateType): "on_consensus" | "on_no_consensus" | "fallback" => {
             const shouldTerminate =
               state.consensusReached || state.forceSummarize || state.currentRound >= maxLoopLimit;
 

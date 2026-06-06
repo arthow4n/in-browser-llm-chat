@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { ChatInputArea } from "./ChatInputArea";
@@ -5,18 +6,18 @@ import { ChatInputArea } from "./ChatInputArea";
 describe("ChatInputArea", () => {
   const mockParentSend =
     vi.fn<(event: import("../../workflow/parentCoordinator").CoordinatorEvent) => void>();
-  function createMockState(value: any, context?: any) {
+  function createMockState(value: unknown, context?: unknown) {
     return {
       value,
       context: {
         currentThreadId: "test-thread-id",
         loopControl: { activeInterrupt: null },
-        ...context,
+        ...(context as any),
       },
-      matches: function (val: any) {
-        if (typeof val === "object") {
-          const key = Object.keys(val)[0];
-          return this.value[key] === val[key];
+      matches: function (val: unknown) {
+        if (typeof val === "object" && val !== null) {
+          const key = Object.keys(val as object)[0];
+          return (this.value as any)[key] === (val as any)[key];
         }
         return false;
       },

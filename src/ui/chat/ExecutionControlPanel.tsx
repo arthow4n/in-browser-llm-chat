@@ -4,8 +4,10 @@ import { Pause, Play, Stop, Warning, Information } from "@carbon/icons-react";
 import { type CoordinatorContext, type CoordinatorEvent } from "../../workflow/parentCoordinator";
 import { useWindowSize } from "../../ui/hooks/useWindowSize";
 
+import { StateValue } from "xstate";
+
 interface ExecutionControlPanelProps {
-  state: { value: unknown; context: CoordinatorContext; matches: (val: any) => boolean };
+  state: { value: unknown; context: CoordinatorContext; matches: (val: StateValue) => boolean };
   send: (event: CoordinatorEvent) => void;
 }
 

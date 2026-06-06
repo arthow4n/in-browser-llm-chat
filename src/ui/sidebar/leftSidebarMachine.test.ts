@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { createActor } from "xstate";
+import { createActor, waitFor } from "xstate";
 import { leftSidebarMachine } from "./leftSidebarMachine.js";
 import * as db from "../../db/db.js";
 
@@ -26,7 +26,7 @@ describe("leftSidebarMachine", () => {
     const actor = createActor(leftSidebarMachine).start();
     expect(actor.getSnapshot().value).toBe("loadingInitial");
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.matches("idle"), { timeout: 5000 });
 
     expect(actor.getSnapshot().value).toBe("idle");
     expect(actor.getSnapshot().context.threads.length).toBe(1);
@@ -37,19 +37,17 @@ describe("leftSidebarMachine", () => {
 
   it("should support filtering and reset page to 1", async () => {
     const actor = createActor(leftSidebarMachine).start();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await waitFor(actor, (state) => state.matches("idle"), { timeout: 5000 });
 
     actor.send({ type: "FILTER_THREADS", query: "hello" });
     expect(actor.getSnapshot().value).toBe("loadingInitial");
     expect(actor.getSnapshot().context.searchQuery).toBe("hello");
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.matches("idle"), { timeout: 5000 });
     expect(actor.getSnapshot().value).toBe("idle");
   });
 
   it("should load more threads when requested and append them", async () => {
-    // Create multiple threads to test pagination.
-    // pageSize is 50.
     for (let i = 0; i < 60; i++) {
       await db.createNewThread({
         workflowId: "w1",
@@ -67,14 +65,14 @@ describe("leftSidebarMachine", () => {
     }
 
     const actor = createActor(leftSidebarMachine).start();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.matches("idle"), { timeout: 5000 });
 
     expect(actor.getSnapshot().context.threads.length).toBe(50);
 
     actor.send({ type: "LOAD_MORE" });
     expect(actor.getSnapshot().value).toBe("loadingMore");
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.matches("idle"), { timeout: 5000 });
     expect(actor.getSnapshot().value).toBe("idle");
     expect(actor.getSnapshot().context.threads.length).toBe(60);
     expect(actor.getSnapshot().context.page).toBe(2);
@@ -97,7 +95,7 @@ describe("leftSidebarMachine", () => {
     });
 
     const actor = createActor(leftSidebarMachine).start();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await waitFor(actor, (state) => state.matches("idle"), { timeout: 5000 });
 
     actor.send({ type: "TRIGGER_DELETE", threadId });
     expect(actor.getSnapshot().value).toBe("confirmingDelete");
@@ -105,13 +103,15 @@ describe("leftSidebarMachine", () => {
 
     actor.send({ type: "CONFIRM_DELETE" });
     expect(actor.getSnapshot().value).toBe("deleting");
-    // Optimistic UI check - status should be set to deleting
     expect(actor.getSnapshot().context.threads.find((t) => t.id === threadId)?.status).toBe(
       "deleting",
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitFor(actor, (state) => state.matches("idle"), { timeout: 5000 });
     expect(actor.getSnapshot().value).toBe("idle");
+    while (await db.getThread(threadId)) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
     expect(await db.getThread(threadId)).toBeUndefined();
   });
 });
