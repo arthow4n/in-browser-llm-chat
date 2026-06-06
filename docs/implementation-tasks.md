@@ -147,12 +147,12 @@ This document contains a step-by-step checklist to build the LLM chat applicatio
   - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
   - [x] Perform code review (self/subagent).
   - [x] Commit the changes following `AGENTS.md`.
-- [ ] **Step 9.2:** Build the Multi-Agent Render State logic for message bubbles, showing agent names/avatars and nested tool calls. Include the Code Block Control State Machine for copying/downloading code.
-  - [ ] Implement the Multi-Agent Render State logic and Code Block Control State Machine.
-  - [ ] Write integration and state machine tests adhering to Testing Guidelines in `docs/scratchpad.md`.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Perform code review (self/subagent).
-  - [ ] Commit the changes following `AGENTS.md`.
+- [x] **Step 9.2:** Build the Multi-Agent Render State logic for message bubbles, showing agent names/avatars and nested tool calls. Include the Code Block Control State Machine for copying/downloading code.
+  - [x] Implement the Multi-Agent Render State logic and Code Block Control State Machine.
+  - [x] Write integration and state machine tests adhering to Testing Guidelines in `docs/scratchpad.md`.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Perform code review (self/subagent).
+  - [x] Commit the changes following `AGENTS.md`.
 - [ ] **Step 9.3:** Implement the Chat Input Area State Machine and UI, handling user inputs, role selection, and mobile layout constraints.
   - [ ] Implement the Chat Input Area State Machine and UI.
   - [ ] Write integration and state machine tests adhering to Testing Guidelines in `docs/scratchpad.md`.
