@@ -113,7 +113,9 @@ export type CoordinatorEvent =
   | { type: "CLOSE_SETTINGS" }
   | { type: "OPEN_PRESET_EDIT"; presetId: string }
   | { type: "CLOSE_PRESET_EDIT" }
-  | { type: "OPEN_WORKFLOW_EDIT"; workflowId: string }
+  | { type: "OPEN_WORKFLOW_LIST" }
+  | { type: "CLOSE_WORKFLOW_LIST" }
+  | { type: "OPEN_WORKFLOW_EDIT"; workflowId: string | null }
   | { type: "CLOSE_WORKFLOW_EDIT" };
 
 export const parentCoordinatorMachine = createMachine(
@@ -198,6 +200,7 @@ export const parentCoordinatorMachine = createMachine(
                   editingPresetId: ({ event }) => event.presetId,
                 }),
               },
+              OPEN_WORKFLOW_LIST: { target: "workflowList" },
               OPEN_WORKFLOW_EDIT: {
                 target: "workflowConfig",
                 actions: assign({
@@ -220,6 +223,30 @@ export const parentCoordinatorMachine = createMachine(
                 actions: assign({
                   editingPresetId: ({ event }) => event.presetId,
                 }),
+              },
+              OPEN_WORKFLOW_LIST: { target: "workflowList" },
+              OPEN_WORKFLOW_EDIT: {
+                target: "workflowConfig",
+                actions: assign({
+                  editingWorkflowId: ({ event }) => event.workflowId,
+                }),
+              },
+              ROUTE_CHANGED: {
+                target: "checkingKeys",
+                actions: assign({
+                  currentThreadId: ({ event }) => event.threadId,
+                }),
+              },
+              API_KEYS_REMOVED: {
+                target: "onboarding",
+                actions: assign({ apiKeysConfigured: false }),
+              },
+            },
+          },
+          workflowList: {
+            on: {
+              CLOSE_WORKFLOW_LIST: {
+                target: "checkingKeys",
               },
               OPEN_WORKFLOW_EDIT: {
                 target: "workflowConfig",
