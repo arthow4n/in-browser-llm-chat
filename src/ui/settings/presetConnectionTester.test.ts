@@ -1,20 +1,15 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { createActor } from "xstate";
 import { presetConnectionTesterMachine } from "./presetConnectionTester";
 import * as db from "../../db/db";
-
-vi.mock("../../db/db", async () => {
-  const actual = await vi.importActual("../../db/db");
-  return {
-    ...actual,
-    getSetting: vi.fn<(key: string) => Promise<unknown>>(),
-  };
-});
+import { http, HttpResponse } from "msw";
+import { server } from "../../test/msw-setup";
 
 describe("presetConnectionTesterMachine", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    global.fetch = vi.fn<typeof fetch>();
+  beforeEach(async () => {
+    // Clear settings before each test
+    const dbInstance = await db.getDB();
+    await dbInstance.clear("settings");
   });
 
   it("should start in idle state", () => {
@@ -23,7 +18,11 @@ describe("presetConnectionTesterMachine", () => {
   });
 
   it("should handle connection success for Gemini with preset key", async () => {
-    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ candidates: [] })));
+    server.use(
+      http.post(/generativelanguage\.googleapis\.com\/v1beta\/models\/.*:generateContent/, () => {
+        return HttpResponse.json({ candidates: [] });
+      }),
+    );
 
     const actor = createActor(presetConnectionTesterMachine).start();
     actor.send({
@@ -43,8 +42,12 @@ describe("presetConnectionTesterMachine", () => {
   });
 
   it("should handle connection success with global fallback key", async () => {
-    vi.mocked(db.getSetting).mockResolvedValue({ gemini: "global-gemini-key" });
-    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ candidates: [] })));
+    await db.setSetting("api_keys", { gemini: "global-gemini-key" });
+    server.use(
+      http.post(/generativelanguage\.googleapis\.com\/v1beta\/models\/.*:generateContent/, () => {
+        return HttpResponse.json({ candidates: [] });
+      }),
+    );
 
     const actor = createActor(presetConnectionTesterMachine).start();
     actor.send({
@@ -59,12 +62,9 @@ describe("presetConnectionTesterMachine", () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(actor.getSnapshot().value).toBe("success");
-    expect(db.getSetting).toHaveBeenCalledWith("api_keys");
   });
 
   it("should handle connection error if no key is configured", async () => {
-    vi.mocked(db.getSetting).mockResolvedValue(null);
-
     const actor = createActor(presetConnectionTesterMachine).start();
     actor.send({
       type: "TEST_CONNECTION",
@@ -80,10 +80,15 @@ describe("presetConnectionTesterMachine", () => {
   });
 
   it("should handle API errors", async () => {
-    vi.mocked(fetch).mockResolvedValue(
-      new Response(JSON.stringify({ error: { message: "Invalid API key" } }), {
-        status: 403,
-        statusText: "Forbidden",
+    server.use(
+      http.post("https://openrouter.ai/api/v1/chat/completions", () => {
+        return new HttpResponse(
+          JSON.stringify({ error: { message: "Invalid API key" } }),
+          {
+            status: 403,
+            statusText: "Forbidden",
+          },
+        );
       }),
     );
 

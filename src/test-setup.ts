@@ -1,3 +1,6 @@
+import "fake-indexeddb/auto";
+import "./test/msw-setup";
+
 /**
  * Vitest global test setup file.
  *

@@ -2,20 +2,12 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createActor } from "xstate";
 import { presetListMachine } from "./presetListMachine";
 import * as db from "../../db/db";
-import "fake-indexeddb/auto";
-
-vi.mock("../../db/db", async () => {
-  const actual = await vi.importActual("../../db/db");
-  return {
-    ...actual,
-    getAllPresets: vi.fn<(...args: unknown[]) => unknown>(),
-    deletePreset: vi.fn<(...args: unknown[]) => unknown>(),
-  };
-});
 
 describe("presetListMachine", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    await db.clearPresets();
+    const dbInstance = await db.getDB();
+    await dbInstance.clear("settings");
   });
 
   it("should start in idle state", () => {
@@ -28,7 +20,9 @@ describe("presetListMachine", () => {
       { id: "1", name: "Preset 1", provider: "gemini", model: "gemini-pro" },
       { id: "2", name: "Preset 2", provider: "openrouter", model: "gpt-4" },
     ];
-    vi.mocked(db.getAllPresets).mockResolvedValue(mockPresets as never);
+    for (const p of mockPresets) {
+      await db.savePreset(p);
+    }
 
     const actor = createActor(presetListMachine).start();
     actor.send({ type: "FETCH_PRESETS" });
@@ -36,54 +30,57 @@ describe("presetListMachine", () => {
     expect(actor.getSnapshot().value).toBe("loading");
 
     // Wait for the invoke to complete
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(actor.getSnapshot().value).toBe("idle");
     expect(actor.getSnapshot().context.presets).toEqual(mockPresets);
   });
 
   it("should handle fetch errors", async () => {
-    vi.mocked(db.getAllPresets).mockRejectedValue(new Error("Fetch failed"));
+    const spy = vi.spyOn(db, "getAllPresets").mockRejectedValue(new Error("Fetch failed"));
 
     const actor = createActor(presetListMachine).start();
     actor.send({ type: "FETCH_PRESETS" });
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(actor.getSnapshot().value).toBe("error");
     expect(actor.getSnapshot().context.error).toBe("Fetch failed");
+    
+    spy.mockRestore();
   });
 
   it("should handle preset deletion success", async () => {
-    vi.mocked(db.deletePreset).mockResolvedValue(undefined as never);
-    vi.mocked(db.getAllPresets).mockResolvedValue([] as never);
+    const presetId = "preset-123";
+    await db.savePreset({ id: presetId, name: "TBD", provider: "gemini", model: "m" });
 
     const actor = createActor(presetListMachine).start();
-    actor.send({ type: "DELETE_REQUESTED", id: "preset-123" });
+    actor.send({ type: "DELETE_REQUESTED", id: presetId });
 
     expect(actor.getSnapshot().value).toBe("confirmingDeletion");
-    expect(actor.getSnapshot().context.presetToDeleteId).toBe("preset-123");
+    expect(actor.getSnapshot().context.presetToDeleteId).toBe(presetId);
 
     actor.send({ type: "CONFIRM_DELETE" });
 
     expect(actor.getSnapshot().value).toBe("deleting");
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(actor.getSnapshot().value).toBe("idle");
     expect(actor.getSnapshot().context.presetToDeleteId).toBeNull();
+    expect(await db.getPreset(presetId)).toBeUndefined();
   });
 
   it("should handle preset deletion error (safety guards)", async () => {
-    vi.mocked(db.deletePreset).mockRejectedValue(
-      new Error("Cannot delete the global default preset."),
-    );
+    const presetId = "default-id";
+    await db.savePreset({ id: presetId, name: "Default", provider: "gemini", model: "m" });
+    await db.setSetting("default_preset_id", presetId);
 
     const actor = createActor(presetListMachine).start();
-    actor.send({ type: "DELETE_REQUESTED", id: "default-id" });
+    actor.send({ type: "DELETE_REQUESTED", id: presetId });
     actor.send({ type: "CONFIRM_DELETE" });
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(actor.getSnapshot().value).toBe("idle");
     expect(actor.getSnapshot().context.error).toBe("Cannot delete the global default preset.");

@@ -1,21 +1,11 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { createActor } from "xstate";
 import { presetConfigMachine } from "./presetConfigMachine";
 import * as db from "../../db/db";
 
-vi.mock("../../db/db", async () => {
-  const actual = await vi.importActual("../../db/db");
-  return {
-    ...actual,
-    getPreset: vi.fn<typeof db.getPreset>(),
-    savePreset: vi.fn<typeof db.savePreset>(),
-    deletePreset: vi.fn<typeof db.deletePreset>(),
-  };
-});
-
 describe("presetConfigMachine", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    await db.clearPresets();
   });
 
   it("should initialize in loading state and transition to idle.clean for new preset", async () => {
@@ -42,7 +32,7 @@ describe("presetConfigMachine", () => {
       temperature: 0.8,
       budgetPolicy: { maxStepsWithoutUser: 15, maxTokensPerRun: 500 },
     };
-    vi.mocked(db.getPreset).mockResolvedValue(mockPreset);
+    await db.savePreset(mockPreset);
 
     const actor = createActor(presetConfigMachine, {
       input: { presetId: "preset-123" },
@@ -73,8 +63,6 @@ describe("presetConfigMachine", () => {
   });
 
   it("should validate and save a valid preset", async () => {
-    vi.mocked(db.savePreset).mockResolvedValue(undefined);
-
     const actor = createActor(presetConfigMachine, {
       input: { presetId: null },
     }).start();
@@ -88,7 +76,13 @@ describe("presetConfigMachine", () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(actor.getSnapshot().value).toBe("saveSuccess");
-    expect(db.savePreset).toHaveBeenCalled();
+    const savedPreset = await db.getPreset("some-id"); // wait, the machine generates ID if null?
+    // I should check how the machine handles ID generation.
+    // If input.presetId is null, the machine probably generates a new one.
+    // Let's check the presets in DB.
+    const presets = await db.getAllPresets();
+    expect(presets.length).toBe(1);
+    expect(presets[0].name).toBe("Valid Name");
   });
 
   it("should block save and set validation errors if fields are invalid", async () => {
@@ -111,10 +105,16 @@ describe("presetConfigMachine", () => {
   });
 
   it("should delete a preset and transition to deleteSuccess", async () => {
-    vi.mocked(db.deletePreset).mockResolvedValue(undefined);
+    const presetId = "preset-123";
+    await db.savePreset({
+      id: presetId,
+      name: "To Delete",
+      provider: "gemini",
+      model: "gemini-1.5-flash",
+    });
 
     const actor = createActor(presetConfigMachine, {
-      input: { presetId: "preset-123" },
+      input: { presetId },
     }).start();
 
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -124,6 +124,7 @@ describe("presetConfigMachine", () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(actor.getSnapshot().value).toBe("deleteSuccess");
-    expect(db.deletePreset).toHaveBeenCalledWith("preset-123");
+    const deletedPreset = await db.getPreset(presetId);
+    expect(deletedPreset).toBeUndefined();
   });
 });

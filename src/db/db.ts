@@ -273,6 +273,11 @@ export async function getAllPresets(): Promise<PresetStore[]> {
   return db.getAll("presets");
 }
 
+export async function clearPresets(): Promise<void> {
+  const db = await getDB();
+  await db.clear("presets");
+}
+
 // -------------------------------------------------------------
 // Workflows Store CRUD Helpers
 // -------------------------------------------------------------
@@ -316,6 +321,11 @@ export async function deleteWorkflow(id: string): Promise<void> {
 export async function getAllWorkflows(): Promise<WorkflowStore[]> {
   const db = await getDB();
   return db.getAll("workflows");
+}
+
+export async function clearWorkflows(): Promise<void> {
+  const db = await getDB();
+  await db.clear("workflows");
 }
 
 // -------------------------------------------------------------
@@ -441,6 +451,11 @@ export async function getAllThreads(): Promise<ThreadStore[]> {
   const db = await getDB();
   const threads = await db.getAll("threads");
   return threads.filter((t) => t.status !== "deleting").sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export async function clearThreads(): Promise<void> {
+  const db = await getDB();
+  await db.clear("threads");
 }
 
 // -------------------------------------------------------------

@@ -2,21 +2,10 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createActor } from "xstate";
 import { workflowEditorMachine } from "./workflowEditorMachine.js";
 import * as db from "../../db/db.js";
-import "fake-indexeddb/auto";
-
-vi.mock("../../db/db", async () => {
-  const actual = await vi.importActual("../../db/db");
-  return {
-    ...actual,
-    getWorkflow: vi.fn<(id: string) => Promise<db.WorkflowStore | undefined>>(),
-    saveWorkflow: vi.fn<(workflow: db.WorkflowStore) => Promise<void>>(),
-    deleteWorkflow: vi.fn<(id: string) => Promise<void>>(),
-  };
-});
 
 describe("workflowEditorMachine", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    await db.clearWorkflows();
   });
 
   it("should initialize in loading state", () => {
@@ -43,8 +32,9 @@ describe("workflowEditorMachine", () => {
   });
 
   it("should transition to viewing when a built-in workflow is loaded", async () => {
-    vi.mocked(db.getWorkflow).mockResolvedValue({
-      id: "built-in-1",
+    const workflowId = "built-in-1";
+    await db.saveWorkflow({
+      id: workflowId,
       name: "Debate Workflow",
       description: "Inf loop",
       isBuiltIn: true,
@@ -53,7 +43,7 @@ describe("workflowEditorMachine", () => {
     });
 
     const actor = createActor(workflowEditorMachine, {
-      input: { workflowId: "built-in-1" },
+      input: { workflowId },
     }).start();
 
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -63,8 +53,9 @@ describe("workflowEditorMachine", () => {
   });
 
   it("should support cloning a built-in workflow", async () => {
-    vi.mocked(db.getWorkflow).mockResolvedValue({
-      id: "built-in-1",
+    const workflowId = "built-in-1";
+    await db.saveWorkflow({
+      id: workflowId,
       name: "Debate Workflow",
       description: "Inf loop",
       isBuiltIn: true,
@@ -76,7 +67,7 @@ describe("workflowEditorMachine", () => {
     });
 
     const actor = createActor(workflowEditorMachine, {
-      input: { workflowId: "built-in-1" },
+      input: { workflowId },
     }).start();
 
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -175,8 +166,6 @@ describe("workflowEditorMachine", () => {
   });
 
   it("should save successfully when workflow is valid", async () => {
-    vi.mocked(db.saveWorkflow).mockResolvedValue(undefined);
-
     const actor = createActor(workflowEditorMachine, {
       input: { workflowId: null },
     }).start();
@@ -202,6 +191,9 @@ describe("workflowEditorMachine", () => {
     expect(actor.getSnapshot().matches({ editing: "clean" })).toBe(true);
     expect(actor.getSnapshot().context.isDirty).toBe(false);
     expect(actor.getSnapshot().context.workflowId).toBeDefined();
-    expect(db.saveWorkflow).toHaveBeenCalled();
+    
+    const allWorkflows = await db.getAllWorkflows();
+    expect(allWorkflows.length).toBe(1);
+    expect(allWorkflows[0].name).toBe("My Valid Custom Workflow");
   });
 });
