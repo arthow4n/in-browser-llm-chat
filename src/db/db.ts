@@ -572,6 +572,28 @@ export async function sweepDeletingThreads(): Promise<void> {
 // History Rollback & Truncation Helper
 // -------------------------------------------------------------
 
+export async function truncateMessages(threadId: string, messageId: string): Promise<void> {
+  const db = await getDB();
+  const message = await db.get("messages", messageId);
+  if (!message) {
+    throw new Error(`Message ${messageId} not found.`);
+  }
+  const targetSequence = message.sequence;
+
+  const tx = db.transaction("messages", "readwrite");
+  const index = tx.objectStore("messages").index("by-thread-sequence");
+  const range = IDBKeyRange.bound(
+    [threadId, targetSequence + 1],
+    [threadId, Number.MAX_SAFE_INTEGER],
+  );
+  let cursor = await index.openCursor(range);
+  while (cursor) {
+    await cursor.delete();
+    cursor = await cursor.continue();
+  }
+  await tx.done;
+}
+
 function isDescendant(
   checkpoint: CheckpointStore,
   precedingId: string,

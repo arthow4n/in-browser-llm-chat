@@ -37,6 +37,7 @@ import {
   sweepDeletingThreads,
   rollbackThreadHistory,
   _activeDeletions,
+  truncateMessages,
 } from "./db";
 import "fake-indexeddb/auto";
 
@@ -559,5 +560,74 @@ describe("Database CRUD Helper Functions", () => {
     const finalMsgs = await getMessagesForThread("thread-rollback");
     expect(finalMsgs).toHaveLength(1);
     expect(finalMsgs[0].id).toBe("m0");
+  });
+
+  it("should truncate messages after a specific message ID", async () => {
+    const threadId = "thread-truncate";
+    const thread = {
+      id: threadId,
+      title: "Truncate Thread",
+      workflowId: "workflow-1",
+      workflowSnapshot: mockWorkflow,
+      activePresetId: "preset-1",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      parentThreadId: null,
+      parentMessageId: null,
+      status: "inactive" as const,
+      activeInterrupt: null,
+      errorMessage: null,
+      latestCheckpointId: null,
+      latestCheckpointNs: null,
+      tokenStats: null,
+    };
+    await saveThread(thread);
+
+    const msg0 = {
+      id: "tm0",
+      threadId,
+      sequence: 0,
+      role: "user" as const,
+      content: "Msg 0",
+      type: "text" as const,
+      createdAt: Date.now(),
+      checkpointId: null,
+      checkpointNs: null,
+    };
+    const msg1 = {
+      id: "tm1",
+      threadId,
+      sequence: 1,
+      role: "assistant" as const,
+      content: "Msg 1",
+      type: "text" as const,
+      createdAt: Date.now(),
+      checkpointId: null,
+      checkpointNs: null,
+    };
+    const msg2 = {
+      id: "tm2",
+      threadId,
+      sequence: 2,
+      role: "user" as const,
+      content: "Msg 2",
+      type: "text" as const,
+      createdAt: Date.now(),
+      checkpointId: null,
+      checkpointNs: null,
+    };
+
+    await saveMessage(msg0);
+    await saveMessage(msg1);
+    await saveMessage(msg2);
+
+    // Truncate after msg1
+    await truncateMessages(threadId, "tm1");
+
+    const msgs = await getMessagesForThread(threadId);
+    expect(msgs).toHaveLength(2);
+    expect(msgs[0].id).toBe("tm0");
+    expect(msgs[1].id).toBe("tm1");
+    expect(await getMessage("tm2")).toBeUndefined();
   });
 });
