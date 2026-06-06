@@ -9,6 +9,14 @@ import { CodeBlock } from "./CodeBlock";
 import { AskQuestionsForm } from "./AskQuestionsForm";
 import { ProposedActionCard } from "./ProposedActionCard";
 import { AskQuestionsResponse, type Answer } from "../schemas/tools";
+import { z } from "zod";
+
+const AnswerSchema = z.object({
+  selected: z.array(z.string()).optional(),
+  text: z.string().optional(),
+  refused: z.boolean().optional(),
+  refusalReason: z.string().optional(),
+});
 
 interface ChatMessageProps {
   message: MessageStore;
@@ -273,12 +281,9 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                 <div style={{ fontSize: "0.875rem" }}>
                   {Object.entries(JSON.parse(message.content || "{}").answers || {}).map(
                     ([qId, ans]: [string, unknown]) => {
-                      const a = ans as {
-                        refused?: boolean;
-                        refusalReason?: string;
-                        selected?: string[];
-                        text?: string;
-                      };
+                      const parsed = AnswerSchema.safeParse(ans);
+                      if (!parsed.success) return null;
+                      const a = parsed.data;
                       return (
                         <div key={qId} style={{ marginBottom: "0.5rem" }}>
                           <strong>Question {qId}:</strong>
