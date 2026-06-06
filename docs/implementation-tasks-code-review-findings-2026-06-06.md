@@ -25,25 +25,25 @@
 ## 2. Fix Structural Type Casting
 
 - [ ] **Step 2.1:** Fix structural type casting in `src/db/checkpointer.ts`
-  - [ ] Define explicit `interface` or `type` definitions and use type guards or schema validation to replace `as { type: string; value: Uint8Array }` on Lines 44, 45, 56, 236, 237, 256.
+  - [ ] Define explicit `interface` or `type` definitions and use type guards or Zod schema validation to replace `as { type: string; value: Uint8Array }` on Lines 44, 45, 56, 236, 237, 256.
   - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
   - [ ] Perform code review (self/subagent).
   - [ ] Commit the changes following `AGENTS.md`.
 
 - [ ] **Step 2.2:** Fix structural type casting in `src/ui/ChatMessage.tsx`
-  - [ ] Define explicit `interface` or `type` definitions and use type guards or schema validation to replace structural cast on Line 276.
+  - [ ] Define explicit `interface` or `type` definitions and use type guards or Zod schema validation to replace structural cast on Line 276.
   - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
   - [ ] Perform code review (self/subagent).
   - [ ] Commit the changes following `AGENTS.md`.
 
 - [ ] **Step 2.3:** Fix structural type casting in `src/ui/ErrorBubble.tsx`
-  - [ ] Define explicit `interface` or `type` definitions and use type guards or schema validation to replace structural cast on Line 62.
+  - [ ] Define explicit `interface` or `type` definitions and use type guards or Zod schema validation to replace structural cast on Line 62.
   - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
   - [ ] Perform code review (self/subagent).
   - [ ] Commit the changes following `AGENTS.md`.
 
 - [ ] **Step 2.4:** Fix structural type casting in `src/ui/chat/ChatInputArea.tsx`
-  - [ ] Define explicit `interface` or `type` definitions and use type guards or schema validation to replace structural cast on Line 38.
+  - [ ] Define explicit `interface` or `type` definitions and use type guards or Zod schema validation to replace structural cast on Line 38.
   - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
   - [ ] Perform code review (self/subagent).
   - [ ] Commit the changes following `AGENTS.md`.
@@ -51,55 +51,56 @@
 ## 3. Fix UI State Machine Policy Violations (`useState` Usage)
 
 - [ ] **Step 3.1:** Migrate state in `src/App.tsx`
-  - [ ] Migrate `isSidebarOpen` from `useState` to an XState state machine.
+  - [ ] Create an XState machine to manage `isSidebarOpen` and migrate the component from `useState` to `@xstate/react`.
   - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
   - [ ] Perform code review (self/subagent).
   - [ ] Commit the changes following `AGENTS.md`.
 
 - [ ] **Step 3.2:** Migrate state in `src/ui/AskQuestionsForm.tsx`
-  - [ ] Migrate `answers` from `useState` to an XState state machine.
+  - [ ] Create an XState machine to manage `answers` and migrate the component from `useState` to `@xstate/react`.
   - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
   - [ ] Perform code review (self/subagent).
   - [ ] Commit the changes following `AGENTS.md`.
 
 - [ ] **Step 3.3:** Migrate display/visibility state in `src/ui/chat/ChatInterface.tsx`
-  - [ ] Migrate `showSettings`, `showPayloadPreview` from `useState` to an XState state machine.
+  - [ ] Create a new XState state machine for `ChatInterface` to manage display/visibility state (`showSettings`, `showPayloadPreview`).
+  - [ ] Migrate the component to use the new machine.
   - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
   - [ ] Perform code review (self/subagent).
   - [ ] Commit the changes following `AGENTS.md`.
 
 - [ ] **Step 3.4:** Migrate preview state in `src/ui/chat/ChatInterface.tsx`
-  - [ ] Migrate `previewAgentId`, `previewPayload` from `useState` to an XState state machine.
+  - [ ] Extend the `ChatInterface` state machine to manage preview state (`previewAgentId`, `previewPayload`).
   - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
   - [ ] Perform code review (self/subagent).
   - [ ] Commit the changes following `AGENTS.md`.
 
 - [ ] **Step 3.5:** Migrate chat data state in `src/ui/chat/ChatInterface.tsx`
-  - [ ] Migrate `thread`, `messages`, `draftAnswers` from `useState` to an XState state machine.
+  - [ ] Extend the `ChatInterface` state machine to manage chat data state (`thread`, `messages`, `draftAnswers`).
   - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
   - [ ] Perform code review (self/subagent).
   - [ ] Commit the changes following `AGENTS.md`.
 
 - [ ] **Step 3.6:** Migrate configuration state in `src/ui/chat/ChatInterface.tsx`
-  - [ ] Migrate `presets`, `nodes`, `globalInjectedMessages` from `useState` to an XState state machine.
+  - [ ] Extend the `ChatInterface` state machine to manage configuration state (`presets`, `nodes`, `globalInjectedMessages`).
   - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
   - [ ] Perform code review (self/subagent).
   - [ ] Commit the changes following `AGENTS.md`.
 
 - [ ] **Step 3.7:** Migrate state in `src/ui/chat/ExecutionControlPanel.tsx`
-  - [ ] Migrate `isModalOpen` from `useState` to an XState state machine.
+  - [ ] Create an XState machine to manage `isModalOpen` and migrate the component from `useState` to `@xstate/react`.
   - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
   - [ ] Perform code review (self/subagent).
   - [ ] Commit the changes following `AGENTS.md`.
 
 - [ ] **Step 3.8:** Migrate state in `src/ui/settings/ApiKeyInput.tsx`
-  - [ ] Migrate `debouncedValue` from `useState` to an XState state machine.
+  - [ ] Create an XState machine to manage `debouncedValue` and migrate the component from `useState` to `@xstate/react`.
   - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
   - [ ] Perform code review (self/subagent).
   - [ ] Commit the changes following `AGENTS.md`.
 
 - [ ] **Step 3.9:** Migrate state in `src/ui/settings/PresetConfig.tsx`
-  - [ ] Migrate `isCustomModel`, `customModelId` from `useState` to an XState state machine.
+  - [ ] Create an XState machine to manage `isCustomModel`, `customModelId` and migrate the component from `useState` to `@xstate/react`.
   - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
   - [ ] Perform code review (self/subagent).
   - [ ] Commit the changes following `AGENTS.md`.
@@ -111,4 +112,7 @@
   - [ ] Commit the movement of the findings file.
 - [ ] Delete the findings file from `docs.outdated/`.
   - [ ] Delete the findings file.
+  - [ ] Commit the deletion.
+- [ ] Delete this implementation tasks file.
+  - [ ] Remove `docs/implementation-tasks-code-review-findings-2026-06-06.md`.
   - [ ] Commit the deletion.
