@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { createActor } from "xstate";
+import { createActor, waitFor } from "xstate";
 import { presetConnectionTesterMachine } from "./presetConnectionTester";
 import * as db from "../../db/db";
 import { http, HttpResponse } from "msw";
@@ -34,7 +34,7 @@ describe("presetConnectionTesterMachine", () => {
 
     expect(actor.getSnapshot().value).toBe("testing");
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.value === "success", { timeout: 1000 });
 
     expect(actor.getSnapshot().value).toBe("success");
     expect(actor.getSnapshot().context.latency).toBeTypeOf("number");
@@ -59,7 +59,7 @@ describe("presetConnectionTesterMachine", () => {
 
     expect(actor.getSnapshot().value).toBe("testing");
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.value === "success", { timeout: 1000 });
 
     expect(actor.getSnapshot().value).toBe("success");
   });
@@ -73,7 +73,7 @@ describe("presetConnectionTesterMachine", () => {
       apiKey: "",
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.value === "failure", { timeout: 1000 });
 
     expect(actor.getSnapshot().value).toBe("failure");
     expect(actor.getSnapshot().context.errorMessage).toContain("No API key configured");
@@ -97,7 +97,7 @@ describe("presetConnectionTesterMachine", () => {
       apiKey: "invalid-key",
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.value === "failure", { timeout: 1000 });
 
     expect(actor.getSnapshot().value).toBe("failure");
     expect(actor.getSnapshot().context.errorMessage).toContain(
@@ -117,5 +117,7 @@ describe("presetConnectionTesterMachine", () => {
     expect(actor.getSnapshot().value).toBe("testing");
     actor.send({ type: "CANCEL_TEST" });
     expect(actor.getSnapshot().value).toBe("idle");
+    expect(actor.getSnapshot().context.errorMessage).toBeNull();
+    expect(actor.getSnapshot().context.latency).toBeNull();
   });
 });
