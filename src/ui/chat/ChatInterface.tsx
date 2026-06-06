@@ -131,7 +131,7 @@ export function ChatInterface() {
             titleText={activePresetName}
             items={presets.map((p) => ({ id: p.id, label: p.name }))}
             onChange={(data: unknown) =>
-              send({ type: "SWITCH_PRESET", presetId: (data as Record<string, unknown>).target.value as string })
+              send({ type: "SWITCH_PRESET", presetId: (data as { target: { value: string } }).target.value })
             }
           />
           <Button
