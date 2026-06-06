@@ -25,7 +25,6 @@ import {
 } from "../../db/db";
 
 import { type WorkflowNode } from "../../workflow/schemas";
-import { type CompiledPayloadMessage } from "../../workflow/compiler";
 
 export function ChatInterface() {
   const { threadId } = useParams();
@@ -34,8 +33,8 @@ export function ChatInterface() {
 
   const showSettings = displayState.context.showSettings;
   const showPayloadPreview = displayState.context.showPayloadPreview;
-  const [previewAgentId, setPreviewAgentId] = useState<string | null>(null);
-  const [previewPayload, setPreviewPayload] = useState<CompiledPayloadMessage[] | null>(null);
+  const previewAgentId = displayState.context.previewAgentId;
+  const previewPayload = displayState.context.previewPayload;
   const [presets, setPresets] = useState<PresetStore[]>([]);
   const [nodes, setNodes] = useState<WorkflowNode[]>([]);
   const [globalInjectedMessages, setGlobalInjectedMessages] = useState<
@@ -84,8 +83,7 @@ export function ChatInterface() {
 
   const handleOpenPayloadPreview = () => {
     const initialAgentId = state.context.activeWorkflowId || nodes[0]?.id || null;
-    setPreviewAgentId(initialAgentId);
-    sendDisplay({ type: "OPEN_PAYLOAD_PREVIEW" });
+    sendDisplay({ type: "OPEN_PAYLOAD_PREVIEW", initialAgentId });
   };
 
   useEffect(() => {
@@ -102,12 +100,20 @@ export function ChatInterface() {
           globalInjectedMessages,
           workflowInjected as Array<{ content: string; depth: number }>,
         );
-        setPreviewPayload(payload);
+        sendDisplay({ type: "SET_PREVIEW_PAYLOAD", payload });
       } else {
-        setPreviewPayload(null);
+        sendDisplay({ type: "SET_PREVIEW_PAYLOAD", payload: null });
       }
     }
-  }, [showPayloadPreview, previewAgentId, nodes, messages, globalInjectedMessages, thread]);
+  }, [
+    showPayloadPreview,
+    previewAgentId,
+    nodes,
+    messages,
+    globalInjectedMessages,
+    thread,
+    sendDisplay,
+  ]);
 
   return (
     <>
