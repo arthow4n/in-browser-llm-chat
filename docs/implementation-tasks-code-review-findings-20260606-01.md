@@ -26,11 +26,11 @@ This document contains a step-by-step checklist to resolve the issues found in `
   - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
   - [x] Perform code review (self/subagent).
   - [x] Commit the changes following `AGENTS.md`.
-- [ ] **Step 1.2:** Refactor `src/workflow/graphRunnerActor.ts` to remove the ESLint disable comment and pass a correctly typed payload to LangGraph instead of bypassing the type checker (`payload as any`).
-  - [ ] Implement the logic/feature.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Perform code review (self/subagent).
-  - [ ] Commit the changes following `AGENTS.md`.
+- [x] **Step 1.2:** Refactor `src/workflow/graphRunnerActor.ts` to remove the ESLint disable comment and pass a correctly typed payload to LangGraph instead of bypassing the type checker (`payload as any`).
+  - [x] Implement the logic/feature.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Perform code review (self/subagent).
+  - [x] Commit the changes following `AGENTS.md`.
 
 ## 2. Fix No-Mocking Policy Violations
 

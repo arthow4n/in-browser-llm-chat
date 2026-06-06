@@ -44,7 +44,10 @@ export const ProposedActionCard: React.FC<ProposedActionCardProps> = ({
     }
 
     // Simple JSON diff implementation
-    const getDiff = (oldObj: Record<string, unknown>, newObj: Record<string, unknown>): React.ReactNode[] => {
+    const getDiff = (
+      oldObj: Record<string, unknown>,
+      newObj: Record<string, unknown>,
+    ): React.ReactNode[] => {
       const allKeys = Array.from(
         new Set([...Object.keys(oldObj || {}), ...Object.keys(newObj || {})]),
       );
