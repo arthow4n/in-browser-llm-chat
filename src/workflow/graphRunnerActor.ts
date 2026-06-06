@@ -618,7 +618,7 @@ export const graphRunnerActor = createMachine(
                   if (state.next && state.next.length > 0) {
                     const payload =
                       context.toolResponse !== undefined
-                        ? new Command({ resume: context.toolResponse })
+                        ? (new Command({ resume: context.toolResponse }) as any)
                         : null;
                     runStream = await compiled.stream(payload, {
                       ...config,
@@ -667,7 +667,7 @@ export const graphRunnerActor = createMachine(
                     // Sync messages
                     const nodeOutputs = Object.values(chunk);
                     for (const out of nodeOutputs) {
-                      const messagesList = getMessages(out);
+                      const messagesList = getMessages(out as any);
                       if (messagesList) {
                         for (const msg of messagesList) {
                           const messageToSave: MessageStore = {

@@ -108,9 +108,9 @@ In `src/workflow/compiler.ts`, define the concrete types for State, Event, and C
 Replace the `any` generics in `new StateGraph<any, any, any, any>(GraphStateAnnotation)` with the types defined in Step 3.1.
 
 - [x] Update `StateGraph` instantiation.
-- [ ] Verify worktree state.
-- [ ] Perform code review.
-- [ ] Commit the changes.
+- [x] Verify worktree state.
+- [x] Perform code review.
+- [x] Commit the changes.
 
 ### Step 3.3: Remove `any` eslint-disable in `compiler.ts`
 

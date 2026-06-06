@@ -206,7 +206,7 @@ export function compileWorkflow(
   edges: WorkflowEdge[],
   context: CompilationContext,
 ) {
-  const graph = new StateGraph<any, any, any, any>(GraphStateAnnotation);
+  const graph = new StateGraph(GraphStateAnnotation) as any;
 
   // Find preceding node from outside for each loopHeader node
   // This is used to determine when to increment currentRound
@@ -233,7 +233,7 @@ export function compileWorkflow(
   // Define node execution functions
   for (const node of nodes) {
     if (node.type === "agent") {
-      graph.addNode(node.id, async (state: GraphStateType) => {
+      graph.addNode(node.id, async (state: GraphStateType): Promise<GraphUpdate> => {
         let currentRound = state.currentRound;
         if (node.loopHeader) {
           const precedingId = loopHeaderPrecedingNodeMap.get(node.id);
@@ -283,7 +283,7 @@ export function compileWorkflow(
         };
       });
     } else if (node.type === "input") {
-      graph.addNode(node.id, async (state: GraphStateType) => {
+      graph.addNode(node.id, async (state: GraphStateType): Promise<GraphUpdate> => {
         const userInput = interrupt({
           type: "input",
           nodeId: node.id,
@@ -312,7 +312,7 @@ export function compileWorkflow(
         };
       });
     } else if (node.type === "tool") {
-      graph.addNode(node.id, async (state: GraphStateType) => {
+      graph.addNode(node.id, async (state: GraphStateType): Promise<GraphUpdate> => {
         const lastMsg = state.messages[state.messages.length - 1];
         const toolCalls = lastMsg?.metadata?.tool_calls || [];
         const newMessages: GraphMessage[] = [];
@@ -357,7 +357,7 @@ export function compileWorkflow(
         };
       });
     } else if (node.type === "consensus_check") {
-      graph.addNode(node.id, async (state: GraphStateType) => {
+      graph.addNode(node.id, async (state: GraphStateType): Promise<GraphUpdate> => {
         let consensusReached = state.consensusReached;
 
         if (node.systemPrompt) {
@@ -388,7 +388,7 @@ export function compileWorkflow(
         };
       });
     } else if (node.type === "summary") {
-      graph.addNode(node.id, async (state: GraphStateType) => {
+      graph.addNode(node.id, async (state: GraphStateType): Promise<GraphUpdate> => {
         const resolvedPrompt = resolvePrompt(node.systemPrompt, state.messages);
         const llmResult = await context.callLLM(node.presetId, resolvedPrompt, state.messages);
 
@@ -417,7 +417,7 @@ export function compileWorkflow(
   }
   const entryNode = nodes.find((n) => n.type === "input" || !nodesWithIncomingEdges.has(n.id));
   if (entryNode) {
-    graph.addEdge(START, entryNode.id);
+    graph.addEdge(START, entryNode.id as any);
   }
 
   // Add Edges
@@ -434,9 +434,9 @@ export function compileWorkflow(
         const fallbackTarget = unconditionalEdge ? unconditionalEdge.to : END;
 
         graph.addConditionalEdges(
-          node.id,
-          (state: GraphStateType): "on_tool_call" | "fallback" => {
-            const lastMsg = state.messages[state.messages.length - 1];
+          node.id as any,
+          (state: Partial<GraphStateType>): "on_tool_call" | "fallback" => {
+            const lastMsg = state.messages?.[state.messages?.length ? state.messages.length - 1 : 0];
             const hasToolCalls =
               lastMsg?.metadata?.tool_calls && lastMsg.metadata.tool_calls.length > 0;
             if (hasToolCalls && toolCallEdge) {
@@ -461,8 +461,8 @@ export function compileWorkflow(
         const fallbackTarget = unconditionalEdge ? unconditionalEdge.to : END;
 
         graph.addConditionalEdges(
-          node.id,
-          (state: GraphStateType): string => {
+          node.id as any,
+          (state: Partial<GraphStateType>): string => {
             if (state.lastAgentId && pathMap[state.lastAgentId]) {
               return state.lastAgentId;
             }
@@ -484,10 +484,10 @@ export function compileWorkflow(
         if (unconditionalEdge) pathMap.fallback = unconditionalEdge.to;
 
         graph.addConditionalEdges(
-          node.id,
-          (state: GraphStateType): "on_consensus" | "on_no_consensus" | "fallback" => {
+          node.id as any,
+          (state: Partial<GraphStateType>): "on_consensus" | "on_no_consensus" | "fallback" => {
             const shouldTerminate =
-              state.consensusReached || state.forceSummarize || state.currentRound >= maxLoopLimit;
+              state.consensusReached || state.forceSummarize || (state.currentRound !== undefined && state.currentRound >= maxLoopLimit);
 
             if (shouldTerminate && onConsensusEdge) {
               return "on_consensus" as const;
@@ -501,9 +501,9 @@ export function compileWorkflow(
         );
       }
     } else if (unconditionalEdge) {
-      graph.addEdge(node.id, unconditionalEdge.to);
+      graph.addEdge(node.id as any, unconditionalEdge.to as any);
     } else {
-      graph.addEdge(node.id, END);
+      graph.addEdge(node.id as any, END);
     }
   }
 
