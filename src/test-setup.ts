@@ -1,4 +1,5 @@
 import "fake-indexeddb/auto";
+import "vitest-localstorage-mock";
 import "@testing-library/jest-dom";
 import "./test/msw-setup";
 
