@@ -47,16 +47,16 @@ This document contains a step-by-step checklist to resolve the issues found in `
 
 ## 3. Fix XState Snapshot Checks
 
-- [ ] **Step 3.1:** Refactor `src/ui/settings/ApiKeyInput.tsx` to use `snapshot.matches()` instead of `snapshot.value ===`.
-  - [ ] Implement the logic/feature.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Perform code review (self/subagent).
-  - [ ] Commit the changes following `AGENTS.md`.
-- [ ] **Step 3.2:** Refactor `src/ui/settings/PresetConfig.tsx` to use `snapshot.matches()` instead of `snapshot.value ===`.
-  - [ ] Implement the logic/feature.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Perform code review (self/subagent).
-  - [ ] Commit the changes following `AGENTS.md`.
+- [x] **Step 3.1:** Refactor `src/ui/settings/ApiKeyInput.tsx` to use `snapshot.matches()` instead of `snapshot.value ===`.
+  - [x] Implement the logic/feature.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Perform code review (self/subagent).
+  - [x] Commit the changes following `AGENTS.md`.
+- [x] **Step 3.2:** Refactor `src/ui/settings/PresetConfig.tsx` to use `snapshot.matches()` instead of `snapshot.value ===`.
+  - [x] Implement the logic/feature.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Perform code review (self/subagent).
+  - [x] Commit the changes following `AGENTS.md`.
 - [ ] **Step 3.3:** Refactor `src/ui/chat/ThreadSettingsModal.tsx` to use `snapshot.matches()` instead of `snapshot.value ===`.
   - [ ] Implement the logic/feature.
   - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).

@@ -77,10 +77,10 @@ export const PresetConfig: React.FC<PresetConfigProps> = ({ presetId, onClose })
 
   // Handle final save/delete navigation
   useEffect(() => {
-    if (configState.value === "saveSuccess" || configState.value === "deleteSuccess") {
+    if (configState.matches("saveSuccess") || configState.matches("deleteSuccess")) {
       onClose();
     }
-  }, [configState.value, onClose]);
+  }, [configState, onClose]);
 
   const handleModelSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
@@ -126,7 +126,7 @@ export const PresetConfig: React.FC<PresetConfigProps> = ({ presetId, onClose })
           />
         )}
 
-        {configState.value === "loading" ? (
+        {configState.matches("loading") ? (
           <InlineLoading description="Loading preset details..." />
         ) : (
           <Form
@@ -218,16 +218,16 @@ export const PresetConfig: React.FC<PresetConfigProps> = ({ presetId, onClose })
                       type="button"
                       kind="tertiary"
                       onClick={handleTestConnection}
-                      disabled={testerState.value === "testing"}
+                      disabled={testerState.matches("testing")}
                     >
-                      {testerState.value === "testing" ? "Testing..." : "Test Connection"}
+                      {testerState.matches("testing") ? "Testing..." : "Test Connection"}
                     </Button>
 
-                    {testerState.value === "testing" && (
+                    {testerState.matches("testing") && (
                       <InlineLoading status="active" description="Contacting API..." />
                     )}
 
-                    {testerState.value === "success" && (
+                    {testerState.matches("success") && (
                       <span
                         style={{
                           display: "inline-flex",
@@ -241,7 +241,7 @@ export const PresetConfig: React.FC<PresetConfigProps> = ({ presetId, onClose })
                       </span>
                     )}
 
-                    {testerState.value === "failure" && (
+                    {testerState.matches("failure") && (
                       <span
                         style={{
                           display: "inline-flex",
@@ -340,15 +340,15 @@ export const PresetConfig: React.FC<PresetConfigProps> = ({ presetId, onClose })
                   <Button
                     type="submit"
                     kind="primary"
-                    disabled={configState.value === "saving" || configState.value === "deleting"}
+                    disabled={configState.matches("saving") || configState.matches("deleting")}
                   >
-                    {configState.value === "saving" ? "Saving..." : "Save Preset"}
+                    {configState.matches("saving") ? "Saving..." : "Save Preset"}
                   </Button>
                   <Button
                     type="button"
                     kind="secondary"
                     onClick={onClose}
-                    disabled={configState.value === "saving" || configState.value === "deleting"}
+                    disabled={configState.matches("saving") || configState.matches("deleting")}
                   >
                     Cancel
                   </Button>
@@ -357,10 +357,10 @@ export const PresetConfig: React.FC<PresetConfigProps> = ({ presetId, onClose })
                       type="button"
                       kind="danger"
                       onClick={() => sendConfig({ type: "DELETE" })}
-                      disabled={configState.value === "saving" || configState.value === "deleting"}
+                      disabled={configState.matches("saving") || configState.matches("deleting")}
                       style={{ marginLeft: "auto" }}
                     >
-                      {configState.value === "deleting" ? "Deleting..." : "Delete Preset"}
+                      {configState.matches("deleting") ? "Deleting..." : "Delete Preset"}
                     </Button>
                   )}
                 </div>
