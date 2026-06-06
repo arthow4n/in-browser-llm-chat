@@ -71,15 +71,15 @@ export const ApiKeyInput: React.FC<ApiKeyInputProps> = ({
           alignItems: "center",
         }}
       >
-        {state.value === "validating" && (
+        {state.matches("validating") && (
           <InlineLoading status="active" description="Validating..." />
         )}
-        {state.value === "valid" && (
+        {state.matches("valid") && (
           <Tooltip align="bottom" label="API key is valid">
             <CheckmarkOutline size={20} style={{ color: "green" }} />
           </Tooltip>
         )}
-        {state.value === "invalid" && (
+        {state.matches("invalid") && (
           <Tooltip align="bottom" label={state.context.errorMessage || "Invalid API key"}>
             <ErrorOutline size={20} style={{ color: "red" }} />
           </Tooltip>
