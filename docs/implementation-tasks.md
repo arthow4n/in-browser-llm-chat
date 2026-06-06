@@ -174,12 +174,12 @@ This document contains a step-by-step checklist to build the LLM chat applicatio
   - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
   - [x] Perform code review (self/subagent).
   - [x] Commit the changes following `AGENTS.md`.
-- [ ] **Step 10.3:** Implement the Budget Exceeded Card State Machine for handling execution limits, and the Inline Error Bubble controls for retrying LLM steps.
-  - [ ] Implement the Budget Exceeded Card and Inline Error Bubble control state machines.
-  - [ ] Write integration and state machine tests adhering to Testing Guidelines in `docs/scratchpad.md`.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Perform code review (self/subagent).
-  - [ ] Commit the changes following `AGENTS.md`.
+- [x] **Step 10.3:** Implement the Budget Exceeded Card State Machine for handling execution limits, and the Inline Error Bubble controls for retrying LLM steps.
+  - [x] Implement the Budget Exceeded Card and Inline Error Bubble control state machines.
+  - [x] Write integration and state machine tests adhering to Testing Guidelines in `docs/scratchpad.md`.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Perform code review (self/subagent).
+  - [x] Commit the changes following `AGENTS.md`.
 
 ## 11. Final Integration & Polish
 
