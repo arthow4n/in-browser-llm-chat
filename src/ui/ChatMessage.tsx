@@ -7,6 +7,7 @@ import { MessageStore, saveMessage } from "../db/db";
 import { Accordion, AccordionItem } from "@carbon/react";
 import { CodeBlock } from "./CodeBlock";
 import { AskQuestionsForm } from "./AskQuestionsForm";
+import { ProposedActionCard } from "./ProposedActionCard";
 import { AskQuestionsResponse, type Answer } from "../schemas/tools";
 
 interface ChatMessageProps {
@@ -195,6 +196,67 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                       };
                       await saveMessage(resultMessage);
                       send({ type: "SUBMIT_TOOL_RESPONSE", response });
+                    }}
+                  />
+                )
+              ) : message.name === "create_workflow" || message.name === "update_workflow" ? (
+                allMessages.some(
+                  (m) => m.type === "tool_result" && m.toolCallId === message.toolCallId,
+                ) ? (
+                  <div style={{ color: "var(--cds-text-disabled)", fontSize: "0.875rem" }}>
+                    Approved/Denied. See the tool result below.
+                  </div>
+                ) : (
+                  <ProposedActionCard
+                    toolCallId={message.toolCallId || ""}
+                    actionType={message.name === "create_workflow" ? "create" : "update"}
+                    payload={JSON.parse(message.content || "{}")}
+                    originalPayload={
+                      message.name === "update_workflow"
+                        ? allMessages.find(
+                            (m) => m.name === "get_workflow" && m.type === "tool_result",
+                          )?.content
+                          ? JSON.parse(
+                              allMessages.find(
+                                (m) => m.name === "get_workflow" && m.type === "tool_result",
+                              )!.content,
+                            )
+                          : undefined
+                        : undefined
+                    }
+                    onApprove={async (toolCallId) => {
+                      const resultMessage: MessageStore = {
+                        id: crypto.randomUUID(),
+                        threadId: currentThreadId,
+                        sequence: allMessages.length,
+                        role: "tool",
+                        content: JSON.stringify({ status: "approved" }),
+                        type: "tool_result",
+                        toolCallId: toolCallId,
+                        name: message.name || "unknown",
+                        createdAt: Date.now(),
+                        checkpointId: null,
+                        checkpointNs: null,
+                      };
+                      await saveMessage(resultMessage);
+                      send({ type: "SUBMIT_TOOL_RESPONSE", response: { status: "approved" } });
+                    }}
+                    onDeny={async (toolCallId) => {
+                      const resultMessage: MessageStore = {
+                        id: crypto.randomUUID(),
+                        threadId: currentThreadId,
+                        sequence: allMessages.length,
+                        role: "tool",
+                        content: JSON.stringify({ status: "denied" }),
+                        type: "tool_result",
+                        toolCallId: toolCallId,
+                        name: message.name || "unknown",
+                        createdAt: Date.now(),
+                        checkpointId: null,
+                        checkpointNs: null,
+                      };
+                      await saveMessage(resultMessage);
+                      send({ type: "SUBMIT_TOOL_RESPONSE", response: { status: "denied" } });
                     }}
                   />
                 )
