@@ -76,9 +76,9 @@ Implement the XState machine to manage the lifecycle of editing, deleting, and b
 - [ ] Commit changes.
 
 ### Step 2.2: Integrate `messageEditorMachine` into Application State
-Define how the `messageEditorMachine` is instantiated and accessed across the UI.
-- [ ] Decide on the integration strategy (e.g., adding it as a child actor to `parentCoordinatorMachine` or creating a dedicated UI state provider).
-- [ ] Implement the integration so that `ChatMessage` and `MessageEditor` components can send events to and read state from the machine.
+Integrate the `messageEditorMachine` as a child actor of the `parentCoordinatorMachine` to ensure global accessibility and consistent state management.
+- [ ] Add the `messageEditorMachine` as a spawned actor in the `parentCoordinatorMachine` configuration.
+- [ ] Implement the integration so that `ChatMessage` and `MessageEditor` components can send events to and read state from the machine via the parent coordinator.
 - [ ] Verify that the machine is correctly initialized and accessible.
 - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
 - [ ] Perform code review.
@@ -163,9 +163,6 @@ Link the existing TODO in the `ErrorBubble` to the new message editor functional
 
 ## 8. Cleanup
 
-- [ ] Move the findings file `docs/business-logic-review-findings-2026-06-06.md` to the `docs.outdated` directory.
-  - [ ] Move findings file to `docs.outdated/`.
-  - [ ] Commit the movement of the findings file.
-- [ ] Delete the findings file from `docs.outdated/`.
-  - [ ] Delete the findings file.
-  - [ ] Commit the deletion.
+- [ ] Archive the findings file by moving it to the `docs.outdated` directory.
+  - [ ] Move `docs/business-logic-review-findings-2026-06-06.md` to `docs.outdated/`.
+  - [ ] Commit the change.
