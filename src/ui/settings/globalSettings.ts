@@ -170,7 +170,9 @@ export const globalSettingsMachine = setup({
     updateInjectedMessage: assign({
       injectedSystemMessages: ({ context, event }) => {
         if (event.type !== "UPDATE_INJECTED_MESSAGE") return context.injectedSystemMessages;
-        const messages = Array.isArray(context.injectedSystemMessages) ? context.injectedSystemMessages : [];
+        const messages = Array.isArray(context.injectedSystemMessages)
+          ? context.injectedSystemMessages
+          : [];
         const newMessages = [...messages];
         if (newMessages[event.index]) {
           newMessages[event.index] = {
@@ -185,7 +187,9 @@ export const globalSettingsMachine = setup({
     removeInjectedMessage: assign({
       injectedSystemMessages: ({ context, event }) => {
         if (event.type !== "REMOVE_INJECTED_MESSAGE") return context.injectedSystemMessages;
-        const messages = Array.isArray(context.injectedSystemMessages) ? context.injectedSystemMessages : [];
+        const messages = Array.isArray(context.injectedSystemMessages)
+          ? context.injectedSystemMessages
+          : [];
         const newMessages = [...messages];
         newMessages.splice(event.index, 1);
         return newMessages;

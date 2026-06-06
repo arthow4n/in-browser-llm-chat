@@ -3,7 +3,13 @@ import { getThread, saveThread } from "../../db/db";
 import type { PresetStore } from "../../db/db";
 
 type ThreadSettingsEvent =
-  | { type: "OPEN"; threadId: string; threadTitle: string; selectedPresetId: string; presets: PresetStore[] }
+  | {
+      type: "OPEN";
+      threadId: string;
+      threadTitle: string;
+      selectedPresetId: string;
+      presets: PresetStore[];
+    }
   | { type: "EDIT_TITLE" }
   | { type: "CANCEL_EDIT_TITLE" }
   | { type: "UPDATE_TITLE"; title: string }

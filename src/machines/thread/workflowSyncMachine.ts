@@ -129,8 +129,12 @@ export async function analyzeWorkflowSync(threadId: string) {
     JSON.stringify(masterWorkflow.nodes.map((n) => n.id).sort((a, b) => a.localeCompare(b)));
 
   const edgesMatch =
-    JSON.stringify(snapshot.edges.map((e) => `${e.from}->${e.to}`).sort((a, b) => a.localeCompare(b))) ===
-    JSON.stringify(masterWorkflow.edges.map((e) => `${e.from}->${e.to}`).sort((a, b) => a.localeCompare(b)));
+    JSON.stringify(
+      snapshot.edges.map((e) => `${e.from}->${e.to}`).sort((a, b) => a.localeCompare(b)),
+    ) ===
+    JSON.stringify(
+      masterWorkflow.edges.map((e) => `${e.from}->${e.to}`).sort((a, b) => a.localeCompare(b)),
+    );
 
   const isDestructive = !nodesMatch || !edgesMatch;
 
