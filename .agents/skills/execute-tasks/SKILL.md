@@ -31,4 +31,6 @@ Follow this process strictly:
 
 4. Completion:
    - Once the loop breaks (either due to all steps being completed or reaching the maximum error threshold), provide a summary of the progress and any remaining work or errors to the user.
-   - If the loop exited because all steps were successfully completed, move the tasks file to `docs.outdated` and git commit the file movement.
+   - If the loop exited because all steps were successfully completed, follow this 2-step process carefully to maintain git history:
+     1. Move the tasks file to `docs.outdated` and git commit the file movement.
+     2. Delete the newly moved tasks file in `docs.outdated` and make a separate git commit for the deletion. It is crucial to separate the movement and the deletion into 2 separate commits so that we can track the history of the outdated docs.
