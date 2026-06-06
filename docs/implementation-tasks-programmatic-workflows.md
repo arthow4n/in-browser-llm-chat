@@ -31,8 +31,9 @@
 - [ ] **Step 2.1: Create Workflow Service**
   - Create `src/workflow/workflowService.ts`.
   - Implement a function `getEffectiveWorkflows()` that:
-    - Fetches all user-defined workflows from the database using `getAllWorkflows()`.
-    - Merges the result with the `BUILT_IN_WORKFLOWS` array.
+    - Fetches all workflows from the database using `getAllWorkflows()`.
+    - Filters out any workflows from the database that are marked as `isBuiltIn: true` to prevent duplicates with the programmatic definitions.
+    - Merges the filtered result with the `BUILT_IN_WORKFLOWS` array.
     - Returns the combined list of workflows.
   - [ ] Implement `getEffectiveWorkflows()` in `src/workflow/workflowService.ts`.
   - [ ] Verify worktree state.
@@ -73,7 +74,7 @@
   - If a workflow with `isBuiltIn === true` is selected for editing:
     - Set the editor to read-only mode.
     - Display a notification or prompt informing the user that built-in workflows cannot be edited.
-    - Provide a "Clone" button that creates a new custom workflow (using the same configuration but with `isBuiltIn: false` and a new UUID).
+    - Provide a "Clone" button that creates a new custom workflow (using the same configuration but with `isBuiltIn: false` and a new UUID), saves it to the database, and switches the editor to the newly created workflow.
   - [ ] Implement read-only mode and cloning for built-in workflows.
   - [ ] Verify worktree state.
   - [ ] Perform code review.
@@ -83,6 +84,7 @@
 - [ ] **Step 6.1: Remove Built-in Workflow Seeding**
   - Identify and remove any code in `src/ui/settings/globalSettings.ts`, `src/db/db.ts`, or other initialization scripts that seeds the default workflows (Standard Agent, Debate) into IndexedDB.
   - Ensure that the `workflows` store only contains user-created workflows moving forward.
+  - Verify that `deleteWorkflow` in `src/db/db.ts` handles cases where the workflow to be deleted is not present in the DB (which will be the case for programmatic built-in workflows).
   - [ ] Remove seeding logic.
   - [ ] Verify worktree state.
   - [ ] Perform code review.
