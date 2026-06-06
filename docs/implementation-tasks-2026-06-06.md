@@ -20,15 +20,18 @@ This implementation plan is derived from the code review findings in `docs/code-
 ## 1. Typing Improvements in `graphRunnerActor.ts`
 
 ### Step 1.1: Define LLM Provider Response Types
+
 Define specific interfaces for Google GenAI and OpenRouter response chunks and usage data in a new types file (e.g., `src/workflow/types.ts`) or within `src/workflow/schemas.ts` to replace `any` usage in the runner.
 
-- [ ] Define interfaces for response chunks and usage data.
-- [ ] Verify worktree state.
-- [ ] Perform code review.
-- [ ] Commit the changes.
+- [x] Define interfaces for response chunks and usage data.
+- [x] Verify worktree state.
+- [x] Perform code review.
+- [x] Commit the changes.
 
 ### Step 1.2: Refactor Helper Functions in `graphRunnerActor.ts`
+
 Update the following helper functions to use the newly defined types instead of `any`:
+
 - `getEventErrorMessage(event: any)`
 - `getChunkUsage(chunk: any)`
 - `getMessages(out: any)`
@@ -42,6 +45,7 @@ Update the following helper functions to use the newly defined types instead of 
 - [ ] Commit the changes.
 
 ### Step 1.3: Remove `any` eslint-disable in `graphRunnerActor.ts`
+
 Remove the `/* eslint-disable @typescript-eslint/no-explicit-any */` directive from the top of `src/workflow/graphRunnerActor.ts`.
 
 - [ ] Remove the eslint-disable comment.
@@ -52,6 +56,7 @@ Remove the `/* eslint-disable @typescript-eslint/no-explicit-any */` directive f
 ## 2. Refactoring `ChatInterface.tsx`
 
 ### Step 2.1: Improve `ThreadStore` Definition in `db.ts`
+
 Refactor the `ThreadStore` interface in `src/db/db.ts` to use the `WorkflowStore` type for the `workflowSnapshot` field, eliminating the need for casting it as `Record<string, unknown>` in the UI.
 
 - [ ] Update `ThreadStore` interface in `src/db/db.ts` to use `WorkflowStore` for `workflowSnapshot`.
@@ -61,6 +66,7 @@ Refactor the `ThreadStore` interface in `src/db/db.ts` to use the `WorkflowStore
 - [ ] Commit the changes.
 
 ### Step 2.2: Fix Structural Casting of `workflowInjected`
+
 In `src/ui/chat/ChatInterface.tsx`, remove the structural cast `workflowInjected as Array<{ content: string; depth: number }>`. Ensure the `Workflow` interface in `src/db/db.ts` (or corresponding type) correctly defines `injectedSystemMessages` to allow the type to propagate naturally to the UI.
 
 - [ ] Refactor `workflowInjected` usage.
@@ -69,6 +75,7 @@ In `src/ui/chat/ChatInterface.tsx`, remove the structural cast `workflowInjected
 - [ ] Commit the changes.
 
 ### Step 2.3: Fix Forced Casting of `messages`
+
 In `src/ui/chat/ChatInterface.tsx`, remove the forced cast `messages as import("../../workflow/compiler").GraphMessage[]`. Ensure the source of `messages` (e.g. the `threads` or `messages` store in `db.ts` or the state machine) uses the `GraphMessage` type.
 
 - [ ] Refactor `messages` usage.
@@ -77,6 +84,7 @@ In `src/ui/chat/ChatInterface.tsx`, remove the forced cast `messages as import("
 - [ ] Commit the changes.
 
 ### Step 2.4: Fix Forced Casting of `event`
+
 In `src/ui/chat/ChatInterface.tsx`, remove the forced cast `send(event as import("../../workflow/parentCoordinator").CoordinatorEvent)`. Update the event handling logic to use the `CoordinatorEvent` type directly.
 
 - [ ] Refactor `send(event ...)` call to use `CoordinatorEvent`.
@@ -87,6 +95,7 @@ In `src/ui/chat/ChatInterface.tsx`, remove the forced cast `send(event as import
 ## 3. Strict `StateGraph` Typing in `compiler.ts`
 
 ### Step 3.1: Define `StateGraph` Types
+
 In `src/workflow/compiler.ts`, define the concrete types for State, Event, and Channels used by the `StateGraph`.
 
 - [ ] Define the required types.
@@ -95,6 +104,7 @@ In `src/workflow/compiler.ts`, define the concrete types for State, Event, and C
 - [ ] Commit the changes.
 
 ### Step 3.2: Apply Types to `StateGraph` Instantiation
+
 Replace the `any` generics in `new StateGraph<any, any, any, any>(GraphStateAnnotation)` with the types defined in Step 3.1.
 
 - [ ] Update `StateGraph` instantiation.
@@ -103,6 +113,7 @@ Replace the `any` generics in `new StateGraph<any, any, any, any>(GraphStateAnno
 - [ ] Commit the changes.
 
 ### Step 3.3: Remove `any` eslint-disable in `compiler.ts`
+
 Remove the `/* eslint-disable @typescript-eslint/no-explicit-any */` directive from `src/workflow/compiler.ts`.
 
 - [ ] Remove the eslint-disable comment.
@@ -113,6 +124,7 @@ Remove the `/* eslint-disable @typescript-eslint/no-explicit-any */` directive f
 ## 4. Final Verification
 
 ### Step 4.1: Full System Check
+
 Perform a final comprehensive check of the entire project to ensure no regressions were introduced.
 
 - [ ] Run `npm run typecheck`.
