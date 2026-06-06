@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { createActor } from "xstate";
+import { createActor, waitFor } from "xstate";
 import { workflowListMachine } from "./workflowListMachine.js";
 import * as db from "../../db/db.js";
 
@@ -47,7 +47,7 @@ describe("workflowListMachine", () => {
     const actor = createActor(workflowListMachine).start();
 
     // Wait for the initial invoke to complete
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.value === "idle", { timeout: 1000 });
 
     expect(actor.getSnapshot().value).toBe("idle");
     // Default sorting is by name asc
@@ -61,16 +61,16 @@ describe("workflowListMachine", () => {
     // Test search
     actor.send({ type: "UPDATE_SEARCH", query: "query matches" });
     expect(actor.getSnapshot().value).toBe("loading");
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.value === "idle", { timeout: 1000 });
     expect(actor.getSnapshot().value).toBe("idle");
     expect(actor.getSnapshot().context.workflows).toEqual([mockWorkflows[1]]);
     expect(actor.getSnapshot().context.totalCount).toBe(1);
 
     // Reset search, change page size and sort
     actor.send({ type: "UPDATE_SEARCH", query: "" });
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.value === "idle", { timeout: 1000 });
     actor.send({ type: "CHANGE_SORT", sortBy: "name", sortOrder: "desc" });
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.value === "idle", { timeout: 1000 });
     expect(actor.getSnapshot().context.workflows).toEqual([
       mockWorkflows[2], // C Workflow
       mockWorkflows[0], // B Workflow
@@ -82,7 +82,7 @@ describe("workflowListMachine", () => {
     const spy = vi.spyOn(db, "getAllWorkflows").mockRejectedValue(new Error("Database error"));
 
     const actor = createActor(workflowListMachine).start();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.value === "error", { timeout: 1000 });
 
     expect(actor.getSnapshot().value).toBe("error");
     expect(actor.getSnapshot().context.errorMessage).toBe("Database error");
@@ -102,13 +102,13 @@ describe("workflowListMachine", () => {
     });
 
     const actor = createActor(workflowListMachine).start();
-    await new Promise((resolve) => setTimeout(resolve, 10)); // complete initial load
+    await waitFor(actor, (state) => state.value === "idle", { timeout: 1000 }); // complete initial load
 
     actor.send({ type: "TRIGGER_DELETE", workflowId });
     expect(actor.getSnapshot().value).toBe("deleting");
     expect(actor.getSnapshot().context.deletingWorkflowId).toBe(workflowId);
 
-    await new Promise((resolve) => setTimeout(resolve, 10)); // complete delete & refetch
+    await waitFor(actor, (state) => state.value === "idle", { timeout: 1000 }); // complete delete & refetch
     expect(actor.getSnapshot().value).toBe("idle");
     expect(actor.getSnapshot().context.deletingWorkflowId).toBeNull();
     expect(await db.getWorkflow(workflowId)).toBeUndefined();
@@ -126,10 +126,10 @@ describe("workflowListMachine", () => {
     });
 
     const actor = createActor(workflowListMachine).start();
-    await new Promise((resolve) => setTimeout(resolve, 10)); // complete initial load
+    await waitFor(actor, (state) => state.value === "idle", { timeout: 1000 }); // complete initial load
 
     actor.send({ type: "TRIGGER_DELETE", workflowId });
-    await new Promise((resolve) => setTimeout(resolve, 10)); // complete delete action
+    await waitFor(actor, (state) => state.value === "idle", { timeout: 1000 }); // complete delete action
 
     expect(actor.getSnapshot().value).toBe("idle");
     expect(actor.getSnapshot().context.errorMessage).toBe("Cannot delete built-in workflows.");

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { createActor } from "xstate";
+import { createActor, waitFor } from "xstate";
 import { workflowEditorMachine } from "./workflowEditorMachine.js";
 import * as db from "../../db/db.js";
 
@@ -20,7 +20,7 @@ describe("workflowEditorMachine", () => {
       input: { workflowId: null },
     }).start();
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.matches({ editing: "clean" }), { timeout: 1000 });
 
     expect(actor.getSnapshot().matches({ editing: "clean" })).toBe(true);
     expect(actor.getSnapshot().context.workflowId).toBeNull();
@@ -46,7 +46,7 @@ describe("workflowEditorMachine", () => {
       input: { workflowId },
     }).start();
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.matches("viewing"), { timeout: 1000 });
 
     expect(actor.getSnapshot().matches("viewing")).toBe(true);
     expect(actor.getSnapshot().context.isBuiltIn).toBe(true);
@@ -70,7 +70,7 @@ describe("workflowEditorMachine", () => {
       input: { workflowId },
     }).start();
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.matches("viewing"), { timeout: 1000 });
 
     actor.send({ type: "CLONE_WORKFLOW" });
 
@@ -88,7 +88,7 @@ describe("workflowEditorMachine", () => {
       input: { workflowId: null },
     }).start();
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.matches({ editing: "clean" }), { timeout: 1000 });
 
     const originalContent = actor.getSnapshot().context.originalContent;
 
@@ -107,7 +107,7 @@ describe("workflowEditorMachine", () => {
       input: { workflowId: null },
     }).start();
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.matches({ editing: "clean" }), { timeout: 1000 });
 
     actor.send({ type: "EDIT_JSON", content: "{" });
     actor.send({ type: "SAVE" });
@@ -122,7 +122,7 @@ describe("workflowEditorMachine", () => {
       input: { workflowId: null },
     }).start();
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.matches({ editing: "clean" }), { timeout: 1000 });
 
     const invalidConfig = {
       name: "",
@@ -143,7 +143,7 @@ describe("workflowEditorMachine", () => {
       input: { workflowId: null },
     }).start();
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.matches({ editing: "clean" }), { timeout: 1000 });
 
     const invalidStructuralConfig = {
       name: "Bad Graph",
@@ -170,7 +170,7 @@ describe("workflowEditorMachine", () => {
       input: { workflowId: null },
     }).start();
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(actor, (state) => state.matches({ editing: "clean" }), { timeout: 1000 });
 
     const validConfig = {
       name: "My Valid Custom Workflow",
@@ -186,7 +186,7 @@ describe("workflowEditorMachine", () => {
     actor.send({ type: "SAVE" });
 
     // Wait for validation and saving transitions
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitFor(actor, (state) => state.matches({ editing: "clean" }), { timeout: 1000 });
 
     expect(actor.getSnapshot().matches({ editing: "clean" })).toBe(true);
     expect(actor.getSnapshot().context.isDirty).toBe(false);
