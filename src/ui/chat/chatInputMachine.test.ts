@@ -8,7 +8,7 @@ describe("chatInputMachine", () => {
     const snapshot = actor.getSnapshot();
     expect(snapshot.context.text).toBe("");
     expect(snapshot.context.role).toBe("User");
-    expect(snapshot.value).toBe("idle");
+    expect(snapshot.matches("idle")).toBe(true);
   });
 
   it("should update text on UPDATE_TEXT", () => {
@@ -29,7 +29,7 @@ describe("chatInputMachine", () => {
     const actor = createActor(chatInputMachine).start();
     actor.send({ type: "SUBMIT" });
     const snapshot = actor.getSnapshot();
-    expect(snapshot.value).toBe("submitting");
+    expect(snapshot.matches("submitting")).toBe(true);
   });
 
   it("should reset text on RESET", () => {
@@ -39,6 +39,6 @@ describe("chatInputMachine", () => {
     actor.send({ type: "RESET" });
     const snapshot = actor.getSnapshot();
     expect(snapshot.context.text).toBe("");
-    expect(snapshot.value).toBe("idle");
+    expect(snapshot.matches("idle")).toBe(true);
   });
 });
