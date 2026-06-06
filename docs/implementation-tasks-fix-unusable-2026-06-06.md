@@ -71,12 +71,12 @@ Replace the local machine instance in `ChatInterface.tsx` to fix state desynchro
 
 Add a way for users to trigger the global settings view.
 
-- [ ] Locate the `HeaderGlobalBar` component (either in `src/App.tsx` or a separate file).
-- [ ] Add a Carbon `Button` inside `<HeaderGlobalBar>`.
-- [ ] Use `useCoordinator().send` to dispatch the `OPEN_SETTINGS` event when the button is clicked.
-- [ ] Apply appropriate Carbon Design System styling for the button.
-- [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run build`).
-- [ ] Commit: `(Agent Name) Add Global Settings button to HeaderGlobalBar`.
+- [x] Locate the `HeaderGlobalBar` component (either in `src/App.tsx` or a separate file).
+- [x] Add a Carbon `Button` inside `<HeaderGlobalBar>`.
+- [x] Use `useCoordinator().send` to dispatch the `OPEN_SETTINGS` event when the button is clicked.
+- [x] Apply appropriate Carbon Design System styling for the button.
+- [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run build`).
+- [x] Commit: `(Agent Name) Add Global Settings button to HeaderGlobalBar`.
 
 ### Step 2.2: Integrate `ViewState` with Root Rendering
 

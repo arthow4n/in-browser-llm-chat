@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useLocation, Routes, Route } from "react-router";
 import { useMachine } from "@xstate/react";
 import { Theme, Header, HeaderName, HeaderGlobalBar, Content, Button } from "@carbon/react";
-import { Menu } from "@carbon/icons-react";
+import { Menu, Settings } from "@carbon/icons-react";
 import { useCoordinator } from "./context/CoordinatorContext";
 import { NewChatForm } from "./ui/sidebar/NewChatForm.js";
 import { LeftSidebar } from "./ui/sidebar/LeftSidebar.js";
@@ -40,7 +40,14 @@ export function App() {
           />
           Chat
         </HeaderName>
-        <HeaderGlobalBar>{/* Settings and other global actions will go here */}</HeaderGlobalBar>
+        <HeaderGlobalBar>
+          <Button
+            kind="ghost"
+            hasIconOnly
+            renderIcon={Settings}
+            onClick={() => send({ type: "OPEN_SETTINGS" })}
+          />
+        </HeaderGlobalBar>
       </Header>
       <Content
         style={{
