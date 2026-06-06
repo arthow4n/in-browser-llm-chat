@@ -105,7 +105,7 @@ export const globalSettingsMachine = setup({
           maxTokens: undefined,
           budgetPolicy: { maxStepsWithoutUser: 10, maxTokensPerRun: null },
         });
-        await setSetting("default_preset_id", { value: defaultGeminiId });
+        await setSetting("default_preset_id", defaultGeminiId);
       }
 
       return input;

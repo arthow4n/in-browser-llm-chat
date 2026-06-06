@@ -74,11 +74,11 @@ Implement a test case to verify that API keys are correctly saved using the `glo
 
 Verify that the initial seeding of default presets occurs as expected during the onboarding/settings process.
 
-- [ ] Implement logic to trigger the seeding process (if it's not already triggered by `saveSettings`).
-- [ ] Query the IndexedDB `presets` table and assert that the expected default presets (as defined in `globalSettings.ts`) are present.
-- [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-- [ ] Perform code review.
-- [ ] Commit the changes.
+- [x] Implement logic to trigger the seeding process (if it's not already triggered by `saveSettings`).
+- [x] Query the IndexedDB `presets` table and assert that the expected default presets (as defined in `globalSettings.ts`) are present.
+- [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+- [x] Perform code review.
+- [x] Commit the changes.
 
 ## 3. Full Execution Loop
 
