@@ -98,22 +98,22 @@ Ensure that the machine's `ViewState` actually controls the visibility of settin
 
 Confirm that the primary "unusable" issue is resolved.
 
-- [ ] Load the app and navigate to a thread via URL.
-- [ ] Verify that `ChatInputArea` (in `src/ui/chat/ChatInputArea.tsx`) no longer logs "No active thread selected" and allows sending messages.
-- [ ] Verify that changing the route updates the coordinator state globally.
+- [x] Load the app and navigate to a thread via URL.
+- [x] Verify that `ChatInputArea` (in `src/ui/chat/ChatInputArea.tsx`) no longer logs "No active thread selected" and allows sending messages.
+- [x] Verify that changing the route updates the coordinator state globally.
 
 ### Step 3.2: Verify Settings and Onboarding Flow
 
 Confirm that the configuration path is accessible.
 
-- [ ] Click the Global Settings button and verify the settings UI appears.
-- [ ] Clear API keys (if possible) and verify the app enters the `onboarding` state.
-- [ ] Verify that the user can transition from `onboarding` to `globalSettings` to provide keys.
+- [x] Click the Global Settings button and verify the settings UI appears.
+- [x] Clear API keys (if possible) and verify the app enters the `onboarding` state.
+- [x] Verify that the user can transition from `onboarding` to `globalSettings` to provide keys.
 
 ### Step 3.3: Final Build and Smoke Test
 
-- [ ] Run `npm run build` to ensure no regression.
-- [ ] Perform a final manual smoke test of the core chat loop.
+- [x] Run `npm run build` to ensure no regression.
+- [x] Perform a final manual smoke test of the core chat loop.
 
 ## 4. Cleanup
 
