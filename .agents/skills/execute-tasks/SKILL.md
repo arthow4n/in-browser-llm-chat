@@ -31,3 +31,4 @@ Follow this process strictly:
 
 4. Completion:
    - Once the loop breaks (either due to all steps being completed or reaching the maximum error threshold), provide a summary of the progress and any remaining work or errors to the user.
+   - If the loop exited because all steps were successfully completed, move the tasks file to `docs.outdated` and git commit the file movement.
