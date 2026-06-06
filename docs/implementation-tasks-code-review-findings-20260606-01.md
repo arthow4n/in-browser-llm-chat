@@ -34,11 +34,11 @@ This document contains a step-by-step checklist to resolve the issues found in `
 
 ## 2. Fix No-Mocking Policy Violations
 
-- [ ] **Step 2.1:** Remove UI module mocks (`@carbon/react` and `@carbon/icons-react`) from `src/ui/CodeBlock.test.tsx` and attempt to render the real components during testing.
-  - [ ] Implement the logic/feature.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Perform code review (self/subagent).
-  - [ ] Commit the changes following `AGENTS.md`.
+- [x] **Step 2.1:** Remove UI module mocks (`@carbon/react` and `@carbon/icons-react`) from `src/ui/CodeBlock.test.tsx` and attempt to render the real components during testing.
+  - [x] Implement the logic/feature.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Perform code review (self/subagent).
+  - [x] Commit the changes following `AGENTS.md`.
 - [ ] **Step 2.2:** If DOM limitations prevent rendering the Carbon components in `src/ui/CodeBlock.test.tsx`, configure Vitest/JSDOM properly or refactor it into an integration test using `msw` or proper DOM environments.
   - [ ] Implement the logic/feature.
   - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).

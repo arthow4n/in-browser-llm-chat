@@ -2,32 +2,6 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { CodeBlock } from "./CodeBlock";
 
-vi.mock("@carbon/react", async () => {
-  const actual = await vi.importActual("@carbon/react");
-  return {
-    ...actual,
-    Button: ({
-      onClick,
-      children,
-      renderIcon,
-    }: {
-      onClick?: () => void;
-      children?: React.ReactNode;
-      renderIcon?: React.ReactNode | (() => React.ReactNode);
-    }) => (
-      <button onClick={onClick}>
-        {children}
-        {renderIcon && (typeof renderIcon === "function" ? renderIcon() : renderIcon)}
-      </button>
-    ),
-  };
-});
-
-vi.mock("@carbon/icons-react", () => ({
-  Copy: () => <div data-testid="copy-icon" />,
-  Download: () => <div data-testid="download-icon" />,
-}));
-
 describe("CodeBlock", () => {
   it("renders the code and language", () => {
     render(<CodeBlock code="console.log('hello')" language="typescript" />);
