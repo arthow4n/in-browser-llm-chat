@@ -1,7 +1,9 @@
 import "fake-indexeddb/auto";
+import "@testing-library/jest-dom";
 import "./test/msw-setup";
 
 /**
+
  * Vitest global test setup file.
  *
  * Polyfills browser APIs that are used by Carbon Design System components

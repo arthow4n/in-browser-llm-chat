@@ -162,7 +162,7 @@ export const globalSettingsMachine = setup({
     }),
     addInjectedMessage: assign({
       injectedSystemMessages: ({ context }) => [
-        ...context.injectedSystemMessages,
+        ...(Array.isArray(context.injectedSystemMessages) ? context.injectedSystemMessages : []),
         { content: "", depth: 0 },
       ],
       isDirty: true,
@@ -170,11 +170,14 @@ export const globalSettingsMachine = setup({
     updateInjectedMessage: assign({
       injectedSystemMessages: ({ context, event }) => {
         if (event.type !== "UPDATE_INJECTED_MESSAGE") return context.injectedSystemMessages;
-        const newMessages = [...context.injectedSystemMessages];
-        newMessages[event.index] = {
-          ...newMessages[event.index],
-          [event.field]: event.value,
-        };
+        const messages = Array.isArray(context.injectedSystemMessages) ? context.injectedSystemMessages : [];
+        const newMessages = [...messages];
+        if (newMessages[event.index]) {
+          newMessages[event.index] = {
+            ...newMessages[event.index],
+            [event.field]: event.value,
+          };
+        }
         return newMessages;
       },
       isDirty: true,
@@ -182,7 +185,8 @@ export const globalSettingsMachine = setup({
     removeInjectedMessage: assign({
       injectedSystemMessages: ({ context, event }) => {
         if (event.type !== "REMOVE_INJECTED_MESSAGE") return context.injectedSystemMessages;
-        const newMessages = [...context.injectedSystemMessages];
+        const messages = Array.isArray(context.injectedSystemMessages) ? context.injectedSystemMessages : [];
+        const newMessages = [...messages];
         newMessages.splice(event.index, 1);
         return newMessages;
       },

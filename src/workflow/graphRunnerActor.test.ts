@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { createActor } from "xstate";
 import { graphRunnerActor } from "./graphRunnerActor.js";
 import * as db from "../db/db.js";

@@ -23,6 +23,7 @@ import {
   checkpointCompactionMachine,
   performCheckpointCompaction,
 } from "../../machines/thread/checkpointCompactionMachine";
+import type { PresetStore } from "../../db/db";
 
 interface ThreadSettingsModalProps {
   isOpen: boolean;
@@ -30,7 +31,7 @@ interface ThreadSettingsModalProps {
   threadId: string;
   initialTitle: string;
   initialPresetId: string;
-  presets: any[];
+  presets: PresetStore[];
   onSaveSuccess: () => void;
 }
 
@@ -81,7 +82,7 @@ export function ThreadSettingsModal({
           syncSend({ type: "SYNC_FAILURE", error: err.message });
         });
     }
-  }, [syncState.value, threadId, syncSend]);
+  }, [syncState, threadId, syncSend]);
 
   // Handle Compaction async logic
   React.useEffect(() => {
@@ -94,7 +95,7 @@ export function ThreadSettingsModal({
           compactionSend({ type: "COMPACT_FAILURE", error: err.message });
         });
     }
-  }, [compactionState.value, threadId, compactionSend]);
+  }, [compactionState, threadId, compactionSend]);
 
   const handleSave = async () => {
     try {
@@ -105,8 +106,9 @@ export function ThreadSettingsModal({
       );
       settingsSend({ type: "SAVE_SUCCESS" });
       onSaveSuccess();
-    } catch (err: any) {
-      settingsSend({ type: "SAVE_FAILURE", error: err.message });
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      settingsSend({ type: "SAVE_FAILURE", error: errorMessage });
     }
   };
 
@@ -158,7 +160,10 @@ export function ThreadSettingsModal({
             defaultValue={settingsState.context.selectedPresetId}
             items={presets.map((p) => ({ id: p.id, text: p.name }))}
             onChange={(e) =>
-              settingsSend({ type: "CHANGE_PRESET", presetId: (e as any).target.value })
+              settingsSend({
+                type: "CHANGE_PRESET",
+                presetId: (e as unknown as { target: { value: string } }).target.value,
+              })
             }
           />
 

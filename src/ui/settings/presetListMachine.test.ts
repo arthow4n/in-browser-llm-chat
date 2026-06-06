@@ -16,9 +16,25 @@ describe("presetListMachine", () => {
   });
 
   it("should fetch presets and transition to idle", async () => {
-    const mockPresets = [
-      { id: "1", name: "Preset 1", provider: "gemini", model: "gemini-pro" },
-      { id: "2", name: "Preset 2", provider: "openrouter", model: "gpt-4" },
+    const mockPresets: db.PresetStore[] = [
+      {
+        id: "1",
+        name: "Preset 1",
+        provider: "gemini",
+        model: "gemini-pro",
+        apiKey: "",
+        temperature: 0.7,
+        budgetPolicy: { maxStepsWithoutUser: 10, maxTokensPerRun: 1000 },
+      },
+      {
+        id: "2",
+        name: "Preset 2",
+        provider: "openrouter",
+        model: "gpt-4",
+        apiKey: "",
+        temperature: 0.7,
+        budgetPolicy: { maxStepsWithoutUser: 10, maxTokensPerRun: 1000 },
+      },
     ];
     for (const p of mockPresets) {
       await db.savePreset(p);

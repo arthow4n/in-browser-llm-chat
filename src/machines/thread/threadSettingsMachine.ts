@@ -2,8 +2,26 @@ import { createMachine, assign } from "xstate";
 import { getThread, saveThread } from "../../db/db";
 import type { PresetStore } from "../../db/db";
 
+type ThreadSettingsEvent =
+  | { type: "OPEN"; threadId: string; threadTitle: string; selectedPresetId: string; presets: PresetStore[] }
+  | { type: "EDIT_TITLE" }
+  | { type: "CANCEL_EDIT_TITLE" }
+  | { type: "UPDATE_TITLE"; title: string }
+  | { type: "CHANGE_PRESET"; presetId: string }
+  | { type: "SAVE" }
+  | { type: "SAVE_SUCCESS" }
+  | { type: "SAVE_FAILURE"; error: string }
+  | { type: "DISMISS_ERROR" }
+  | { type: "TRIGGER_SYNC" }
+  | { type: "TRIGGER_COMPACTION" }
+  | { type: "TRIGGER_DELETE" }
+  | { type: "CLOSE" };
+
 export const threadSettingsMachine = createMachine(
   {
+    types: {
+      events: {} as ThreadSettingsEvent,
+    },
     id: "threadSettings",
     initial: "closed",
     context: {
@@ -12,20 +30,23 @@ export const threadSettingsMachine = createMachine(
       selectedPresetId: "",
       isEditingTitle: false,
       presets: [] as PresetStore[],
-      errorMessage: null,
+      errorMessage: null as string | null,
     },
     states: {
       closed: {
         on: {
           OPEN: {
             target: "opened",
-            actions: assign({
-              threadId: ({ event }) => (event as any).threadId,
-              threadTitle: ({ event }) => (event as any).threadTitle,
-              selectedPresetId: ({ event }) => (event as any).selectedPresetId,
-              presets: ({ event }) => (event as any).presets,
-              errorMessage: null,
-              isEditingTitle: false,
+            actions: assign(({ event }) => {
+              if (event.type !== "OPEN") return {};
+              return {
+                threadId: event.threadId,
+                threadTitle: event.threadTitle,
+                selectedPresetId: event.selectedPresetId,
+                presets: event.presets,
+                errorMessage: null,
+                isEditingTitle: false,
+              };
             }),
           },
         },
@@ -42,13 +63,19 @@ export const threadSettingsMachine = createMachine(
                 actions: assign({ isEditingTitle: false }),
               },
               UPDATE_TITLE: {
-                actions: assign({
-                  threadTitle: ({ event }) => (event as any).title,
+                actions: assign(({ event }) => {
+                  if (event.type !== "UPDATE_TITLE") return {};
+                  return {
+                    threadTitle: event.title,
+                  };
                 }),
               },
               CHANGE_PRESET: {
-                actions: assign({
-                  selectedPresetId: ({ event }) => (event as any).presetId,
+                actions: assign(({ event }) => {
+                  if (event.type !== "CHANGE_PRESET") return {};
+                  return {
+                    selectedPresetId: event.presetId,
+                  };
                 }),
               },
               SAVE: {
@@ -76,8 +103,11 @@ export const threadSettingsMachine = createMachine(
               },
               SAVE_FAILURE: {
                 target: "error",
-                actions: assign({
-                  errorMessage: ({ event }) => (event as any).error,
+                actions: assign(({ event }) => {
+                  if (event.type !== "SAVE_FAILURE") return {};
+                  return {
+                    errorMessage: event.error,
+                  };
                 }),
               },
             },

@@ -76,9 +76,6 @@ describe("presetConfigMachine", () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(actor.getSnapshot().value).toBe("saveSuccess");
-    const savedPreset = await db.getPreset("some-id"); // wait, the machine generates ID if null?
-    // I should check how the machine handles ID generation.
-    // If input.presetId is null, the machine probably generates a new one.
     // Let's check the presets in DB.
     const presets = await db.getAllPresets();
     expect(presets.length).toBe(1);

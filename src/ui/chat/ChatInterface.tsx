@@ -5,14 +5,14 @@ import { Header, HeaderName, HeaderGlobalBar, Content, Button, TextInput } from 
 import { Settings, Send } from "@carbon/icons-react";
 import { parentCoordinatorMachine } from "../../workflow/parentCoordinator";
 import { ThreadSettingsModal } from "./ThreadSettingsModal";
-import { getAllPresets, getThread } from "../../db/db";
+import { getAllPresets, getThread, type PresetStore, type ThreadStore } from "../../db/db";
 
 export function ChatInterface() {
   const { threadId } = useParams();
-  const [state, ] = useMachine(parentCoordinatorMachine);
+  const [state] = useMachine(parentCoordinatorMachine);
   const [showSettings, setShowSettings] = useState(false);
-  const [presets, setPresets] = useState<any[]>([]);
-  const [thread, setThread] = useState<any>(null);
+  const [presets, setPresets] = useState<PresetStore[]>([]);
+  const [thread, setThread] = useState<ThreadStore | undefined | null>(null);
 
   React.useEffect(() => {
     async function loadData() {
@@ -23,7 +23,7 @@ export function ChatInterface() {
         setThread(t);
       }
     }
-    loadData();
+    void loadData();
   }, [threadId]);
 
   const handleOpenSettings = () => setShowSettings(true);
@@ -96,7 +96,7 @@ export function ChatInterface() {
           presets={presets}
           onSaveSuccess={() => {
             // Refresh thread data
-            getThread(thread.id).then(setThread);
+            void getThread(thread.id).then(setThread);
           }}
         />
       )}

@@ -1,13 +1,24 @@
 import { createMachine, assign } from "xstate";
 import { getDB, getThread } from "../../db/db";
 
+type CheckpointCompactionEvent =
+  | { type: "START_COMPACT" }
+  | { type: "CONFIRM_COMPACT" }
+  | { type: "CANCEL_COMPACT" }
+  | { type: "COMPACT_SUCCESS" }
+  | { type: "COMPACT_FAILURE"; error: string }
+  | { type: "DISMISS" };
+
 export const checkpointCompactionMachine = createMachine(
   {
+    types: {
+      events: {} as CheckpointCompactionEvent,
+    },
     id: "checkpointCompaction",
     initial: "idle",
     context: {
       threadId: "",
-      errorMessage: null,
+      errorMessage: null as string | null,
     },
     states: {
       idle: {
@@ -35,8 +46,11 @@ export const checkpointCompactionMachine = createMachine(
           },
           COMPACT_FAILURE: {
             target: "failure",
-            actions: assign({
-              errorMessage: ({ event }) => (event as any).error,
+            actions: assign(({ event }) => {
+              if (event.type !== "COMPACT_FAILURE") return {};
+              return {
+                errorMessage: event.error,
+              };
             }),
           },
         },

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { createActor } from "xstate";
 import { workflowEditorMachine } from "./workflowEditorMachine.js";
 import * as db from "../../db/db.js";
