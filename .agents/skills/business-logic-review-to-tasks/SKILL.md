@@ -11,7 +11,7 @@ Use this skill to perform a business logic review, generate a findings and plann
 
 1. **Perform Business Logic Review**:
    - Invoke a subagent to apply the [business-logic-review](../business-logic-review/SKILL.md) skill to review the code and documentation.
-   - The subagent must output the results to a findings and planned fix file in `docs/` (e.g., `docs/business-logic-review-findings-<date>.md`).
+   - The subagent must output the results to a findings and planned fix file in `docs/` (e.g., `docs/business-logic-review-findings-<date>.md`) and commit this file.
 
 2. **Break Down Plan into Tasks**:
    - Invoke a subagent to apply the [breakdown-plan](../breakdown-plan/SKILL.md) skill to the findings and planned fix file.
