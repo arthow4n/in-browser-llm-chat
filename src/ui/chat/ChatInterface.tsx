@@ -1,15 +1,16 @@
 import React, { useState } from "react";
 import { useParams } from "react-router";
 import { useMachine } from "@xstate/react";
-import { Header, HeaderName, HeaderGlobalBar, Content, Button, TextInput } from "@carbon/react";
-import { Settings, Send } from "@carbon/icons-react";
+import { Header, HeaderName, HeaderGlobalBar, Content, Button } from "@carbon/react";
+import { Settings } from "@carbon/icons-react";
 import { parentCoordinatorMachine } from "../../workflow/parentCoordinator";
 import { ThreadSettingsModal } from "./ThreadSettingsModal";
+import { ChatInputArea } from "./ChatInputArea";
 import { getAllPresets, getThread, type PresetStore, type ThreadStore } from "../../db/db";
 
 export function ChatInterface() {
   const { threadId } = useParams();
-  const [state] = useMachine(parentCoordinatorMachine);
+  const [state, send] = useMachine(parentCoordinatorMachine);
   const [showSettings, setShowSettings] = useState(false);
   const [presets, setPresets] = useState<PresetStore[]>([]);
   const [thread, setThread] = useState<ThreadStore | undefined | null>(null);
@@ -70,20 +71,8 @@ export function ChatInterface() {
           </div>
         </div>
 
-        {/* Chat Input Area Placeholder */}
-        <div style={{ padding: "1rem", borderTop: "1px solid #ddd" }}>
-          <div style={{ maxWidth: "800px", margin: "0 auto", display: "flex", gap: "0.5rem" }}>
-            <TextInput
-              id="chat-input"
-              labelText="Message"
-              placeholder="Type your message..."
-              style={{ flex: 1 }}
-            />
-            <Button renderIcon={Send} onClick={() => {}}>
-              Send
-            </Button>
-          </div>
-        </div>
+        {/* Chat Input Area */}
+        <ChatInputArea parentState={state} parentSend={send} />
       </Content>
 
       {thread && (
