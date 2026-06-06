@@ -107,7 +107,7 @@ In `src/workflow/compiler.ts`, define the concrete types for State, Event, and C
 
 Replace the `any` generics in `new StateGraph<any, any, any, any>(GraphStateAnnotation)` with the types defined in Step 3.1.
 
-- [ ] Update `StateGraph` instantiation.
+- [x] Update `StateGraph` instantiation.
 - [ ] Verify worktree state.
 - [ ] Perform code review.
 - [ ] Commit the changes.
