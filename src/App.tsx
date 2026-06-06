@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useLocation, Routes, Route } from "react-router";
 import { useMachine } from "@xstate/react";
 import { Theme, Header, HeaderName, HeaderGlobalBar, Content, Button } from "@carbon/react";
@@ -7,11 +7,13 @@ import { parentCoordinatorMachine } from "./workflow/parentCoordinator";
 import { NewChatForm } from "./ui/sidebar/NewChatForm.js";
 import { LeftSidebar } from "./ui/sidebar/LeftSidebar.js";
 import { ChatInterface } from "./ui/chat/ChatInterface";
+import { layoutMachine } from "./ui/layoutMachine";
 
 export function App() {
   const [, send] = useMachine(parentCoordinatorMachine);
+  const [layoutState, sendLayout] = useMachine(layoutMachine);
   const location = useLocation();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const isSidebarOpen = layoutState.matches("sidebarOpen");
 
   useEffect(() => {
     const pathname = location.pathname;
@@ -33,7 +35,7 @@ export function App() {
             kind="ghost"
             hasIconOnly
             renderIcon={Menu}
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            onClick={() => sendLayout({ type: "TOGGLE_SIDEBAR" })}
             style={{ marginRight: "0.5rem" }}
           />
           Chat
