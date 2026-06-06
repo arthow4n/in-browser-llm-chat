@@ -9,7 +9,7 @@ import { v4 as uuidv4 } from "uuid";
 export interface ParentState {
   value: unknown;
   context: CoordinatorContext;
-  matches: (val: unknown) => boolean;
+  matches: (val: any) => boolean;
 }
 
 interface ChatInputAreaProps {
@@ -26,8 +26,7 @@ export function ChatInputArea({ parentState, parentSend }: ChatInputAreaProps) {
     parentState.matches({ ViewState: "onboarding" }) ||
     parentState.matches({ ExecutionState: "executing" }) ||
     parentState.matches({ ExecutionState: "checkingStatus" }) ||
-    (parentState.matches({ ExecutionState: "awaitingHumanInput" }) &&
-      parentState.context.loopControl.activeInterrupt?.type !== "input");
+    parentState.matches({ ExecutionState: "awaitingHumanInput" });
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     send({ type: "UPDATE_TEXT", text: e.target.value });

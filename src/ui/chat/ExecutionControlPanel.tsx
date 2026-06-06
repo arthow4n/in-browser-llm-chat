@@ -5,7 +5,7 @@ import { type CoordinatorContext, type CoordinatorEvent } from "../../workflow/p
 import { useWindowSize } from "../../ui/hooks/useWindowSize";
 
 interface ExecutionControlPanelProps {
-  state: { value: unknown; context: CoordinatorContext; matches: (val: unknown) => boolean };
+  state: { value: unknown; context: CoordinatorContext; matches: (val: any) => boolean };
   send: (event: CoordinatorEvent) => void;
 }
 
