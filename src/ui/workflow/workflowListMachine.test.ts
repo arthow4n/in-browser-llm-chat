@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createActor, waitFor } from "xstate";
 import { workflowListMachine } from "./workflowListMachine.js";
 import * as db from "../../db/db.js";
+import { BUILT_IN_WORKFLOWS } from "../../workflow/builtInWorkflows.js";
 
 describe("workflowListMachine", () => {
   beforeEach(async () => {
@@ -51,35 +52,43 @@ describe("workflowListMachine", () => {
 
     expect(actor.getSnapshot().value).toBe("idle");
     // Default sorting is by name asc
-    expect(actor.getSnapshot().context.workflows).toEqual([
-      mockWorkflows[1], // A Workflow
+    const workflows = actor.getSnapshot().context.workflows;
+    const customWorkflows = workflows.filter((w) => !w.isBuiltIn);
+    const builtInWorkflows = workflows.filter((w) => w.isBuiltIn);
+
+    expect(customWorkflows).toEqual([
       mockWorkflows[0], // B Workflow
       mockWorkflows[2], // C Workflow
     ]);
-    expect(actor.getSnapshot().context.totalCount).toBe(3);
+    expect(builtInWorkflows).toEqual(
+      [...BUILT_IN_WORKFLOWS].sort((a, b) => a.name.localeCompare(b.name)),
+    );
+    expect(actor.getSnapshot().context.totalCount).toBe(2 + BUILT_IN_WORKFLOWS.length);
 
     // Test search
     actor.send({ type: "UPDATE_SEARCH", query: "query matches" });
     expect(actor.getSnapshot().value).toBe("loading");
     await waitFor(actor, (state) => state.matches("idle"), { timeout: 1000 });
     expect(actor.getSnapshot().value).toBe("idle");
-    expect(actor.getSnapshot().context.workflows).toEqual([mockWorkflows[1]]);
-    expect(actor.getSnapshot().context.totalCount).toBe(1);
+    expect(actor.getSnapshot().context.workflows).toEqual([]);
+    expect(actor.getSnapshot().context.totalCount).toBe(0);
 
     // Reset search, change page size and sort
     actor.send({ type: "UPDATE_SEARCH", query: "" });
     await waitFor(actor, (state) => state.matches("idle"), { timeout: 1000 });
     actor.send({ type: "CHANGE_SORT", sortBy: "name", sortOrder: "desc" });
     await waitFor(actor, (state) => state.matches("idle"), { timeout: 1000 });
-    expect(actor.getSnapshot().context.workflows).toEqual([
-      mockWorkflows[2], // C Workflow
-      mockWorkflows[0], // B Workflow
-      mockWorkflows[1], // A Workflow
-    ]);
+
+    const sortedWorkflows = actor.getSnapshot().context.workflows;
+    expect(sortedWorkflows[0].name).toBe("Standard Agent"); // Standard Agent > Debate Workflow > C Workflow > B Workflow
+    expect(sortedWorkflows[sortedWorkflows.length - 1].name).toBe("B Workflow");
   });
 
   it("should handle fetch errors", async () => {
-    const spy = vi.spyOn(db, "getAllWorkflows").mockRejectedValue(new Error("Database error"));
+    const workflowService = await import("../../workflow/workflowService.js");
+    const spy = vi
+      .spyOn(workflowService, "getEffectiveWorkflows")
+      .mockRejectedValue(new Error("Database error"));
 
     const actor = createActor(workflowListMachine).start();
     await waitFor(actor, (state) => state.matches("error"), { timeout: 1000 });

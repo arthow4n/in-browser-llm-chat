@@ -56,13 +56,13 @@
 
 ## 4. UI Integration - Workflow Manager
 
-- [ ] **Step 4.1: Update Workflow List Machine**
+- [x] **Step 4.1: Update Workflow List Machine**
   - Update `src/ui/workflow/workflowListMachine.ts` (or the corresponding machine for the Workflow List).
   - Replace the logic that fetches workflows for the list with a call to `getEffectiveWorkflows()`.
-  - [ ] Update `workflowListMachine.ts`.
-  - [ ] Verify worktree state.
-  - [ ] Perform code review.
-  - [ ] Commit changes.
+  - [x] Update `workflowListMachine.ts`.
+  - [x] Verify worktree state.
+  - [x] Perform code review.
+  - [x] Commit changes.
 
 - [ ] **Step 4.2: Protect Built-in Workflows in UI**
   - Update `src/ui/workflow/WorkflowList.tsx` (or the corresponding component).

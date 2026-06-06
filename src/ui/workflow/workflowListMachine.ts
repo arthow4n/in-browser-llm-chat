@@ -1,5 +1,6 @@
 import { createMachine, assign, fromPromise } from "xstate";
-import { getAllWorkflows, deleteWorkflow, type WorkflowStore } from "../../db/db.js";
+import { deleteWorkflow, type WorkflowStore } from "../../db/db.js";
+import { getEffectiveWorkflows } from "../../workflow/workflowService.js";
 
 export interface ExtendedWorkflowStore extends WorkflowStore {
   createdAt?: number;
@@ -61,7 +62,7 @@ export const workflowListMachine = createMachine({
           }) => {
             const { searchQuery, sortBy, sortOrder, page, pageSize } = input;
 
-            const allWorkflows: ExtendedWorkflowStore[] = await getAllWorkflows();
+            const allWorkflows: ExtendedWorkflowStore[] = await getEffectiveWorkflows();
 
             // Filter
             let filtered = allWorkflows;
