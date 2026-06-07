@@ -7,7 +7,7 @@ export default function (pi: ExtensionAPI) {
 
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  pi.on("before_provider_request", async (event, ctx) => {
+  pi.on("before_provider_request", async (_event, ctx) => {
     let now = Date.now();
 
     // Remove timestamps outside the current window

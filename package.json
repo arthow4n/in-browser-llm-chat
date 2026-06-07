@@ -35,6 +35,9 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@earendil-works/pi-agent-core": "^0.78.1",
+    "@earendil-works/pi-coding-agent": "^0.78.1",
+    "@earendil-works/pi-tui": "^0.78.1",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -69,7 +72,6 @@
     "@carbon/themes@11.75.0": true,
     "@carbon/type@11.61.0": true,
     "@carbon/utilities@0.20.0": true,
-    "@google/genai@2.7.0": true,
     "@ibm/plex@6.4.1": true,
     "@ibm/plex-mono@1.1.0": true,
     "@ibm/plex-sans@1.1.0": true,
@@ -83,6 +85,7 @@
     "@parcel/watcher@2.5.6": true,
     "esbuild@0.28.0": true,
     "msw@2.14.6": true,
-    "protobufjs@7.6.2": true
+    "@google/genai@1.52.0": true,
+    "protobufjs@7.5.9": true
   }
 }
