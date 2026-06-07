@@ -97,7 +97,7 @@ We propose using the following stores in the `in-browser-llm-chat-db` database:
   - Key: `id` (UUID)
   - Fields: `name`, `provider` (`"openrouter" | "gemini"`), `model` (string), `apiKey` (stored as a plain string; optional, defaults to empty), `temperature`, `maxTokens`, `reasoningLevel`, `budgetPolicy` (`{ maxStepsWithoutUser: number, maxTokensPerRun: number | null }`)
   - _API Key Fallback Behavior_: A preset can optionally specify an `apiKey`. If the preset's `apiKey` is empty or omitted, the graph runner falls back to using the corresponding provider's global API key stored in the `settings` store. If both are empty, the preset is considered unconfigured/invalid for API execution.
-  - _Model Selection Behavior_: Popular models are hardcoded as static lists in a preset schema definition to ensure they are instantly available offline or when API keys are not yet configured, with a manual text field option to input custom model identifiers in the UI.
+  - _Model Selection Behavior_: Popular models are hardcoded as static lists in a preset schema definition to ensure they are instantly available offline or when API keys are not yet configured. In the UI, the "Model" field is implemented as a hybrid searchable dropdown that provides these suggestions but allows the user to enter any arbitrary model identifier as a free-text string.
 - **`workflows`**: User-defined serialized LangGraph definitions. Built-in workflows are not stored here; they are injected by the code.
   - Key: `id` (string/UUID)
   - Fields: `name`, `description`, `isBuiltIn` (boolean), `nodes` (Array of node definitions), `edges` (Array of transition definitions), `injectedSystemMessages` (optional Array of `{ content: string, depth: number }`)
@@ -1686,7 +1686,9 @@ Governs the lifecycle of the LangGraph background execution runner, which runs a
   - `tokensInCurrentRun`: `number` (tracks cumulative tokens in the active execution cycle)
   - `budgetOverride`: `{ maxStepsWithoutUser: number; maxTokensPerRun: number | null } | null` (active temporary budget override values)
 - **States**:
-  - `initializing`: Compiles the `StateGraph` using the `workflowSnapshot`, instantiates the custom checkpointer, and prepares the runner. Loads the thread's latest checkpoint config. Queries the `messages` store for any messages with `sequence` higher than the sequence of the latest message in the loaded checkpoint. If newer messages exist in the database, applies them to the graph state via `graph.updateState(config, { messages: newerMessages })`, updating the latest checkpoint references.
+  - `initializing`: Compiles the `StateGraph` using the `workflowSnapshot`, instantiates the custom checkpointer, and prepares the runner. Loads the thread's latest checkpoint config.
+    - **API Key Resolution**: The runner resolves the final API key for each agent node: if the `presetId`'s associated preset has a non-empty `apiKey`, it is used; otherwise, it falls back to the corresponding provider's global API key stored in the `settings` store. If neither is available, the runner dispatches an `ERROR` event with a "Missing API Key" message and transitions to `failed`.
+    - **Message Synchronization**: Queries the `messages` store for any messages with `sequence` higher than the sequence of the latest message in the loaded checkpoint. If newer messages exist in the database, applies them to the graph state via `graph.updateState(config, { messages: newerMessages })`, updating the latest checkpoint references.
   - `running`: Actively invoking `graph.stream()` or resuming the stream generator step-by-step.
     - `running.requesting`: Sending request to LLM API (direct client call).
       - _UX Note_: While in this state, the UI should render a temporary "Thinking..." or "Evaluating..." skeleton bubble at the bottom of the chat feed to provide visual feedback that execution is actively in progress before streaming begins.
@@ -2288,6 +2290,51 @@ Governs the debounced rendering of Markdown and LaTeX during active LLM streamin
   - `TOKEN_RECEIVED`: Updates `rawText`. Triggers debouncer to eventually update `debouncedText`.
   - `STREAM_END`: Flushes the debouncer, updates `debouncedText` to match `rawText`, and transitions `streaming` to `idle`.
 
+## Implementation Roadmap
+
+To ensure a stable and iterative development process, the implementation should follow this sequence:
+
+1. **Foundational Data Layer**:
+   - Implement IndexedDB stores (`settings`, `presets`, `workflows`, `threads`, `messages`, `checkpoints`, `checkpoint_writes`) using `idb`.
+   - Create the custom LangGraph Checkpointer class to map IndexedDB stores to the `BaseCheckpointSaver` API.
+   - Implement basic CRUD utility functions for all stores.
+
+2. **Global State & Navigation Shell**:
+   - Implement the Parent Coordinator XState machine (`ViewState` and `ExecutionState`).
+   - Build the basic application layout using Carbon Design System, including the Left Sidebar and the responsive navigation drawer.
+   - Integrate React Router for thread-based routing.
+   - Implement the Global Settings and Onboarding flow.
+
+3. **Core Chat & LLM Integration**:
+   - Implement the `graphRunnerActor` child actor for LangGraph execution.
+   - Build the basic Chat Interface (Message Feed, Chat Input Area).
+   - Implement the LLM API integration (OpenRouter/Gemini) with streaming support and token usage tracking.
+   - Implement the "Standard 1-agent" workflow and basic message compilation.
+
+4. **Orchestration & Multi-Agent Features**:
+   - Implement the `StateGraph` factory for compiling JSON workflows into LangGraph graphs.
+   - Build the Debate workflow and implement conditional routing for consensus evaluation.
+   - Implement the multi-agent message rendering logic (headers, avatars, color-coding).
+   - Implement the Execution & Loop Control Panel.
+
+5. **Interactive Tools & Advanced Interruption**:
+   - Implement the `ask_questions` tool and its corresponding interactive form state machine.
+   - Implement the `declare_consensus` and database-modifying tools with approval cards.
+   - Build the Budget Policy enforcement logic and the Budget Exceeded card.
+
+6. **Thread Management & History Manipulation**:
+   - Implement the message history editing, deletion, and thread branching logic.
+   - Implement the rollback procedure including the in-memory lineage traversal for checkpoint purging.
+   - Build the Workflow Syncing (Soft/Hard) mechanism.
+   - Implement the asynchronous batched cascading deletion pipeline.
+
+7. **Polish & Quality Assurance**:
+   - Implement the API Payload Preview modal.
+   - Add the Checkpoint Compaction feature.
+   - Implement the Storage Management and Backup/Restore tools.
+   - Apply the final UX polish (16px font, 44px targets, streaming debouncing).
+   - Execute the Integration User Flow Test Plan.
+
 ## Testing Guidelines
 
 - **Focus on Integration Tests**: Test the full user flow and logic integration over isolated unit tests.
@@ -2550,3 +2597,29 @@ test('full chat flow', async () => {
      - Execution resumes from the last checkpoint.
      - `Budget Exceeded Card` transitions to a completed/read-only state.
    - **Implementation Requirements**: `BudgetExceededCard` state machine, `RESUME_WITH_BUDGET_OVERRIDE` event, `graphRunnerActor` `budgetOverride` context update.
+
+### Phase 8: Error Recovery
+
+1. **Transient API Error**:
+   - **User Action**: Trigger a workflow run and simulate a transient API error (e.g. a 500 Internal Server Error or a network timeout).
+   - **Expected Outcome**:
+     - The graph runner actor performs automatic retries (exponential backoff).
+     - If retries fail, `ExecutionState` transitions to `error`.
+     - An Error Bubble is rendered inline at the end of the chat feed, showing the error code and a "Retry" button.
+     - Main chat input is disabled.
+   - **Implementation Requirements**: `graphRunnerActor` retry logic, `ExecutionState` error transition, Error Bubble rendering.
+
+2. **Rate Limit Recovery**:
+   - **User Action**: Simulate a `429 Too Many Requests` error from the LLM API.
+   - **Expected Outcome**:
+     - Error Bubble is rendered showing the rate limit error.
+     - The user clicks the "Change Preset" dropdown in the Error Bubble and selects an alternative preset (e.g. switching from Gemini Flash to OpenRouter Flash).
+     - Clicking "Resume" updates the thread's `activePresetId` and restarts execution from the last checkpoint.
+   - **Implementation Requirements**: `ExecutionState.error` controls, `CHANGE_PRESET_AND_RESUME` event, `graphRunnerActor` preset reconfiguration.
+
+3. **Manual Intervention**:
+   - **User Action**: In an error state, the user clicks the "Edit Last Message" shortcut in the Error Bubble.
+   - **Expected Outcome**:
+     - The UI scrolls and focuses the inline editor for the user's last message.
+     - After the user edits and saves the message, the thread is rolled back, and execution is automatically re-triggered from the new state.
+   - **Implementation Requirements**: `InlineMessageEditor` integration with the Error Bubble, rollback sequence, automatic re-execution.
