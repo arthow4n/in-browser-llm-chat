@@ -2344,164 +2344,207 @@ test('full chat flow', async () => {
 });
 ```
 
-## Integration User Flow Test Plan
-
-This test plan defines the end-to-end integration flow of the application from a user's perspective. Each phase represents a set of integration tests that must pass to verify a complete feature set. These scenarios are designed to drive TDD implementation by defining clear "User Action" $\rightarrow$ "Expected Outcome" paths.
-
 ### Phase 1: First Launch & Onboarding
 
 1. **Initial Load**:
-   - **User Action**: Open the application for the first time in a clean browser session.
+   - **User Action**: Open the application URL in a clean browser session.
    - **Expected Outcome**:
-     - IndexedDB is initialized.
+     - IndexedDB database is initialized.
      - Built-in workflows (Standard 1-agent, Debate) are provided by the code.
-     - `ViewState` is `onboarding` because no API keys exist.
+     - `ViewState` transitions to `onboarding` because no API keys are found in the `settings` store.
      - A global warning banner is visible at the top: "No API keys configured. Click here to configure settings."
      - The main chat input field in the chat area is disabled.
+   - **Implementation Requirements**: `ViewState` state machine, `initializing` state, `threads` store query for `status == "deleting"` for startup sweep, `onboarding` state logic.
+
 2. **Configuration**:
-   - **User Action**: Click the global warning banner (or navigate via Left Sidebar $\rightarrow$ Global Settings) $\rightarrow$ fill "OpenRouter API Key" and "Gemini API Key" input fields $\rightarrow$ click "Save Settings" button.
+   - **User Action**: Click the global warning banner (or navigate via Left Sidebar $\rightarrow$ Global Settings) $\rightarrow$ fill the "OpenRouter API Key" input field with a valid key (e.g. "sk-...") $\rightarrow$ fill the "Gemini API Key" input field with a valid key (e.g. "AIza...") $\rightarrow$ click the "Save Settings" button.
    - **Expected Outcome**:
      - API keys are persisted in the `settings` store.
-     - Default presets ("Default Gemini Flash", "Default OpenRouter Flash") are seeded.
-     - `default_preset_id` is set in `settings`.
-     - Warning banner disappears.
+     - Default presets ("Default Gemini Flash", "Default OpenRouter Flash") are automatically seeded into the `presets` store.
+     - `default_preset_id` is set in the `settings` store.
+     - The global warning banner disappears.
      - `ViewState` transitions to `idle`.
+   - **Implementation Requirements**: `GlobalSettingsForm` state machine, `settings` store read-write transactions, `presets` store seeding logic, `ViewState` transition logic.
+
 3. **Theme Selection**:
-   - **User Action**: Navigate via Left Sidebar $\rightarrow$ Global Settings $\rightarrow$ select "Dark" from the theme override dropdown selector $\rightarrow$ click "Save Settings" button.
-   - **Expected Outcome**: UI theme updates immediately to Carbon dark theme (`cds--theme--g100`). Preference is saved in `settings` and persists after a page refresh.
+   - **User Action**: Navigate via Left Sidebar $\rightarrow$ Global Settings $\rightarrow$ select "Dark" from the theme override dropdown selector $\rightarrow$ click the "Save Settings" button.
+   - **Expected Outcome**:
+     - UI theme updates immediately to Carbon dark theme (`cds--theme--g100`).
+     - Theme preference is saved in the `settings` store and persists after a page refresh.
+   - **Implementation Requirements**: `GlobalSettingsForm` state machine, `settings` store write, `ApplicationLayout` state machine `SET_THEME` transition, dynamic CSS class application to the root element.
 
 ### Phase 2: Basic Chatting (Single Agent)
 
 1. **New Chat Creation**:
-   - **User Action**: From the "New Chat" panel: select "Standard 1-agent" from the Workflow dropdown selector, select the default preset from the Preset dropdown selector, enter "Hello" in the initial message/topic input field $\rightarrow$ click the Submit button.
+   - **User Action**: From the "New Chat" panel: select "Standard 1-agent" from the Workflow dropdown selector, select the default preset from the Preset dropdown selector, enter "Hello" in the initial message/topic input field $\rightarrow$ click the "Submit" button.
    - **Expected Outcome**:
      - `ViewState` transitions to `chatting`.
-     - A new thread is created in the `threads` store using the "Standard 1-agent" workflow and the global default preset.
-     - URL updates to include the new thread UUID (e.g. `/chat/[uuid]`).
+     - A new thread is created in the `threads` store with a generated UUID, using the "Standard 1-agent" workflow and the global default preset.
+     - The user's initial message "Hello" is saved to the `messages` store with `sequence: 0`.
+     - The URL updates to include the new thread UUID (e.g. `/chat/[uuid]`).
+   - **Implementation Requirements**: `NewChatForm` state machine, `threads` store write (UUID, title, workflow snapshot, preset ID), `messages` store write, React Router navigation.
+
 2. **First Interaction**:
-   - **User Action**: In the chat interface, type "Hello, who are you?" into the main chat input area $\rightarrow$ click the Send button (or press Enter on desktop).
+   - **User Action**: In the chat interface, type "Hello, who are you?" into the main chat input area $\rightarrow$ click the "Send" button (or press Enter on desktop).
    - **Expected Outcome**:
      - `ExecutionState` transitions to `executing`.
      - LLM response is streamed and rendered as a message bubble.
      - Reasoning tokens (if present) are rendered in a collapsed "Reasoning Process" accordion within the bubble.
-     - The message is saved to the `messages` store with `sequence: 1`.
+     - The response is saved to the `messages` store with `sequence: 1`.
+   - **Implementation Requirements**: `ChatInputArea` state machine, `ExecutionState` transition to `executing`, `graphRunnerActor` spawning, `graph.stream()` implementation, `messages` store write, `MessageAccordion` state machine for reasoning.
+
 3. **Conversation Continuity**:
-   - **User Action**: Type "What can you do?" into the main chat input area $\rightarrow$ click the Send button.
+   - **User Action**: Type "What can you do?" into the main chat input area $\rightarrow$ click the "Send" button.
    - **Expected Outcome**:
-     - LLM responds based on the previous context.
+     - LLM responds based on the previous context (history).
      - Messages are displayed in correct sequential order.
+   - **Implementation Requirements**: `graphRunnerActor` loading latest checkpoint, `messages` store query for historical context, LLM API call with compiled context.
+
 4. **Payload Inspection**:
-   - **User Action**: In the Chat Header, click the "Preview API Payload" button.
-   - **Expected Outcome**: A modal opens displaying the exact JSON sent to the LLM, including the workflow's system prompt and any injected system messages. The user can use the agent selection dropdown inside the modal to see the payload for specific agents in the workflow.
+   - **User Action**: In the Chat Header, click the "Preview API Payload" button $\rightarrow$ Modal opens $\rightarrow$ Use the agent selection dropdown inside the modal to select "Standard Agent".
+   - **Expected Outcome**:
+     - A modal displays the exact JSON structure of messages that would be sent to the LLM API.
+     - The payload includes the workflow's system prompt and any injected system messages.
+     - Injected messages are clearly highlighted with an `[INJECTED]` badge.
+   - **Implementation Requirements**: `ApiPayloadPreviewModal` state machine, `messages` store read, system prompt retrieval, injected system messages compilation logic.
 
 ### Phase 3: Advanced Chatting (Multi-Agent / Debate)
 
 1. **Debate Start**:
-   - **User Action**: Create a new chat and select the "Debate" workflow $\rightarrow$ Seed with topic "Is Pluto a planet?".
+   - **User Action**: Create a new chat and select the "Debate" workflow from the dropdown $\rightarrow$ Seed the debate by entering "Is Pluto a planet?" in the initial message input field $\rightarrow$ click the "Submit" button.
    - **Expected Outcome**:
      - `Initiator` node runs, seeding the debate.
      - `Debater A` runs, providing the first argument.
      - `Consensus Evaluator A` runs and determines no consensus is reached, routing to `Debater B`.
      - `Debater B` runs, providing a counter-argument.
+   - **Implementation Requirements**: `Debate` workflow JSON compilation, `Initiator` node execution, `Debater A` / `Debater B` node execution, `Consensus Evaluator` routing logic.
+
 2. **UI Verification**:
-   - **User Action**: Review the chat feed.
+   - **User Action**: Scroll through the chat feed and review the Execution Control Panel.
    - **Expected Outcome**:
-     - Each agent's message clearly displays their name (e.g., "Debater A") in the header.
+     - Each agent's message clearly displays their name (e.g., "Debater A") in a header above the bubble.
      - Different agents have distinct visual indicators (e.g., different left-border colors).
-     - Loop control panel shows the current round number and turn count.
+     - Loop control panel shows the current round number and total turn count.
+   - **Implementation Requirements**: Multi-agent bubble rendering logic, `Execution & Loop Control Panel` state machine (round counter, turn counter updating via `UPDATE_STATS`).
+
 3. **Termination by Consensus**:
-   - **User Action**: Continue the debate until an agent calls the `declare_consensus` tool.
+   - **User Action**: Continue the debate (by providing input if interrupted or waiting for autonomous run) until an agent calls the `declare_consensus` tool.
    - **Expected Outcome**:
      - `declare_consensus` tool is executed.
-     - `Consensus Evaluator` detects `consensusReached: true`.
+     - `Consensus Evaluator` detects `consensusReached: true` in the graph state.
      - `Summarizer` node runs and produces a final synthesis of the debate.
      - `ExecutionState` transitions to `inactive`.
+   - **Implementation Requirements**: `declare_consensus` tool implementation, `Consensus Evaluator` node routing logic (`on_consensus` edge), `Summarizer` node implementation, `ExecutionState` transition to `inactive`.
 
 ### Phase 4: Interactive Tools (`ask_questions`)
 
 1. **Tool Trigger**:
    - **User Action**: In a chat, send a message that triggers an agent to invoke the `ask_questions` tool (e.g. "Ask me some questions to understand my project").
    - **Expected Outcome**:
-     - `ExecutionState` transitions to `awaitingHumanInput`.
-     - An interactive form card (using Carbon `Tile`) is rendered inline in the chat feed.
+     - `ExecutionState` transitions to `awaitingHumanInput.idle`.
+     - An interactive form card (using Carbon `Tile`) is rendered inline in the chat feed at the end of the history.
      - Main chat input field is disabled.
+   - **Implementation Requirements**: `ask_questions` tool definition (Zod schema), `graphRunnerActor` interrupt handling, `ExecutionState` transition logic, `ask_questions` tool card rendering.
+
 2. **Form Interaction**:
-   - **User Action**: Fill out the form (e.g., select options in a `RadioButtonGroup` for single-select questions, check `Checkbox` items for multi-select, and enter text in `TextArea` fields for free-text comments) $\rightarrow$ click the "Submit" button.
+   - **User Action**: Fill out the form card (e.g., select options in a `RadioButtonGroup` for single-select, check `Checkbox` items for multi-select, and enter text in `TextArea` fields for comments) $\rightarrow$ click the "Submit" button.
    - **Expected Outcome**:
      - User answers are saved as a `tool` role message in the `messages` store.
      - `ExecutionState` transitions back to `executing`.
      - The agent receives the answers and continues the conversation.
+   - **Implementation Requirements**: `AskQuestionsForm` state machine, `threads` store `draftAnswers` write, `messages` store write (tool result), `ExecutionState` transition to `executing`.
+
 3. **Persistence**:
    - **User Action**: Refresh the page (browser reload) while the `ask_questions` form is active.
-   - **Expected Outcome**: The form is re-rendered in its active state, restoring draft answers from the `draftAnswers` dictionary in the `threads` store.
+   - **Expected Outcome**:
+     - The form is re-rendered in its active state.
+     - Draft answers are restored from the `draftAnswers` dictionary in the `threads` store.
+   - **Implementation Requirements**: `ExecutionState` transition to `checkingStatus`, `threads` store read (`activeInterrupt` and `draftAnswers`), `AskQuestionsForm` restoration logic.
 
 ### Phase 5: Workflow & Preset Management
 
 1. **Custom Workflow Creation**:
-   - **User Action**: Navigate via Left Sidebar $\rightarrow$ Workflow Management $\rightarrow$ click "Create Workflow" button $\rightarrow$ enter JSON definition in the `TextArea` editor $\rightarrow$ click "Save" button.
+   - **User Action**: Navigate via Left Sidebar $\rightarrow$ Workflow Management $\rightarrow$ click the "Create Workflow" button $\rightarrow$ enter a valid JSON definition in the `TextArea` editor $\rightarrow$ click the "Save" button.
    - **Expected Outcome**:
      - JSON is validated for connectivity and entry points.
      - Workflow is saved to the `workflows` store.
+   - **Implementation Requirements**: `WorkflowJsonEditor` state machine, structural validation logic, `workflows` store write.
+
 2. **Workflow Deployment**:
-   - **User Action**: From the "New Chat" panel: select the newly created custom workflow from the Workflow dropdown selector, select a preset $\rightarrow$ click the Submit button.
+   - **User Action**: From the "New Chat" panel: select the newly created custom workflow from the Workflow dropdown selector, select a preset $\rightarrow$ click the "Submit" button.
    - **Expected Outcome**:
      - Graph is compiled at runtime based on the custom JSON.
      - Execution follows the defined custom topology.
+   - **Implementation Requirements**: `StateGraph` factory (JSON to graph compilation), custom node execution logic.
+
 3. **Workflow Syncing**:
-   - **User Action (Soft Sync)**: Navigate via Left Sidebar $\rightarrow$ Workflow Management $\rightarrow$ edit an existing custom workflow's system prompt in the `TextArea` editor $\rightarrow$ click "Save" $\rightarrow$ In an active thread using that workflow, open Thread Settings $\rightarrow$ click "Sync to Latest Workflow" button.
+   - **User Action (Soft Sync)**: Navigate via Left Sidebar $\rightarrow$ Workflow Management $\rightarrow$ edit an existing custom workflow's system prompt in the `TextArea` editor $\rightarrow$ click "Save" $\rightarrow$ In an active thread using that workflow, open Thread Settings $\rightarrow$ click the "Sync to Latest Workflow" button.
    - **Expected Outcome (Soft Sync)**:
      - A "Soft Sync" is performed (detects only prompt/preset changes).
      - `workflowSnapshot` in the thread record is updated.
      - History and checkpoints are preserved.
-   - **User Action (Hard Sync)**: Navigate via Left Sidebar $\rightarrow$ Workflow Management $\rightarrow$ edit a custom workflow's topology (e.g. add a new node/edge) in the `TextArea` editor $\rightarrow$ click "Save" $\rightarrow$ In an active thread using that workflow, open Thread Settings $\rightarrow$ click "Sync to Latest Workflow" button.
+   - **Implementation Requirements**: `WorkflowSyncing` state machine, `threads` store `workflowSnapshot` update.
+   - **User Action (Hard Sync)**: Navigate via Left Sidebar $\rightarrow$ Workflow Management $\rightarrow$ edit a custom workflow's topology (e.g. add a new node/edge) in the `TextArea` editor $\rightarrow$ click "Save" $\rightarrow$ In an active thread using that workflow, open Thread Settings $\rightarrow$ click the "Sync to Latest Workflow" button $\rightarrow$ click the "Confirm Sync" button in the warning modal.
    - **Expected Outcome (Hard Sync)**:
      - A "Hard Sync" is detected.
      - A confirmation modal is displayed warning that history will be purged.
      - After clicking "Confirm Sync": `workflowSnapshot` is updated, and all checkpoints/messages for the thread are purged.
      - Chat feed is reset to an empty state.
+   - **Implementation Requirements**: `WorkflowSyncing` state machine, hard sync logic (purging `messages`, `checkpoints`, `checkpoint_writes` stores), `threads` store update.
+
 4. **Preset Customization**:
-   - **User Action**: Navigate via Left Sidebar $\rightarrow$ LLM Preset Settings $\rightarrow$ click "Edit" button for a built-in preset $\rightarrow$ click "Clone and Customize" in the confirmation modal $\rightarrow$ change "Model" input field to "gemini-1.5-pro" $\rightarrow$ click "Save" button.
+   - **User Action**: Navigate via Left Sidebar $\rightarrow$ LLM Preset Settings $\rightarrow$ click the "Edit" button for a built-in preset $\rightarrow$ click the "Clone and Customize" button in the confirmation modal $\rightarrow$ change the "Model" input field to "gemini-1.5-pro" $\rightarrow$ click the "Save" button.
    - **Expected Outcome**:
-     - New custom preset is created.
-     - Thread is updated to use the new preset.
+     - New custom preset is created in the `presets` store.
+     - Active thread is updated to use the new preset.
+   - **Implementation Requirements**: `PresetEditor` state machine, `presets` store write (new UUID), `threads` store update.
 
 ### Phase 6: Thread Life-cycle & History Manipulation
 
 1. **Branching**:
-   - **User Action**: In an active thread, click the overflow menu (three-dots icon) of a message in the middle of the history $\rightarrow$ click "Edit" $\rightarrow$ modify content in the text area $\rightarrow$ click "Save" $\rightarrow$ click the overflow menu of the edited message $\rightarrow$ click "Branch Thread" $\rightarrow$ enter a name in the "Branch Name" input field $\rightarrow$ click "Confirm Branch" button.
+   - **User Action**: In an active thread, click the overflow menu (three-dots icon) of a message at sequence `idx` $\rightarrow$ click "Edit" $\rightarrow$ modify content in the text area $\rightarrow$ click "Save" $\rightarrow$ click the overflow menu of the edited message $\rightarrow$ click "Branch Thread" $\rightarrow$ enter "Branch 1" in the "Branch Name" input field $\rightarrow$ click the "Confirm Branch" button.
    - **Expected Outcome**:
-     - New thread created.
-     - Messages up to the branch point are cloned to the new thread.
-     - Corresponding checkpoints are cloned to the new thread.
+     - New thread created in the `threads` store.
+     - Messages up to the branch point are cloned to the new thread in the `messages` store.
+     - Corresponding checkpoints are cloned to the new thread in the `checkpoints` and `checkpoint_writes` stores.
      - UI navigates to the newly branched thread.
+   - **Implementation Requirements**: `InlineMessageEditor` state machine, rollback logic (lineage traversal, purging descendants), `threads` store write (cloning messages and checkpoints), React Router navigation.
+
 2. **Thread Deletion**:
-   - **User Action**: In the Left Sidebar thread list, click the "Delete" icon for a thread $\rightarrow$ click "Confirm Delete" button in the confirmation modal.
+   - **User Action**: In the Left Sidebar thread list, click the "Delete" icon for a thread $\rightarrow$ click the "Confirm Delete" button in the confirmation modal.
    - **Expected Outcome**:
-     - Thread status becomes `"deleting"`.
+     - Thread status is set to `"deleting"` in the `threads` store.
      - Thread disappears from the sidebar immediately.
      - Messages and checkpoints are deleted in background batches via `requestIdleCallback`.
+   - **Implementation Requirements**: `LeftSidebar` state machine, optimistic status update, asynchronous chunked deletion pipeline (`requestIdleCallback`), `threads`/`messages`/`checkpoints`/`checkpoint_writes` store deletes.
 
 ### Phase 7: Global Configs & Budgeting
 
 1. **System Message Injection**:
-   - **User Action**: Navigate via Left Sidebar $\rightarrow$ Global Settings $\rightarrow$ click "Add Injected Message" button $\rightarrow$ enter "Respond in the style of a pirate" in the content input and "0" in the depth input $\rightarrow$ click "Save Settings" button $\rightarrow$ create a new chat.
+   - **User Action**: Navigate via Left Sidebar $\rightarrow$ Global Settings $\rightarrow$ click the "Add Injected Message" button $\rightarrow$ enter "Respond in the style of a pirate" in the content input and "0" in the depth input $\rightarrow$ click the "Save Settings" button $\rightarrow$ create a new chat.
    - **Expected Outcome**:
      - LLM responds as a pirate.
      - API Payload Preview modal shows the injected message at the start (index 0) of the payload.
+   - **Implementation Requirements**: `GlobalSettingsForm` state machine, `settings` store write, LLM compiler system message injection logic.
+
 2. **Budget Enforcement**:
    - **User Action (Step Limit)**: Navigate via Left Sidebar $\rightarrow$ LLM Preset Settings $\rightarrow$ click "Edit" for the default preset $\rightarrow$ enter "2" in the `maxStepsWithoutUser` budget policy field $\rightarrow$ click "Save" $\rightarrow$ create a new chat using the "Debate" workflow.
    - **Expected Outcome (Step Limit)**:
      - Execution stops after 2 autonomous agent steps.
      - `Budget Exceeded Card` is rendered inline in the chat feed.
-     - Execution is paused; main chat input is disabled.
+     - `ExecutionState` transitions to `awaitingHumanInput.budgetExceeded`; main chat input is disabled.
+   - **Implementation Requirements**: `graphRunnerActor` step tracking, budget check logic in `STEP_COMPLETE`, `ExecutionState` transition logic, `BudgetExceededCard` rendering.
    - **User Action (Token Limit)**: Navigate via Left Sidebar $\rightarrow$ LLM Preset Settings $\rightarrow$ click "Edit" for the default preset $\rightarrow$ enter "1000" in the `maxTokensPerRun` budget policy field $\rightarrow$ click "Save" $\rightarrow$ create a new chat with a prompt that generates very long responses.
    - **Expected Outcome (Token Limit)**:
      - Execution stops once total tokens consumed in the current run exceed 1000.
      - `Budget Exceeded Card` is rendered inline in the chat feed.
-     - Execution is paused.
+     - `ExecutionState` transitions to `awaitingHumanInput.budgetExceeded`.
+   - **Implementation Requirements**: `graphRunnerActor` token tracking (usage metadata), budget check logic in `STEP_COMPLETE`.
+
 3. **Budget Override**:
-   - **User Action**: Click "Increase Budget & Resume" button on the `Budget Exceeded Card`.
+   - **User Action**: Click the "Increase Budget & Resume" button on the `Budget Exceeded Card`.
    - **Expected Outcome**:
      - Temporary budget override is applied (original limit added to current usage).
      - Execution resumes from the last checkpoint.
      - `Budget Exceeded Card` transitions to a completed/read-only state.
+   - **Implementation Requirements**: `BudgetExceededCard` state machine, `RESUME_WITH_BUDGET_OVERRIDE` event, `graphRunnerActor` `budgetOverride` context update.
