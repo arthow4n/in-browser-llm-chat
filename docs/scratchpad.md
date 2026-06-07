@@ -48,11 +48,11 @@ A detailed step-by-step implementation checklist for coding agents has been crea
   - The UI should also support running orchestration workflow without user input (but still requires the user to manually approve to start such a workflow).
 - Workflow management CRUD:
   - Workflow = agent orchestration graph like for LangGraph
-    - Built-in workflow can be anything LangGraph supported.
+    - Built-in workflows are defined in the code and injected into the workflows list at runtime; they are not stored in the database.
     - User-defined workflow needs to be able to be serialized to/deserialized from persistence.
     - The editing interface for custom workflows is a text-based JSON editor (no graphical/visual editor required). See the [Workflow JSON Editor State Machine](#l-workflow-json-editor-state-machine) section for details.
     - Here is where the user can define which are the agents involved in an orchestration and their system prompts.
-    - _Safety Rules_: The user cannot delete built-in workflows. Deleting a custom workflow that is currently in use by any threads is blocked, and an inline notification is displayed showing the active threads referencing it.
+    - _Safety Rules_: Built-in workflows cannot be deleted. Deleting a custom workflow that is currently in use by any threads is blocked, and an inline notification is displayed showing the active threads referencing it.
   - Node execution sequence and underlying LLM threads should be visible in the chat feed, rendered as flatly as possible so they look like working within one single thread, including reasoning tokens.
     - Multi-agent rendering MUST make it clearly understandable which agent is speaking. Each message bubble from an agent MUST display the agent's name (and optionally an auto-generated avatar based on the name) at the top of the bubble.
     - Tool calls made by a specific agent should be nested or visibly linked to that agent's message block, so users know which agent initiated the tool call.
@@ -62,7 +62,7 @@ A detailed step-by-step implementation checklist for coding agents has been crea
   - **Budget Policy Enforcement**: The background runner tracks the number of autonomous agent steps and total tokens consumed in the current continuous execution run (since the last human user message). If the step count exceeds `maxStepsWithoutUser` or the token count exceeds `maxTokensPerRun`, the runner interrupts execution and saves a `budget_exceeded` active interrupt. The UI renders a Budget Exceeded Card; upon user approval, the runner resets these counters for the current run and resumes execution.
   - When opening a new chat thread, the thread selects the default preset as the initial preset. The selected preset ID is saved per thread in the database.
   - When switching back to an old thread: if the saved preset is still available, it is used; otherwise, it falls back to the default preset.
-  - Onboarding and First-Time User Experience: Guides users on first load if no presets or API keys exist. See the [Global Settings Form State Machine](#s-global-settings-form-state-machine) for warning banner details. When the application is launched for the first time and IndexedDB is initialized, if the `workflows` store is empty, the application automatically seeds the built-in workflows (Standard 1-agent, Debate workflow) into the `workflows` store. When the user configures and saves their API keys for the first time, the application automatically seeds a set of default presets ("Default Gemini Flash" using `gemini-2.5-flash` and "Default OpenRouter Flash" using `google/gemini-2.5-flash`) into the database, setting the `default_preset_id` in the `settings` store.
+  - Onboarding and First-Time User Experience: Guides users on first load if no presets or API keys exist. See the [Global Settings Form State Machine](#s-global-settings-form-state-machine) for warning banner details. Built-in workflows (Standard 1-agent, Debate workflow) are provided by the code and made available in the UI. When the user configures and saves their API keys for the first time, the application automatically seeds a set of default presets ("Default Gemini Flash" using `gemini-2.5-flash` and "Default OpenRouter Flash" using `google/gemini-2.5-flash`) into the database, setting the `default_preset_id` in the `settings` store.
   - _Safety Rules_: The user cannot delete the designated global default preset (the preset whose ID matches `default_preset_id` in global settings). Deleting a custom preset that is currently set as the active preset for any threads or referenced in any workflow node definitions is blocked, and the UI displays an inline notification listing the referencing threads or workflows.
 - Thread management CRUD
   - Current thread ID is synced with the URL so refreshing leads to the same thread.
@@ -98,7 +98,7 @@ This test plan defines the end-to-end integration flow of the application from a
    - **User Action**: Open the application for the first time in a clean browser session.
    - **Expected Outcome**:
      - IndexedDB is initialized.
-     - Built-in workflows (Standard 1-agent, Debate) are seeded.
+     - Built-in workflows (Standard 1-agent, Debate) are provided by the code.
      - `ViewState` is `onboarding` because no API keys exist.
      - A global warning banner is visible: "No API keys configured. Click here to configure settings."
      - The main chat input field is disabled.
@@ -266,7 +266,7 @@ We propose using the following stores in the `in-browser-llm-chat-db` database:
   - Fields: `name`, `provider` (`"openrouter" | "gemini"`), `model` (string), `apiKey` (stored as a plain string; optional, defaults to empty), `temperature`, `maxTokens`, `reasoningLevel`, `budgetPolicy` (`{ maxStepsWithoutUser: number, maxTokensPerRun: number | null }`)
   - _API Key Fallback Behavior_: A preset can optionally specify an `apiKey`. If the preset's `apiKey` is empty or omitted, the graph runner falls back to using the corresponding provider's global API key stored in the `settings` store. If both are empty, the preset is considered unconfigured/invalid for API execution.
   - _Model Selection Behavior_: Popular models are hardcoded as static lists in a preset schema definition to ensure they are instantly available offline or when API keys are not yet configured, with a manual text field option to input custom model identifiers in the UI.
-- **`workflows`**: Serialized LangGraph definitions.
+- **`workflows`**: User-defined serialized LangGraph definitions. Built-in workflows are not stored here; they are injected by the code.
   - Key: `id` (string/UUID)
   - Fields: `name`, `description`, `isBuiltIn` (boolean), `nodes` (Array of node definitions), `edges` (Array of transition definitions), `injectedSystemMessages` (optional Array of `{ content: string, depth: number }`)
 - **`threads`**: Chat sessions.
@@ -947,7 +947,7 @@ The application layout is built using the Carbon Design System (`@carbon/react`)
 
 ### 3. Workflow Management CRUD View
 
-- **Workflow List**: Scrollable list of built-in and user-defined workflows, each with active edit/delete buttons.
+- **Workflow List**: Scrollable list of built-in and user-defined workflows, each with active edit/delete buttons; built-in workflows must be clearly marked as such in the UI.
 - **Workflow JSON Editor Pane**:
   - Text-based JSON editor containing a `TextArea` displaying the JSON content.
   - **Mobile**: Rendered as a simple `TextArea` with word-wrap and scrolling, relying on the native mobile keyboard (no helper keyboard bar or custom virtual buttons).
@@ -2219,7 +2219,7 @@ Governs the form in the "New Chat" selection panel when no thread is active.
   - `SUBMIT_FAILURE` (contains error): Transitions `submitting` to `error` (updates `errorMessage`).
   - `DISMISS_ERROR`: Transitions `error` to `idle` (clears `errorMessage`).
 - **Database Reads/Writes**:
-  - **Reads**: During `loading`, reads active presets from the `presets` store and custom/built-in workflows from the `workflows` store.
+  - **Reads**: During `loading`, reads active presets from the `presets` store and custom workflows from the `workflows` store (built-in workflows are provided by the code).
   - **Writes**: During `submitting`, opens a read-write transaction on `threads` and `messages`. Creates a new thread record (generates UUID, sets title, copies workflow snapshot, sets default active preset ID, sets `status = "inactive"`, sets `tokenStats` to `{ promptTokens: 0, completionTokens: 0, totalTokens: 0 }`). Appends the user's initial prompt message to the `messages` store under `sequence = 0`, then commits the transaction. The actual transition to `executing` occurs when the parent coordinator loads the thread and processes the auto-start event.
 - **API Request/Response Sequence**: None.
 
