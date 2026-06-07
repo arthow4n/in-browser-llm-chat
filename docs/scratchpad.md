@@ -2203,7 +2203,44 @@ Governs the lightweight asynchronous validation indicator displayed next to the 
   - `INPUT_CHANGED`: Transitions `valid` or `invalid` to `idle`.
 - **Database Reads/Writes**: None.
 - **API Request/Response Sequence**:
-  - Same dummy API request implementation as the Preset Connection Tester State Machine (using the provider's /models endpoint or a 1-token dummy prompt).
+  - Same dummy API request implementation as the Preset Connection Tester State Machine. A response with HTTP status `200 OK` and a non-empty body (containing model lists or a minimal token response) is treated as `VALIDATION_SUCCESS`.
+
+### 13. Implementation Roadmap
+
+To ensure a stable and incremental build, the application will be developed in the following phases:
+
+1.  **Phase 1: Persistence & Global Configuration**:
+    - Implement the IndexedDB schema and `idb` wrappers.
+    - Build Global Settings and LLM Preset CRUD (including connection testing).
+    - Implement Theme Management and Onboarding blocker.
+2.  **Phase 2: Basic Chat Interface**:
+    - Implement the main layout (Sidebar, Header, Chat Feed).
+    - Build Thread Management CRUD (creation, selection, deletion).
+    - Implement the Chat Input area and basic message bubble rendering.
+3.  **Phase 3: Core LangGraph Execution**:
+    - Develop the `GraphRunnerActor` child actor and the custom IndexedDB checkpointer.
+    - Implement the basic 1-agent workflow execution path.
+    - Integrate streaming responses (text and reasoning tokens) with the UI.
+4.  **Phase 4: Workflow Management**:
+    - Build the Workflow JSON Editor and custom workflow CRUD.
+    - Implement the Workflow Compilation factory (converting JSON to `StateGraph`).
+    - Add structural validation for custom workflows.
+5.  **Phase 5: Advanced Orchestration & Loops**:
+    - Implement the Debate Workflow logic (Initiator, Debaters, Evaluators, Summarizer).
+    - Build the Execution & Loop Control Panel (round/turn tracking, force consensus/summarize).
+    - Implement loop termination and routing logic.
+6.  **Phase 6: Interactive Tools & Interrupts**:
+    - Implement the `ask_questions` tool and its corresponding form state machine.
+    - Build Proposal Action Cards for database-modifying tools.
+    - Implement the Budget Policy enforcement and Budget Exceeded Card.
+7.  **Phase 7: History Management & Refinement**:
+    - Implement the Rollback and Resubmission logic (checkpoint traversal and truncation).
+    - Build the Message Editor, Delete, and Branching features.
+    - Implement the System Message Injection pipeline (depth and merging).
+8.  **Phase 8: UX Polish & Mobile Optimization**:
+    - Implement Mobile adaptations (Sidebar overlay, Loop Control overlay, font-size/touch-target fixes).
+    - Add the Chat Feed Auto-Scroll logic and Message Accordions.
+    - Final performance tuning, token stats recalculation, and comprehensive integration testing.
 
 #### AA. Message Bubble (Multi-Agent) Render State
 
@@ -2214,7 +2251,7 @@ Governs the display state of individual message bubbles in a multi-agent chat fe
 - **States**:
   - `rendering`:
     - _Avatar & Header Bar_:
-      - If `message.role === "assistant"` and `message.name` is defined (e.g. "Debater_A"), a distinct header is displayed at the top of the bubble containing the agent's name and an auto-generated visual avatar (e.g. initials with a deterministic background color based on the name hash) so users can visually scan who said what.
+      - If `message.role === "assistant"` and `message.name` is defined (e.g. "Debater_A"), a distinct header is displayed at the top of the bubble containing the agent's name and an auto-generated visual avatar (e.g. initials with a deterministic background color based on the name hash) so users can visually scan who said what. To ensure visual consistency and adherence to Carbon aesthetics, the background color is deterministically mapped from the name's hash to a predefined palette of Carbon-compliant muted/neutral tones.
       - If `message.role === "user"`, the bubble is aligned to the right, styled distinctly from assistants.
     - _Tool Call Nesting_:
       - If the agent makes a tool call, the tool call accordion (governed by the Message Accordion State Machine) is nested _inside_ the bottom of the agent's message bubble block, rather than floating independently, visually linking the tool execution to the agent that triggered it.
