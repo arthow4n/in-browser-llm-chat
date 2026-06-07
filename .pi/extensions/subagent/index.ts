@@ -464,17 +464,15 @@ const ChainItem = Type.Object({
   cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
 });
 
-const ChainStep = Type.Recursive((Self) =>
-  Type.Union([
-    ChainItem,
-    Type.Object({
-      loop: Type.Object({
-        times: Type.Number({ description: "Number of times to repeat the sequence" }),
-        steps: Type.Array(Type.Union([ChainItem, Self], { description: "Sequence of steps to repeat" })),
-      }),
+const ChainStep = Type.Union([
+  ChainItem,
+  Type.Object({
+    loop: Type.Object({
+      times: Type.Number({ description: "Number of times to repeat the sequence" }),
+      steps: Type.Array(Type.Any, { description: "Sequence of steps to repeat (can contain ChainItem or another loop)" }),
     }),
-  ])
-);
+  }),
+]);
 
 const AgentScopeSchema = StringEnum(["user", "project", "both"] as const, {
   description: 'Which agent directories to use. Default: "both".',
@@ -781,7 +779,8 @@ export default function (pi: ExtensionAPI) {
         const allSteps = flattenSteps(args.chain);
         for (let i = 0; i < Math.min(allSteps.length, 3); i++) {
           const stepText = allSteps[i];
-          const indent = stepText.match(/^  +/) ? stepText.match(/^  +/)[0] : "";
+          const match = stepText.match(/^  +/);
+          const indent = match ? match[0] : "";
           const content = stepText.replace(/^  +/, "");
           text += `\n${theme.fg("muted", `${i + 1}.`)}${indent} ${theme.fg("accent", content)}`;
         }
