@@ -88,6 +88,148 @@ A detailed step-by-step implementation checklist for coding agents has been crea
 - API Payload Preview: Allow inspecting the exact payload sent to the LLM API (including injected system messages).
 - _Note_: See the UI Component State Machines section below for the exact layout and component details for all the above elements.
 
+## Integration User Flow Test Plan
+
+This test plan defines the end-to-end integration flow of the application from a user's perspective. Each phase represents a set of integration tests that must pass to verify a complete feature set. These scenarios are designed to drive TDD implementation by defining clear "User Action" $\rightarrow$ "Expected Outcome" paths.
+
+### Phase 1: First Launch & Onboarding
+1. **Initial Load**:
+   - **User Action**: Open the application for the first time in a clean browser session.
+   - **Expected Outcome**:
+     - IndexedDB is initialized.
+     - Built-in workflows (Standard 1-agent, Debate) are seeded.
+     - `ViewState` is `onboarding` because no API keys exist.
+     - A global warning banner is visible: "No API keys configured. Click here to configure settings."
+     - The main chat input field is disabled.
+2. **Configuration**:
+   - **User Action**: Click the warning banner or navigate to Global Settings $\rightarrow$ Enter Gemini and OpenRouter API keys $\rightarrow$ Save.
+   - **Expected Outcome**:
+     - API keys are persisted in the `settings` store.
+     - Default presets ("Default Gemini Flash", "Default OpenRouter Flash") are seeded.
+     - `default_preset_id` is set in `settings`.
+     - Warning banner disappears.
+     - `ViewState` transitions to `idle`.
+3. **Theme Selection**:
+   - **User Action**: Change theme to "Dark" in Global Settings.
+   - **Expected Outcome**: UI theme updates immediately. Preference is saved in `settings` and persists after a page refresh.
+
+### Phase 2: Basic Chatting (Single Agent)
+1. **New Chat Creation**:
+   - **User Action**: Create a new chat thread.
+   - **Expected Outcome**:
+     - `ViewState` transitions to `chatting`.
+     - A new thread is created in the `threads` store using the "Standard 1-agent" workflow and the global default preset.
+     - URL updates to include the new thread UUID.
+2. **First Interaction**:
+   - **User Action**: Send a message "Hello, who are you?".
+   - **Expected Outcome**:
+     - `ExecutionState` transitions to `executing`.
+     - LLM response is streamed and rendered as a message bubble.
+     - Reasoning tokens (if present) are rendered in a collapsed accordion.
+     - The message is saved to the `messages` store with `sequence: 1`.
+3. **Conversation Continuity**:
+   - **User Action**: Send a follow-up message "What can you do?".
+   - **Expected Outcome**:
+     - LLM responds based on the previous context.
+     - Messages are displayed in correct sequential order.
+4. **Payload Inspection**:
+   - **User Action**: Open "Preview API Payload" for the last interaction.
+   - **Expected Outcome**: A modal displays the exact JSON sent to the LLM, including the workflow's system prompt and any injected system messages.
+
+### Phase 3: Advanced Chatting (Multi-Agent / Debate)
+1. **Debate Start**:
+   - **User Action**: Create a new chat and select the "Debate" workflow $\rightarrow$ Seed with topic "Is Pluto a planet?".
+   - **Expected Outcome**:
+     - `Initiator` node runs, seeding the debate.
+     - `Debater A` runs, providing the first argument.
+     - `Consensus Evaluator A` runs and determines no consensus is reached, routing to `Debater B`.
+     - `Debater B` runs, providing a counter-argument.
+2. **UI Verification**:
+   - **User Action**: Review the chat feed.
+   - **Expected Outcome**:
+     - Each agent's message clearly displays their name (e.g., "Debater A") in the header.
+     - Different agents have distinct visual indicators (e.g., different left-border colors).
+     - Loop control panel shows the current round number and turn count.
+3. **Termination by Consensus**:
+   - **User Action**: Continue the debate until an agent calls the `declare_consensus` tool.
+   - **Expected Outcome**:
+     - `declare_consensus` tool is executed.
+     - `Consensus Evaluator` detects `consensusReached: true`.
+     - `Summarizer` node runs and produces a final synthesis of the debate.
+     - `ExecutionState` transitions to `inactive`.
+
+### Phase 4: Interactive Tools (`ask_questions`)
+1. **Tool Trigger**:
+   - **User Action**: In a chat, trigger an agent that invokes the `ask_questions` tool.
+   - **Expected Outcome**:
+     - `ExecutionState` transitions to `awaitingHumanInput`.
+     - An interactive form card is rendered inline in the chat feed.
+     - Main chat input is disabled.
+2. **Form Interaction**:
+   - **User Action**: Fill out the form (e.g., select a checkbox, enter text) $\rightarrow$ Submit.
+   - **Expected Outcome**:
+     - User answers are saved as a `tool` role message in the `messages` store.
+     - `ExecutionState` transitions back to `executing`.
+     - The agent receives the answers and continues the conversation.
+3. **Persistence**:
+   - **User Action**: Refresh the page while the form is active.
+   - **Expected Outcome**: The form is re-rendered in its active state, restoring draft answers from `draftAnswers` in the `threads` store.
+
+### Phase 5: Workflow & Preset Management
+1. **Custom Workflow Creation**:
+   - **User Action**: Open Workflow Manager $\rightarrow$ Create new workflow via JSON editor $\rightarrow$ Define nodes and edges $\rightarrow$ Save.
+   - **Expected Outcome**:
+     - JSON is validated for connectivity and entry points.
+     - Workflow is saved to the `workflows` store.
+2. **Workflow Deployment**:
+   - **User Action**: Create a new chat using the custom workflow.
+   - **Expected Outcome**:
+     - Graph is compiled at runtime.
+     - Execution follows the defined custom topology.
+3. **Workflow Syncing**:
+   - **User Action**: Edit the custom workflow JSON (update a system prompt) $\rightarrow$ In an active thread using that workflow, click "Sync to Latest Workflow".
+   - **Expected Outcome**:
+     - "Soft Sync" is performed.
+     - `workflowSnapshot` is updated.
+     - History is preserved.
+4. **Preset Customization**:
+   - **User Action**: Open Preset Config $\rightarrow$ Edit a built-in preset $\rightarrow$ "Clone and Customize" $\rightarrow$ Change model to "Gemini Pro" $\rightarrow$ Save.
+   - **Expected Outcome**:
+     - New custom preset is created.
+     - Thread is updated to use the new preset.
+
+### Phase 6: Thread Life-cycle & History Manipulation
+1. **Branching**:
+   - **User Action**: Edit a message in the middle of a thread $\rightarrow$ Branch a new thread from that point.
+   - **Expected Outcome**:
+     - New thread created.
+     - Messages up to the branch point are cloned.
+     - Corresponding checkpoints are cloned to the new thread.
+2. **Thread Deletion**:
+   - **User Action**: Delete a thread.
+   - **Expected Outcome**:
+     - Thread status becomes `"deleting"`.
+     - Thread disappears from the sidebar immediately.
+     - Messages and checkpoints are deleted in background batches via `requestIdleCallback`.
+
+### Phase 7: Global Configs & Budgeting
+1. **System Message Injection**:
+   - **User Action**: Add global system message "Respond in the style of a pirate" at `depth: 0` $\rightarrow$ Start a chat.
+   - **Expected Outcome**:
+     - LLM responds as a pirate.
+     - API Payload Preview shows the injected message at the start of the history.
+2. **Budget Enforcement**:
+   - **User Action**: Set a preset with `maxStepsWithoutUser: 2` $\rightarrow$ Start a multi-step workflow (e.g. Debate).
+   - **Expected Outcome**:
+     - Execution stops after 2 autonomous steps.
+     - `Budget Exceeded Card` is rendered inline.
+     - Execution is paused.
+3. **Budget Override**:
+   - **User Action**: Click "Increase Budget & Resume" on the budget card.
+   - **Expected Outcome**:
+     - Temporary budget override is applied.
+     - Execution resumes from the last checkpoint.
+
 ## Technical Architecture Proposals
 
 ### 1. Database Schema (IndexedDB)
