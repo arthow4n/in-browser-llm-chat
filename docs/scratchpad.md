@@ -4,14 +4,6 @@ This is a scratchpad for writing down vague ideas for building this LLM chat app
 
 This file will be collaboratively updated by the human user and the coding agent. It serves as the single source of truth for the project specification.
 
-## Review Status
-
-**Final Review Complete:** The Database Schema, XState UI definitions, and UX guidelines have been critically reviewed and finalized. All previous open questions have been resolved and incorporated directly into the specifications below. The specifications are now comprehensive and ready for implementation.
-
-## Implementation Tasks
-
-A detailed step-by-step implementation checklist for coding agents has been created based on this specification. It can be found in [docs/implementation-tasks.md](./implementation-tasks.md). Coding agents should follow that checklist sequentially to build the application.
-
 ## Tech stack
 
 - Deployed to GitHub Pages as static client side-only application. Build pipeline may use Node scripts/dependencies. Offline support / PWA is out of scope; standard browser caching is sufficient for asset loading, as core LLM integration requires active internet connectivity anyway.
