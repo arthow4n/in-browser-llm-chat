@@ -93,6 +93,7 @@ A detailed step-by-step implementation checklist for coding agents has been crea
 This test plan defines the end-to-end integration flow of the application from a user's perspective. Each phase represents a set of integration tests that must pass to verify a complete feature set. These scenarios are designed to drive TDD implementation by defining clear "User Action" $\rightarrow$ "Expected Outcome" paths.
 
 ### Phase 1: First Launch & Onboarding
+
 1. **Initial Load**:
    - **User Action**: Open the application for the first time in a clean browser session.
    - **Expected Outcome**:
@@ -114,6 +115,7 @@ This test plan defines the end-to-end integration flow of the application from a
    - **Expected Outcome**: UI theme updates immediately. Preference is saved in `settings` and persists after a page refresh.
 
 ### Phase 2: Basic Chatting (Single Agent)
+
 1. **New Chat Creation**:
    - **User Action**: Create a new chat thread.
    - **Expected Outcome**:
@@ -137,6 +139,7 @@ This test plan defines the end-to-end integration flow of the application from a
    - **Expected Outcome**: A modal displays the exact JSON sent to the LLM, including the workflow's system prompt and any injected system messages.
 
 ### Phase 3: Advanced Chatting (Multi-Agent / Debate)
+
 1. **Debate Start**:
    - **User Action**: Create a new chat and select the "Debate" workflow $\rightarrow$ Seed with topic "Is Pluto a planet?".
    - **Expected Outcome**:
@@ -159,6 +162,7 @@ This test plan defines the end-to-end integration flow of the application from a
      - `ExecutionState` transitions to `inactive`.
 
 ### Phase 4: Interactive Tools (`ask_questions`)
+
 1. **Tool Trigger**:
    - **User Action**: In a chat, trigger an agent that invokes the `ask_questions` tool.
    - **Expected Outcome**:
@@ -176,6 +180,7 @@ This test plan defines the end-to-end integration flow of the application from a
    - **Expected Outcome**: The form is re-rendered in its active state, restoring draft answers from `draftAnswers` in the `threads` store.
 
 ### Phase 5: Workflow & Preset Management
+
 1. **Custom Workflow Creation**:
    - **User Action**: Open Workflow Manager $\rightarrow$ Create new workflow via JSON editor $\rightarrow$ Define nodes and edges $\rightarrow$ Save.
    - **Expected Outcome**:
@@ -187,11 +192,17 @@ This test plan defines the end-to-end integration flow of the application from a
      - Graph is compiled at runtime.
      - Execution follows the defined custom topology.
 3. **Workflow Syncing**:
-   - **User Action**: Edit the custom workflow JSON (update a system prompt) $\rightarrow$ In an active thread using that workflow, click "Sync to Latest Workflow".
-   - **Expected Outcome**:
+   - **User Action (Soft Sync)**: Edit the custom workflow JSON (update a system prompt) $\rightarrow$ In an active thread using that workflow, click "Sync to Latest Workflow".
+   - **Expected Outcome (Soft Sync)**:
      - "Soft Sync" is performed.
      - `workflowSnapshot` is updated.
      - History is preserved.
+   - **User Action (Hard Sync)**: Edit the custom workflow JSON (add a new node or change an edge) $\rightarrow$ In an active thread using that workflow, click "Sync to Latest Workflow".
+   - **Expected Outcome (Hard Sync)**:
+     - "Hard Sync" is detected.
+     - A confirmation dialog is displayed warning that history will be purged.
+     - Upon confirmation: `workflowSnapshot` is updated, and all checkpoints/messages for the thread are purged.
+     - Chat feed is reset to an empty state.
 4. **Preset Customization**:
    - **User Action**: Open Preset Config $\rightarrow$ Edit a built-in preset $\rightarrow$ "Clone and Customize" $\rightarrow$ Change model to "Gemini Pro" $\rightarrow$ Save.
    - **Expected Outcome**:
@@ -199,6 +210,7 @@ This test plan defines the end-to-end integration flow of the application from a
      - Thread is updated to use the new preset.
 
 ### Phase 6: Thread Life-cycle & History Manipulation
+
 1. **Branching**:
    - **User Action**: Edit a message in the middle of a thread $\rightarrow$ Branch a new thread from that point.
    - **Expected Outcome**:
@@ -213,15 +225,21 @@ This test plan defines the end-to-end integration flow of the application from a
      - Messages and checkpoints are deleted in background batches via `requestIdleCallback`.
 
 ### Phase 7: Global Configs & Budgeting
+
 1. **System Message Injection**:
    - **User Action**: Add global system message "Respond in the style of a pirate" at `depth: 0` $\rightarrow$ Start a chat.
    - **Expected Outcome**:
      - LLM responds as a pirate.
      - API Payload Preview shows the injected message at the start of the history.
 2. **Budget Enforcement**:
-   - **User Action**: Set a preset with `maxStepsWithoutUser: 2` $\rightarrow$ Start a multi-step workflow (e.g. Debate).
-   - **Expected Outcome**:
+   - **User Action (Step Limit)**: Set a preset with `maxStepsWithoutUser: 2` $\rightarrow$ Start a multi-step workflow (e.g. Debate).
+   - **Expected Outcome (Step Limit)**:
      - Execution stops after 2 autonomous steps.
+     - `Budget Exceeded Card` is rendered inline.
+     - Execution is paused.
+   - **User Action (Token Limit)**: Set a preset with `maxTokensPerRun: 1000` $\rightarrow$ Start a workflow that generates long responses.
+   - **Expected Outcome (Token Limit)**:
+     - Execution stops once total tokens consumed in the current run exceed 1000.
      - `Budget Exceeded Card` is rendered inline.
      - Execution is paused.
 3. **Budget Override**:
