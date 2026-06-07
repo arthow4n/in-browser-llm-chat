@@ -464,6 +464,18 @@ const ChainItem = Type.Object({
   cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
 });
 
+const ChainStep = Type.Recursive((Self) =>
+  Type.Union([
+    ChainItem,
+    Type.Object({
+      loop: Type.Object({
+        times: Type.Number({ description: "Number of times to repeat the sequence" }),
+        steps: Type.Array(Type.Union([ChainItem, Self], { description: "Sequence of steps to repeat" })),
+      }),
+    }),
+  ])
+);
+
 const AgentScopeSchema = StringEnum(["user", "project", "both"] as const, {
   description: 'Which agent directories to use. Default: "both".',
   default: "both",
@@ -478,7 +490,7 @@ const SubagentParams = Type.Object({
     Type.Array(TaskItem, { description: "Array of {agent, task} for parallel execution" }),
   ),
   chain: Type.Optional(
-    Type.Array(ChainItem, { description: "Array of {agent, task} for sequential execution" }),
+    Type.Array(ChainStep, { description: "Array of steps for sequential execution (supports loops)" }),
   ),
   agentScope: Type.Optional(AgentScopeSchema),
   cwd: Type.Optional(
@@ -532,60 +544,77 @@ export default function (pi: ExtensionAPI) {
       if (params.chain && params.chain.length > 0) {
         const results: SingleResult[] = [];
         let previousOutput = "";
+        let globalStepCounter = 1;
 
-        for (let i = 0; i < params.chain.length; i++) {
-          const step = params.chain[i];
-          const taskWithContext = step.task.replace(/\{previous\}/g, previousOutput);
+        async function runStep(step: any) {
+          if ("agent" in step) {
+            const taskWithContext = step.task.replace(/\{previous\}/g, previousOutput);
 
-          // Create update callback that includes all previous results
-          const chainUpdate: OnUpdateCallback | undefined = onUpdate
-            ? (partial) => {
-                // Combine completed results with current streaming result
-                const currentResult = partial.details?.results[0];
-                if (currentResult) {
-                  const allResults = [...results, currentResult];
-                  onUpdate({
-                    content: partial.content,
-                    details: makeDetails("chain")(allResults),
-                  });
+            const chainUpdate: OnUpdateCallback | undefined = onUpdate
+              ? (partial) => {
+                  const currentResult = partial.details?.results[0];
+                  if (currentResult) {
+                    onUpdate({
+                      content: partial.content,
+                      details: makeDetails("chain")([...results, currentResult]),
+                    });
+                  }
                 }
+              : undefined;
+
+            const result = await runSingleAgent(
+              ctx.cwd,
+              agents,
+              step.agent,
+              taskWithContext,
+              step.cwd,
+              globalStepCounter++,
+              signal,
+              chainUpdate,
+              makeDetails("chain"),
+            );
+            results.push(result);
+
+            if (isFailedResult(result)) {
+              throw result;
+            }
+            previousOutput = getFinalOutput(result.messages);
+          } else if ("loop" in step) {
+            for (let i = 0; i < step.loop.times; i++) {
+              for (const innerStep of step.loop.steps) {
+                await runStep(innerStep);
               }
-            : undefined;
+            }
+          }
+        }
 
-          const result = await runSingleAgent(
-            ctx.cwd,
-            agents,
-            step.agent,
-            taskWithContext,
-            step.cwd,
-            i + 1,
-            signal,
-            chainUpdate,
-            makeDetails("chain"),
-          );
-          results.push(result);
-
-          const isError = isFailedResult(result);
-          if (isError) {
+        try {
+          for (const step of params.chain) {
+            await runStep(step);
+          }
+        } catch (error) {
+          if (error instanceof Error === false && (error as SingleResult)?.agent) {
+            const result = error as SingleResult;
             const errorMsg = getResultOutput(result);
             return {
               content: [
                 {
                   type: "text",
-                  text: `Chain stopped at step ${i + 1} (${step.agent}): ${errorMsg}`,
+                  text: `Chain stopped at step ${result.step} (${result.agent}): ${errorMsg}`,
                 },
               ],
               details: makeDetails("chain")(results),
               isError: true,
             };
           }
-          previousOutput = getFinalOutput(result.messages);
+          throw error;
         }
+
         return {
           content: [
             {
               type: "text",
-              text: getFinalOutput(results[results.length - 1].messages) || "(no output)",
+              text: getFinalOutput(results[results.length - 1]?.messages || []) || "(no output)",
             },
           ],
           details: makeDetails("chain")(results),
@@ -733,20 +762,31 @@ export default function (pi: ExtensionAPI) {
           theme.fg("toolTitle", theme.bold("subagent ")) +
           theme.fg("accent", `chain (${args.chain.length} steps)`) +
           theme.fg("muted", ` [${scope}]`);
-        for (let i = 0; i < Math.min(args.chain.length, 3); i++) {
-          const step = args.chain[i];
-          // Clean up {previous} placeholder for display
-          const cleanTask = step.task.replace(/\{previous\}/g, "").trim();
-          const preview = cleanTask.length > 40 ? `${cleanTask.slice(0, 40)}...` : cleanTask;
-          text +=
-            "\n  " +
-            theme.fg("muted", `${i + 1}.`) +
-            " " +
-            theme.fg("accent", step.agent) +
-            theme.fg("dim", ` ${preview}`);
+        
+        const flattenSteps = (steps: any[], depth = 0): string[] => {
+          const flattened: string[] = [];
+          for (const step of steps) {
+            if (step.agent) {
+              const cleanTask = step.task.replace(/\{previous\}/g, "").trim();
+              const preview = cleanTask.length > 40 ? `${cleanTask.slice(0, 40)}...` : cleanTask;
+              flattened.push(`${"  ".repeat(depth)}${step.agent} ${preview}`);
+            } else if (step.loop) {
+              flattened.push(`${"  ".repeat(depth)}(x${step.loop.times}) loop:`);
+              flattened.push(...flattenSteps(step.loop.steps, depth + 1));
+            }
+          }
+          return flattened;
+        };
+
+        const allSteps = flattenSteps(args.chain);
+        for (let i = 0; i < Math.min(allSteps.length, 3); i++) {
+          const stepText = allSteps[i];
+          const indent = stepText.match(/^  +/) ? stepText.match(/^  +/)[0] : "";
+          const content = stepText.replace(/^  +/, "");
+          text += `\n${theme.fg("muted", `${i + 1}.`)}${indent} ${theme.fg("accent", content)}`;
         }
-        if (args.chain.length > 3)
-          text += `\n  ${theme.fg("muted", `... +${args.chain.length - 3} more`)}`;
+        if (allSteps.length > 3)
+          text += `\n  ${theme.fg("muted", `... +${allSteps.length - 3} more`)}`;
         return new Text(text, 0, 0);
       }
       if (args.tasks && args.tasks.length > 0) {
