@@ -1,5 +1,5 @@
 {
   "retry": {
-    "maxRetries": 6
+    "maxRetries": 100
   }
 }
