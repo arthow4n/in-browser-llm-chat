@@ -2344,6 +2344,8 @@ test('full chat flow', async () => {
 });
 ```
 
+## Integration User Flow Test Plan
+
 ### Phase 1: First Launch & Onboarding
 
 1. **Initial Load**:
