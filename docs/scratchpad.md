@@ -742,8 +742,8 @@ To ensure the application is implemented correctly and can be verified in a test
   - Mock the API response with content "Hello! How can I help you today?" and usage `{ prompt_tokens: 10, completion_tokens: 15 }`.
   - **Order of DB Writes**: Verify that the assistant message is created in the `messages` store first (with `sequence: 1`, content "Hello! How can I help you today?", and usage metadata), followed by the creation of a checkpoint record in the `checkpoints` store, and finally the update of the thread record's `latestCheckpointId` and `tokenStats`.
   - **API Payload Verification**: Use MSW to verify the request body:
-    - **For Gemini**: Verify that the agent's system prompt and any injected system messages at depth 0 are merged and sent as the `systemInstruction` string, and the user message "Hello" is sent as a `user` role part in the `contents` array.
-    - **For OpenRouter**: Verify that the agent's system prompt and injected system messages are sent as a `role: "system"` message at the start of the `messages` array, followed by the user message "Hello" as `role: "user"`.
+    - **For Gemini**: Assert that the `systemInstruction` string contains both the agent's system prompt and any injected system messages (merged with `\n\n`), and the user message "Hello" is sent as a `user` role part in the `contents` array.
+    - **For OpenRouter**: Assert that the `messages` array starts with a `role: "system"` message containing the merged system prompts, followed by the user message "Hello" as `role: "user"`.
   - Verify `tokenStats` are updated to `{ promptTokens: 10, completionTokens: 15, totalTokens: 25 }` in the `threads` store.
   - UI displays both messages in the chat feed, and the input field is re-enabled once execution returns to `inactive`.
 
@@ -769,7 +769,7 @@ To ensure the application is implemented correctly and can be verified in a test
       - Mock `Debater_A` response: calls `declare_consensus` tool with `reasoning: "We agree on the basics"` and `agreedPoints: ["Point A", "Point B"]`.
       - `Debater_A` executes $\rightarrow$ a tool call message is created in the `messages` store $\rightarrow$ verify `lastAgentId` updated to `"Debater_A"`.
   - **Phase 3 (Consensus)**:
-    - A tool result message for `declare_consensus` is created $\rightarrow$ verify `consensusReached` is set to `true` in the graph state.
+    - The `tool` node executes $\rightarrow$ a tool result message for `declare_consensus` is created in the `messages` store $\rightarrow$ verify `consensusReached` is set to `true` in the graph state.
     - `Consensus_Evaluator_A` detects `consensusReached: true` in graph state $\rightarrow$ routes to `Summarizer` along the `on_consensus` edge.
   - **Phase 4 (Termination)**:
     - Mock `Summarizer` response: "In summary, both agents agreed on Point A and B. The debate concluded that AI safety is essential but should be balanced with efficiency."
@@ -791,7 +791,7 @@ To ensure the application is implemented correctly and can be verified in a test
     - The Submit button is disabled until Q1 and Q2 are answered.
   - User selects "Blue" for Q1, "Speed" and "Safety" for Q2, and enters "Great tool!" for Q3.
   - User clicks Submit.
-  - A `tool` result message containing the answers is written to the `messages` store. Verify it follows the `AskQuestionsResponse` schema: `answers: { Q1: { selected: ["Blue"] }, Q2: { selected: ["Speed", "Safety"] }, Q3: { text: "Great tool!" } }`.
+  - A `tool` result message containing the answers is written to the `messages` store. Assert it follows the `AskQuestionsResponse` schema: `{ answers: { Q1: { selected: ["Blue"] }, Q2: { selected: ["Speed", "Safety"] }, Q3: { text: "Great tool!" } } }`.
   - `threads.activeInterrupt` is cleared and `draftAnswers` for this `toolCallId` are deleted from the thread record.
   - Execution resumes and continues to the next node in the graph.
   - **Page reload restoration**: Simulate a page reload by unmounting and re-mounting the chat component while the form is active (providing the same `currentThreadId`). Verify the form restores the user's current selections from `draftAnswers` in IndexedDB. Additionally, verify that `draftAnswers` are written to the `threads` store in real-time on every change to a form field (on-change) to ensure no loss of data if the page is closed.
@@ -805,7 +805,7 @@ To ensure the application is implemented correctly and can be verified in a test
   - The thread record's `activeInterrupt` is set to `{ type: "budget_exceeded", budgetDetails: { stepCount: 2, ... } }`.
   - UI renders the "Budget Exceeded Card". Verify it correctly displays the current step count (2) and the limit (2).
   - User clicks "Increase Budget & Resume".
-  - Verify that the runner's local `budgetOverride` context is updated to `maxStepsWithoutUser: 3` (current 2 + original 1).
+  - Verify that the runner's local `budgetOverride` context is updated to `maxStepsWithoutUser: 4` (current 2 + original 2).
   - Verify that the 3rd step now executes successfully.
   - After the 3rd step, the budget counters are reset to 0.
 
@@ -827,7 +827,7 @@ To ensure the application is implemented correctly and can be verified in a test
   - Messages with `sequence > 2` (e.g., message 3) are deleted from the `messages` store.
   - All checkpoints created after `CP1` (specifically `CP2` and `CP3`) are purged from the `checkpoints` store.
   - The thread's `latestCheckpointId` and `latestCheckpointNs` are updated to match `CP1`.
-  - Message 2 is updated with new content in the `messages` store.
+  - Message 2 is updated with new content in the `messages` store. Assert that the DB record for message 2 now contains the updated text.
   - Verify `tokenStats` are accurately recalculated by summing usage of messages 0, 1, and the edited message 2.
   - **Execution Resume**: Upon clicking Resume, verify that `graph.updateState` is called with the edited message 2's content to synchronize it into the LangGraph state before the runner calls `graph.stream`.
 
