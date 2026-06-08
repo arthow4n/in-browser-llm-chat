@@ -740,7 +740,7 @@ To ensure the application is implemented correctly and can be verified in a test
     - If using Gemini/OpenRouter, verify the roles and content are correctly mapped (e.g., the "Hello" message has `role: "user"`).
     - Verify that the final payload includes the system prompt for the agent, merged according to the "Message Compilation" rules (Section 1 of DB Schema).
   - Mock the API response with content "Hello! How can I help you today?" and usage `{ prompt_tokens: 10, completion_tokens: 15 }`.
-  - **Order of DB Writes**: Verify that the assistant message is created in the `messages` store first (with `sequence: 1`, content "Hello! How can I help you today?", and usage metadata), followed by the creation of a checkpoint record in the `checkpoints` store, and finally the update of the thread record's `latestCheckpointId` and `tokenStats`.
+  - **Order of DB Writes**: Verify that the assistant message is created in the `messages` store first (with `sequence: 1`, content "Hello! How can I help you today?", and usage metadata), followed by the creation of a checkpoint record in the `checkpoints` store, and finally the update of the thread record's `latestCheckpointId` and `tokenStats`. To verify this sequence, the test should use a mock for the IndexedDB adapter that records the chronological order of `put` calls.
   - **API Payload Verification**: Use MSW to verify the request body:
     - **For Gemini**: Assert that the `systemInstruction` string contains both the agent's system prompt and any injected system messages (merged with `\n\n`), and the user message "Hello" is sent as a `user` role part in the `contents` array.
     - **For OpenRouter**: Assert that the `messages` array starts with a `role: "system"` message containing the merged system prompts, followed by the user message "Hello" as `role: "user"`.
@@ -757,11 +757,11 @@ To ensure the application is implemented correctly and can be verified in a test
   - **Phase 2 (Looping)**:
     - **Round 1**:
       - Mock `Debater_A` response: "I argue that AI safety is the priority..."
-      - `Debater_A` executes $\rightarrow$ a message with `role: "assistant"` and `name: "Debater_A"` is created in the `messages` store $\rightarrow$ verify `lastAgentId` updated to `"Debater_A"` $\rightarrow$ `Consensus_Evaluator_A` executes.
+      - `Debater_A` executes $\rightarrow$ a message with `role: "assistant"` and `name: "Debater_A"` is created in the `messages` store $\rightarrow$ verify `lastAgentId` in the `GraphState` (stored within the checkpoint record) is updated to `"Debater_A"` $\rightarrow$ `Consensus_Evaluator_A` executes.
       - Mock `Consensus_Evaluator_A` response: `{"consensusReached": false, "reasoning": "Arguments are still diverging"}`.
       - Verify routing to `Debater_B`.
       - Mock `Debater_B` response: "I disagree, efficiency is more important..."
-      - `Debater_B` executes $\rightarrow$ a message with `role: "assistant"` and `name: "Debater_B"` is created in the `messages` store $\rightarrow$ verify `lastAgentId` updated to `"Debater_B"` $\rightarrow$ `Consensus_Evaluator_B` executes.
+      - `Debater_B` executes $\rightarrow$ a message with `role: "assistant"` and `name: "Debater_B"` is created in the `messages` store $\rightarrow$ verify `lastAgentId` in the `GraphState` is updated to `"Debater_B"` $\rightarrow$ `Consensus_Evaluator_B` executes.
       - Mock `Consensus_Evaluator_B` response: `{"consensusReached": false, "reasoning": "No agreement yet"}`.
       - Verify routing back to `Debater_A`.
       - Verify `currentRound` in the graph state increments to `2` upon entering `Debater_A` again. This is verified by inspecting the `checkpoint` record for the current step in the `checkpoints` store.
@@ -862,7 +862,7 @@ To ensure the application is implemented correctly and can be verified in a test
   - The `workflowSnapshot` in the `threads` record matches this JSON.
   - Verify that the graph executes the nodes in the specified loop: `nodeA` $\rightarrow$ `nodeB` $\rightarrow$ `nodeA`.
   - Each node's execution results in a corresponding message in the `messages` store with the correct `name` ("Agent A" or "Agent B").
-  - **Loop Termination**: Verify that if no consensus is reached and no tools are called, the execution terminates automatically after exactly 10 agent turns (5 rounds * 2 agents), as per the default `maxLoopLimit: 5`. Verify the final status is `inactive` and the `Summarizer` (if configured as a fallback) or a termination message is produced.
+  - **Loop Termination**: Verify that if no consensus is reached and no tools are called, the execution terminates automatically after exactly 10 agent turns (5 rounds * 2 agents), as per the default `maxLoopLimit: 5`. To verify this, mock the LLM responses to always return `{"consensusReached": false}` and assert that the execution transitions to `inactive` after the 10th turn, and that a final summary is produced.
 
 ### 9. Cascading Deletion Flow
 - **Given**: A thread with 100 messages and 100 checkpoints.
@@ -893,7 +893,7 @@ To ensure the application is implemented correctly and can be verified in a test
   - Verify a new record is created in the `workflows` store with the serialized graph definition.
   - User starts a new chat, selects this custom workflow from the "New Chat" panel, and sends a message.
   - Verify the thread record's `workflowSnapshot` is an exact copy of the workflow JSON.
-  - Verify the graph execution follows the defined sequence (Node A $\rightarrow$ Node B) and creates corresponding messages in the `messages` store.
+  - Verify the graph execution follows the defined sequence (Node A $\rightarrow$ Node B) and creates corresponding messages in the `messages` store. Verify that the messages are created in the correct `sequence` order and that the `name` field of each message matches the `name` defined in the `WorkflowNode` (e.g. "Agent A", then "Agent B").
   - User deletes the custom workflow.
   - Verify the record is removed from the `workflows` store.
   - Verify that an existing thread using this workflow still functions correctly because it uses the `workflowSnapshot` stored in the `threads` record.
