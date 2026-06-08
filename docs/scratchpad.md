@@ -737,94 +737,136 @@ To ensure the application is implemented correctly and can be verified in a test
   - A new thread record is created in the `threads` store with `status: "executing"`. Verify that `workflowId` and `activePresetId` are correctly set based on the selection.
   - A user message "Hello" is created in the `messages` store with `sequence: 0`.
   - An API request is dispatched to the LLM provider. Verify the request payload contains the user message "Hello" and the default system prompt for the agent.
-  - An assistant message is created in the `messages` store with `sequence: 1`. Verify its content matches the mocked API response.
+  - Mock the API response with content "Hello! How can I help you today?" and usage `{ prompt_tokens: 10, completion_tokens: 15 }`.
+  - An assistant message is created in the `messages` store with `sequence: 1`, content "Hello! How can I help you today?", and the usage metadata.
   - A checkpoint is created in the `checkpoints` store mapping to the assistant's message.
-  - The thread record's `latestCheckpointId` and `tokenStats` are updated. Verify `tokenStats` are updated by summing the usage reported in the mocked API response metadata.
+  - The thread record's `latestCheckpointId` and `tokenStats` are updated. Verify `tokenStats` are updated to `{ promptTokens: 10, completionTokens: 15, totalTokens: 25 }`.
   - UI displays both messages in the chat feed, and the input field is re-enabled once execution returns to `inactive`.
 
 ### 2. Multi-Agent Debate Flow
 - **Given**: App is initialized with valid API keys.
 - **When**: User starts a new chat with the "Debate" workflow, seeds it with a topic (e.g., "AI safety").
 - **Then**:
-  - **Phase 1 (Seeding)**: `Initiator` node executes $\rightarrow$ a message with `role: "assistant"` and `name: "Initiator"` is created in the `messages` store $\rightarrow$ verify `lastAgentId` in graph state is updated to `"Initiator"` $\rightarrow$ verify that the next node scheduled for execution is `Debater_A`.
+  - **Phase 1 (Seeding)**:
+    - Mock `Initiator` response: "Let's debate AI safety. The core question is..."
+    - `Initiator` node executes $\rightarrow$ a message with `role: "assistant"` and `name: "Initiator"` is created in the `messages` store $\rightarrow$ verify `lastAgentId` in graph state is updated to `"Initiator"` $\rightarrow$ verify that the next node scheduled for execution is `Debater_A`.
   - **Phase 2 (Looping)**:
-    - `Debater_A` executes $\rightarrow$ a message with `role: "assistant"` and `name: "Debater_A"` is created in the `messages` store $\rightarrow$ verify `lastAgentId` updated to `"Debater_A"` $\rightarrow$ `Consensus_Evaluator_A` executes $\rightarrow$ (if no consensus) verify it routes to `Debater_B`.
-    - `Debater_B` executes $\rightarrow$ a message with `role: "assistant"` and `name: "Debater_B"` is created in the `messages` store $\rightarrow$ verify `lastAgentId` updated to `"Debater_B"` $\rightarrow$ `Consensus_Evaluator_B` executes $\rightarrow$ (if no consensus) verify it routes back to `Debater_A`.
-    - Verify `currentRound` in the graph state increments each time execution transitions back to `Debater_A`.
+    - **Round 1**:
+      - Mock `Debater_A` response: "I argue that AI safety is the priority..."
+      - `Debater_A` executes $\rightarrow$ a message with `role: "assistant"` and `name: "Debater_A"` is created in the `messages` store $\rightarrow$ verify `lastAgentId` updated to `"Debater_A"` $\rightarrow$ `Consensus_Evaluator_A` executes.
+      - Mock `Consensus_Evaluator_A` response: `{"consensusReached": false, "reasoning": "Arguments are still diverging"}`.
+      - Verify routing to `Debater_B`.
+      - Mock `Debater_B` response: "I disagree, efficiency is more important..."
+      - `Debater_B` executes $\rightarrow$ a message with `role: "assistant"` and `name: "Debater_B"` is created in the `messages` store $\rightarrow$ verify `lastAgentId` updated to `"Debater_B"` $\rightarrow$ `Consensus_Evaluator_B` executes.
+      - Mock `Consensus_Evaluator_B` response: `{"consensusReached": false, "reasoning": "No agreement yet"}`.
+      - Verify routing back to `Debater_A`.
+      - Verify `currentRound` in the graph state increments to `2` upon entering `Debater_A` again.
+    - **Round 2**:
+      - Mock `Debater_A` response: calls `declare_consensus` tool with `reasoning: "We agree on the basics"` and `agreedPoints: ["Point A", "Point B"]`.
+      - `Debater_A` executes $\rightarrow$ a tool call message is created in the `messages` store $\rightarrow$ verify `lastAgentId` updated to `"Debater_A"`.
   - **Phase 3 (Consensus)**:
-    - `Debater_A` invokes `declare_consensus` tool $\rightarrow$ a tool result message is created in the `messages` store $\rightarrow$ verify `consensusReached` is set to `true` in the graph state.
+    - A tool result message for `declare_consensus` is created $\rightarrow$ verify `consensusReached` is set to `true` in the graph state.
     - `Consensus_Evaluator_A` detects `consensusReached: true` in graph state $\rightarrow$ routes to `Summarizer` along the `on_consensus` edge.
   - **Phase 4 (Termination)**:
-    - `Summarizer` executes $\rightarrow$ a final summary message with `name: "Summarizer"` is created in the `messages` store $\rightarrow$ execution transitions to `inactive`.
+    - Mock `Summarizer` response: "In summary, both agents agreed on Point A and B."
+    - `Summarizer` executes $\rightarrow$ a final summary message with `name: "Summarizer"` is created in the `messages` store $\rightarrow$ verify `lastAgentId` updated to `"Summarizer"` $\rightarrow$ execution transitions to `inactive`.
     - UI displays the full sequence of agents and the final summary.
 
 ### 3. `ask_questions` Tool Flow
 - **Given**: A workflow where an agent can call the `ask_questions` tool.
-- **When**: The active agent invokes `ask_questions` with a set of questions.
+- **When**: The active agent invokes `ask_questions` with a set of questions:
+  - Q1: "What is your favorite color?" (type: `single-select`, options: `["Red", "Blue", "Green"]`, required: `true`)
+  - Q2: "Which of these features do you like?" (type: `multi-select`, options: `["Speed", "Accuracy", "Safety"]`, required: `true`)
+  - Q3: "Additional comments" (type: `free-text`, required: `false`)
 - **Then**:
-  - Execution pauses; the thread record's `activeInterrupt` is set to `{ type: "ask_questions", ... }`. Verify it contains the correct `toolCallId` and `questions` array.
-  - UI renders an inline form card with the specified questions. Verify the UI components match the `type` (single-select, multi-select, free-text) of each question.
-  - User fills in the answers and clicks Submit.
-  - A `tool` result message containing the answers is written to the `messages` store. Verify it follows the `AskQuestionsResponse` schema.
+  - Execution pauses; the thread record's `activeInterrupt` is set to `{ type: "ask_questions", ... }`. Verify it contains the correct `toolCallId` and the `questions` array exactly as defined above.
+  - UI renders an inline form card. Verify:
+    - Q1 is rendered as a radio button group.
+    - Q2 is rendered as a checkbox group.
+    - Q3 is rendered as a text area.
+    - The Submit button is disabled until Q1 and Q2 are answered.
+  - User selects "Blue" for Q1, "Speed" and "Safety" for Q2, and enters "Great tool!" for Q3.
+  - User clicks Submit.
+  - A `tool` result message containing the answers is written to the `messages` store. Verify it follows the `AskQuestionsResponse` schema: `answers: { Q1: { selected: ["Blue"] }, Q2: { selected: ["Speed", "Safety"] }, Q3: { text: "Great tool!" } }`.
   - `threads.activeInterrupt` is cleared and `draftAnswers` for this `toolCallId` are deleted from the thread record.
   - Execution resumes and continues to the next node in the graph.
-  - Page reload restoration: Refreshing the page while the form is active restores the form from `draftAnswers` in IndexedDB.
+  - **Page reload restoration**: Simulate a page reload by unmounting and re-mounting the chat component while the form is active (providing the same `currentThreadId`). Verify the form restores the user's current selections from `draftAnswers` in IndexedDB.
 
 ### 4. Budget Enforcement Flow
-- **Given**: A preset configured in the `presets` store with `maxStepsWithoutUser: 2`.
-- **When**: A workflow executes 3 consecutive steps without user input.
+- **Given**: A preset configured in the `presets` store with `maxStepsWithoutUser: 2` and `maxTokensPerRun: null`.
+- **When**: A workflow is executed that requires 3 consecutive agent steps without user input.
 - **Then**:
+  - Mock API responses for the first 2 steps.
   - After the 2nd step is completed, the runner halts execution.
-  - The thread record's `activeInterrupt` is set to `{ type: "budget_exceeded", ... }`.
-  - UI renders the "Budget Exceeded Card". Verify it correctly displays the current token count and step count from the interrupt details.
+  - The thread record's `activeInterrupt` is set to `{ type: "budget_exceeded", budgetDetails: { stepCount: 2, ... } }`.
+  - UI renders the "Budget Exceeded Card". Verify it correctly displays the current step count (2) and the limit (2).
   - User clicks "Increase Budget & Resume".
-  - Verify that the runner's context is updated with the new budget limit and that the 3rd step now executes successfully without triggering another budget interrupt.
-  - Execution resumes and completes the 3rd step.
+  - Verify that the runner's local `budgetOverride` context is updated to `maxStepsWithoutUser: 3` (current 2 + original 1).
+  - Verify that the 3rd step now executes successfully.
+  - After the 3rd step, the budget counters are reset to 0.
 
 ### 5. Thread Branching Flow
-- **Given**: An existing thread with 5 messages and associated checkpoints.
+- **Given**: A parent thread with 5 messages (sequences 0 to 4), each associated with a unique non-null checkpoint in the `checkpoints` store.
 - **When**: User selects "Branch Thread" from the overflow menu of message 3 (sequence 2).
 - **Then**:
-  - A new thread record is created in the `threads` store. Verify `parentThreadId` and `parentMessageId` are correctly set.
-  - Messages with `sequence <= 2` are cloned from the parent thread to the new thread in the `messages` store. Verify cloned messages have newly generated UUIDs but preserve their `sequence` and `content`.
-  - All checkpoints and `checkpoint_writes` associated with these cloned messages are cloned to the new thread's records in IndexedDB. Verify they have newly generated keys matching the new `threadId` but preserve their `checkpoint` state.
-  - The new thread's `latestCheckpointId` is set to the checkpoint of the branched message.
+  - A new thread record is created in the `threads` store. Verify `parentThreadId` and `parentMessageId` (sequence 2's UUID) are correctly set.
+  - Messages with `sequence <= 2` are cloned from the parent thread to the new thread in the `messages` store. Verify exactly 3 messages are cloned, each with newly generated UUIDs but preserving their `sequence` and `content`.
+  - All checkpoints and `checkpoint_writes` associated with these cloned messages (identified by their `[checkpointNs, checkpointId]` pairs) are cloned to the new thread's records in IndexedDB. Verify the cloned checkpoints have keys matching the new `threadId` but preserve their `checkpoint` state.
+  - The new thread's `latestCheckpointId` and `latestCheckpointNs` are set to the checkpoint of the branched message (sequence 2).
   - URL route changes to the new thread ID, and UI displays the cloned history.
 
 ### 6. Message Edit & Rollback Flow
-- **Given**: A thread with a sequence of messages: User(0) $\rightarrow$ Agent(1) $\rightarrow$ User(2) $\rightarrow$ Agent(3).
+- **Given**: A thread with a sequence of messages: User(0, CP:null) $\rightarrow$ Agent(1, CP:CP1) $\rightarrow$ User(2, CP:CP2) $\rightarrow$ Agent(3, CP:CP3).
 - **When**: User edits the content of message 2 (sequence 2).
 - **Then**:
-  - Messages with `sequence > 2` are deleted from the `messages` store.
-  - Checkpoints created after message 2's preceding checkpoint are purged from the `checkpoints` store.
-  - The thread's `latestCheckpointId` and `latestCheckpointNs` are updated to match those of the preceding checkpoint.
+  - **Rollback Target**: The system traverses backward from sequence 1 (message 2's predecessor). It finds that message 1 has `checkpointId: CP1`, which is non-null and different from message 2's `CP2`. Thus, the target checkpoint is `CP1`.
+  - Messages with `sequence > 2` (e.g., message 3) are deleted from the `messages` store.
+  - All checkpoints created after `CP1` (specifically `CP2` and `CP3`) are purged from the `checkpoints` store.
+  - The thread's `latestCheckpointId` and `latestCheckpointNs` are updated to match `CP1`.
   - Message 2 is updated with new content in the `messages` store.
-  - Execution state is reset to `inactive`.
   - Verify `tokenStats` are accurately recalculated by summing usage of messages 0, 1, and the edited message 2.
-  - Upon clicking Resume, the runner uses `graph.updateState` to synchronize the edited message into the LangGraph state before resuming execution.
+  - **Execution Resume**: Upon clicking Resume, verify that `graph.updateState` is called with the edited message 2's content to synchronize it into the LangGraph state before the runner calls `graph.stream`.
 
 ### 7. System Message Injection Flow
-- **Given**: A global system message "Be concise" configured at depth 0 in global settings.
+- **Given**: 
+  - A global system message "Use professional tone" configured at depth 0.
+  - A workflow-specific system message "Be extremely concise" configured at depth 0.
 - **When**: User starts a chat and sends a message.
 - **Then**:
-  - The "Preview API Payload" modal shows a `system` role message "Be concise" at the very beginning (index 0) of the messages array.
-  - Verify that if multiple system messages target the same index, they are merged with double newlines in the preview.
-  - This injected message is NOT stored in the `messages` store or checkpoints.
+  - The "Preview API Payload" modal shows a `system` role message "Be extremely concise\n\nUse professional tone" at the very beginning (index 0) of the messages array.
+  - Verify that the workflow-specific message ("Be extremely concise") appears before the global message ("Use professional tone") in the merged content.
+  - Verify that this merged system message is NOT stored in the `messages` store or checkpoints.
+  - Verify that if only one system message is configured at depth 0, it is correctly placed at the start of the payload.
 
 ### 8. Workflow Customization Flow
-- **Given**: A custom workflow JSON (with a unique node sequence and a loop) is saved in the `workflows` store.
+- **Given**: A custom workflow JSON is saved in the `workflows` store:
+  ```json
+  {
+    "name": "Loop Test",
+    "nodes": [
+      { "id": "nodeA", "type": "agent", "name": "Agent A" },
+      { "id": "nodeB", "type": "agent", "name": "Agent B" }
+    ],
+    "edges": [
+      { "from": "nodeA", "to": "nodeB" },
+      { "from": "nodeB", "to": "nodeA" }
+    ]
+  }
+  ```
 - **When**: User starts a new chat selecting this custom workflow.
 - **Then**:
-  - The `workflowSnapshot` in the `threads` record matches the JSON from the `workflows` store.
-  - Verify that the graph executes the nodes in the sequence specified in the custom JSON (e.g., Node A $\rightarrow$ Node B $\rightarrow$ Node A), with each node's execution resulting in a corresponding message in the `messages` store.
-  - The graph executes nodes in the order and condition defined in the custom JSON.
+  - The `workflowSnapshot` in the `threads` record matches this JSON.
+  - Verify that the graph executes the nodes in the specified loop: `nodeA` $\rightarrow$ `nodeB` $\rightarrow$ `nodeA`.
+  - Each node's execution results in a corresponding message in the `messages` store with the correct `name` ("Agent A" or "Agent B").
+  - Verify that the execution continues until the `maxLoopLimit` is reached (defaulting to 5) or a tool call terminates it.
 
 ### 9. Cascading Deletion Flow
-- **Given**: A thread with a large number of messages and checkpoints.
+- **Given**: A thread with 100 messages and 100 checkpoints.
 - **When**: User deletes the thread.
 - **Then**:
   - The thread record's status is immediately updated to `"deleting"`. Verify the thread is removed from the sidebar list instantly.
-  - `messages`, `checkpoints`, and `checkpoint_writes` are deleted in batches of 500 using `requestIdleCallback` to ensure the UI remains responsive.
+  - Mock `requestIdleCallback` to execute synchronously/immediately for test efficiency.
+  - Verify that messages, checkpoints, and checkpoint writes are deleted in batches (e.g. verify the `messages` store is checked in chunks of 500).
   - Once all children are deleted, the thread record itself is removed from the `threads` store.
   - Verify that after the process completes, no records with the deleted `threadId` remain in `messages`, `checkpoints`, or `checkpoint_writes` stores.
 
