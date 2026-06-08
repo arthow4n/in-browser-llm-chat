@@ -2372,6 +2372,16 @@ To ensure a stable and iterative development process, the implementation should 
    - Apply the final UX polish (16px font, 44px targets, streaming debouncing).
    - Execute the Integration User Flow Test Plan.
 
+### Phase 9: Storage Maintenance
+
+1. **Checkpoint Compaction**:
+   - **User Action**: In Thread Settings, click the "Compact Checkpoints" button $\rightarrow$ click "Confirm Compact" in the confirmation dialog.
+   - **Expected Outcome**:
+     - All checkpoints for the thread in the `checkpoints` and `checkpoint_writes` stores are deleted EXCEPT the one matching the current `latestCheckpointId` and `latestCheckpointNs`.
+     - For all messages in the `messages` store whose `checkpointId` was deleted, the `checkpointId` and `checkpointNs` fields are set to `null`.
+     - In the UI, "Edit", "Delete", and "Branch" options for those compacted messages are disabled, and a tooltip is displayed explaining that historical checkpoints have been compacted.
+   - **Implementation Requirements**: `CheckpointCompactionDialog` state machine, `checkpoints`/`checkpoint_writes` store deletions, `messages` store update, message options enabling logic.
+
 ## Testing Guidelines
 
 - **Focus on Integration Tests**: Test the full user flow and logic integration over isolated unit tests.
