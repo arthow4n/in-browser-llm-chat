@@ -757,11 +757,11 @@ To ensure the application is implemented correctly and can be verified in a test
   - **Phase 2 (Looping)**:
     - **Round 1**:
       - Mock `Debater_A` response: "I argue that AI safety is the priority..."
-      - `Debater_A` executes $\rightarrow$ a message with `role: "assistant"` and `name: "Debater_A"` is created in the `messages` store $\rightarrow$ verify `lastAgentId` in the `GraphState` (stored within the checkpoint record) is updated to `"Debater_A"` $\rightarrow$ `Consensus_Evaluator_A` executes.
+      - `Debater_A` executes $\rightarrow$ verify the API request for `Debater_A` uses its specific system prompt $\rightarrow$ a message with `role: "assistant"` and `name: "Debater_A"` is created in the `messages` store $\rightarrow$ verify `lastAgentId` in the `GraphState` (stored within the checkpoint record) is updated to `"Debater_A"` $\rightarrow$ `Consensus_Evaluator_A` executes.
       - Mock `Consensus_Evaluator_A` response: `{"consensusReached": false, "reasoning": "Arguments are still diverging"}`.
       - Verify routing to `Debater_B`.
       - Mock `Debater_B` response: "I disagree, efficiency is more important..."
-      - `Debater_B` executes $\rightarrow$ a message with `role: "assistant"` and `name: "Debater_B"` is created in the `messages` store $\rightarrow$ verify `lastAgentId` in the `GraphState` is updated to `"Debater_B"` $\rightarrow$ `Consensus_Evaluator_B` executes.
+      - `Debater_B` executes $\rightarrow$ verify the API request for `Debater_B` uses its specific system prompt $\rightarrow$ a message with `role: "assistant"` and `name: "Debater_B"` is created in the `messages` store $\rightarrow$ verify `lastAgentId` in the `GraphState` is updated to `"Debater_B"` $\rightarrow$ `Consensus_Evaluator_B` executes.
       - Mock `Consensus_Evaluator_B` response: `{"consensusReached": false, "reasoning": "No agreement yet"}`.
       - Verify routing back to `Debater_A`.
       - Verify `currentRound` in the graph state increments to `2` upon entering `Debater_A` again. This is verified by inspecting the `checkpoint` record created immediately after `Consensus_Evaluator_B` executes and routes to `Debater_A`, ensuring the updated round count is persisted in the graph state.
@@ -774,7 +774,7 @@ To ensure the application is implemented correctly and can be verified in a test
   - **Phase 4 (Termination)**:
     - Mock `Summarizer` response: "In summary, both agents agreed on Point A and B. The debate concluded that AI safety is essential but should be balanced with efficiency."
     - `Summarizer` executes $\rightarrow$ a final summary message with `name: "Summarizer"` is created in the `messages` store $\rightarrow$ verify `lastAgentId` updated to `"Summarizer"` $\rightarrow$ execution transitions to `inactive`.
-    - UI displays the full sequence of agents and the final summary.
+    - UI displays the full sequence of agents and the final summary. Verify that each assistant message bubble displays the correct agent name (e.g. "Debater A") in the header.
 
 ### 3. `ask_questions` Tool Flow
 - **Given**: A workflow where an agent can call the `ask_questions` tool.
@@ -823,7 +823,10 @@ To ensure the application is implemented correctly and can be verified in a test
 - **Given**: A thread with a sequence of messages: User(0, CP:null) $\rightarrow$ Agent(1, CP:CP1) $\rightarrow$ User(2, CP:CP2) $\rightarrow$ Agent(3, CP:CP3).
 - **When**: User edits the content of message 2 (sequence 2).
 - **Then**:
-  - **Rollback Target**: The system traverses backward from sequence 1 (message 2's predecessor). It finds that message 1 has `checkpointId: CP1`, which is non-null and different from message 2's `CP2`. Thus, the target checkpoint is `CP1`.
+  - **Rollback Target**:
+    - Scenario A (Different Checkpoints): The system traverses backward from sequence 1 (message 2's predecessor). It finds that message 1 has `checkpointId: CP1`, which is non-null and different from message 2's `CP2`. Thus, the target checkpoint is `CP1`.
+    - Scenario B (Same Checkpoints): Assume message 2 and message 1 both share `checkpointId: CP2` (e.g. they were produced in the same execution step). The system traverses backward from sequence 1, sees that its checkpoint ID is identical to message 2's, and continues backward to message 0. If message 0 has `checkpointId: CP1`, the target checkpoint is set to `CP1`.
+    Verify that in both scenarios, the system correctly identifies the checkpoint that precedes the entire execution step that produced the edited message.
   - Messages with `sequence > 2` (e.g., message 3) are deleted from the `messages` store.
   - All checkpoints created after `CP1` (specifically `CP2` and `CP3`) are purged from the `checkpoints` store.
   - The thread's `latestCheckpointId` and `latestCheckpointNs` are updated to match `CP1`.
@@ -840,7 +843,10 @@ To ensure the application is implemented correctly and can be verified in a test
 - **When**: User starts a chat and sends a message.
 - **Then**:
   - **Index 0 Merging & Precedence**: The "Preview API Payload" modal shows a `system` role message "Be extremely concise\n\nUse professional tone" at the very beginning (index 0) of the messages array. Verify that the workflow-specific message ("Be extremely concise") appears before the global message ("Use professional tone").
-  - **Deduplication**: Verify that the duplicate global system message "Use professional tone" at depth 1 is discarded and not included in the payload.
+  - **Deduplication**:
+    - Verify that the duplicate global system message "Use professional tone" at depth 1 is discarded and not included in the payload.
+    - Verify precedence: if both a global and a workflow-specific system message have the same content, only the workflow-specific one is kept.
+    - Verify that if multiple distinct system messages are mapped to the `user` role (for Gemini), they are correctly merged with consecutive actual `user` messages into a single logical `user` message, concatenating their content with double newlines.
   - **Positive Depth Injection**: Verify that the system message "Always start with 'Hello!'" is injected at index 1. For APIs that do not support arbitrary system roles (like Gemini), verify it is mapped to a `user` role message with the content prefixed as `[System Notification]: Always start with 'Hello!'`.
   - **Non-Entry Agent Verification**: Change the agent selector in the "Preview API Payload" modal to a non-entry agent (e.g., `Debater_B` in a debate workflow). Verify that this agent's specific system prompt is also correctly merged with the global system messages at the specified depths.
   - **Persistence**: Verify that none of these injected or merged system messages are stored in the `messages` store or checkpoints.
