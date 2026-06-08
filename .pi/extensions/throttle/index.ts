@@ -24,14 +24,22 @@ export default function (pi: ExtensionAPI) {
       const parsed = JSON.parse(data);
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
         const timestamps = Array.isArray(parsed) ? parsed : [];
-        await fs.writeFile(statePath, JSON.stringify({ maxRequests: DEFAULT_MAX_REQUESTS, timestamps }));
+        await fs.writeFile(
+          statePath,
+          JSON.stringify({ maxRequests: DEFAULT_MAX_REQUESTS, timestamps }),
+        );
       }
     } catch {
-      await fs.writeFile(statePath, JSON.stringify({ maxRequests: DEFAULT_MAX_REQUESTS, timestamps: [] }));
+      await fs.writeFile(
+        statePath,
+        JSON.stringify({ maxRequests: DEFAULT_MAX_REQUESTS, timestamps: [] }),
+      );
     }
   }
 
-  async function withLock<T>(fn: (state: ThrottleState) => Promise<{ newState: ThrottleState; result: T }>): Promise<T> {
+  async function withLock<T>(
+    fn: (state: ThrottleState) => Promise<{ newState: ThrottleState; result: T }>,
+  ): Promise<T> {
     await ensureStateFile();
     const release = await lockfile.lock(statePath);
     try {

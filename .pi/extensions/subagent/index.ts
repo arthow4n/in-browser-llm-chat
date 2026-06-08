@@ -469,7 +469,9 @@ const ChainStep = Type.Union([
   Type.Object({
     loop: Type.Object({
       times: Type.Number({ description: "Number of times to repeat the sequence" }),
-      steps: Type.Array(Type.Any, { description: "Sequence of steps to repeat (can contain ChainItem or another loop)" }),
+      steps: Type.Array(Type.Any, {
+        description: "Sequence of steps to repeat (can contain ChainItem or another loop)",
+      }),
     }),
   }),
 ]);
@@ -488,7 +490,9 @@ const SubagentParams = Type.Object({
     Type.Array(TaskItem, { description: "Array of {agent, task} for parallel execution" }),
   ),
   chain: Type.Optional(
-    Type.Array(ChainStep, { description: "Array of steps for sequential execution (supports loops)" }),
+    Type.Array(ChainStep, {
+      description: "Array of steps for sequential execution (supports loops)",
+    }),
   ),
   agentScope: Type.Optional(AgentScopeSchema),
   cwd: Type.Optional(
@@ -760,7 +764,7 @@ export default function (pi: ExtensionAPI) {
           theme.fg("toolTitle", theme.bold("subagent ")) +
           theme.fg("accent", `chain (${args.chain.length} steps)`) +
           theme.fg("muted", ` [${scope}]`);
-        
+
         const flattenSteps = (steps: any[], depth = 0): string[] => {
           const flattened: string[] = [];
           for (const step of steps) {

@@ -1,5 +1,99 @@
 # Scratchpad
 
+<!-- TOC -->
+<!-- This Table of Contents is generated automatically. Do not edit it manually. -->
+
+- [Scratchpad](#scratchpad)
+  - [Tech stack](#tech-stack)
+  - [Features and use cases to support](#features-and-use-cases-to-support)
+  - [Technical Architecture Proposals](#technical-architecture-proposals)
+    - [1. Database Schema (IndexedDB)](#1-database-schema-indexeddb)
+    - [2. Custom Workflow JSON Serialization](#2-custom-workflow-json-serialization)
+      - [Conditional Routing and Edge Compilation Rules](#conditional-routing-and-edge-compilation-rules)
+      - [Custom Workflow Structural Validation Rules](#custom-workflow-structural-validation-rules)
+      - [Dynamic Prompt Placeholders](#dynamic-prompt-placeholders)
+    - [3. XState Application States](#3-xstate-application-states)
+    - [4. `ask_questions` Tool Schema & Flow](#4-ask_questions-tool-schema--flow)
+    - [5. `declare_consensus` Tool Schema](#5-declare_consensus-tool-schema)
+    - [6. Workflow Creation and Modification Tools Schema](#6-workflow-creation-and-modification-tools-schema)
+    - [7. Debate Workflow Execution Details](#7-debate-workflow-execution-details)
+    - [8. LangGraph Runner and Checkpointer Integration Details](#8-langgraph-runner-and-checkpointer-integration-details)
+      - [IndexedDB Checkpointer Mapping to LangGraph Saver](#indexeddb-checkpointer-mapping-to-langgraph-saver)
+      - [Rollback and Resubmission Sequence](#rollback-and-resubmission-sequence)
+    - [9. System Message Injection Details](#9-system-message-injection-details)
+    - [10. Asynchronous Batched Cascading Deletions](#10-asynchronous-batched-cascading-deletions)
+      - [A. DB Stores Involved and Indexes](#a-db-stores-involved-and-indexes)
+      - [B. The Asynchronous Batched Deletion Algorithm](#b-the-asynchronous-batched-deletion-algorithm)
+    - [11. Error Rendering and Graph Runner Actor Error Transitions](#11-error-rendering-and-graph-runner-actor-error-transitions)
+      - [A. Error Rendering Bubble UI](#a-error-rendering-bubble-ui)
+      - [B. Graph Runner Actor State Machine Error Transitions](#b-graph-runner-actor-state-machine-error-transitions)
+    - [12. Explicit DB Read/Write and API Request/Response Sequences](#12-explicit-db-readwrite-and-api-requestresponse-sequences)
+      - [API Request/Response Sequences (LLM Providers)](#api-requestresponse-sequences-llm-providers)
+      - [Database Read/Write Sequences (IndexedDB `idb`)](#database-readwrite-sequences-indexeddb-idb)
+  - [Integration Test Plan (Happy Path)](#integration-test-plan-happy-path)
+    - [1. Basic Chat Flow](#1-basic-chat-flow)
+    - [2. Multi-Agent Debate Flow](#2-multi-agent-debate-flow)
+    - [3. `ask_questions` Tool Flow](#3-ask_questions-tool-flow)
+    - [4. Budget Enforcement Flow](#4-budget-enforcement-flow)
+    - [5. Thread Branching Flow](#5-thread-branching-flow)
+    - [6. Message Edit & Rollback Flow](#6-message-edit--rollback-flow)
+    - [7. System Message Injection Flow](#7-system-message-injection-flow)
+    - [8. Workflow Customization Flow](#8-workflow-customization-flow)
+    - [9. Cascading Deletion Flow](#9-cascading-deletion-flow)
+    - [10. Preset Management Happy Path](#10-preset-management-happy-path)
+    - [11. Workflow Management Happy Path](#11-workflow-management-happy-path)
+  - [User Interface (UI) Specification](#user-interface-ui-specification)
+    - [1. Global Navigation and Layout](#1-global-navigation-and-layout)
+    - [2. Main Chat Interface](#2-main-chat-interface)
+    - [3. Workflow Management CRUD View](#3-workflow-management-crud-view)
+    - [4. LLM Preset CRUD View](#4-llm-preset-crud-view)
+    - [5. Global Settings View](#5-global-settings-view)
+  - [State Machine Specification](#state-machine-specification)
+    - [UI State Machine Detail Policy](#ui-state-machine-detail-policy)
+    - [Global UX/UI Guidelines](#global-uxui-guidelines)
+    - [State Transition Graph](#state-transition-graph)
+    - [1. Parent Coordinator Machine Context (State Schema)](#1-parent-coordinator-machine-context-state-schema)
+    - [2. State Descriptions](#2-state-descriptions)
+      - [ViewState (Navigation Region)](#viewstate-navigation-region)
+      - [ExecutionState (Execution Region)](#executionstate-execution-region)
+    - [3. Resolved State Machine Design Decisions](#3-resolved-state-machine-design-decisions)
+    - [4. UI Component State Machines](#4-ui-component-state-machines)
+      - [A. Preset Connection Tester State Machine](#a-preset-connection-tester-state-machine)
+      - [B. `ask_questions` Tool Form State Machine](#b-ask_questions-tool-form-state-machine)
+      - [C. Proposed Action Card (Approval Form) State Machine](#c-proposed-action-card-approval-form-state-machine)
+      - [D. Budget Exceeded Card State Machine](#d-budget-exceeded-card-state-machine)
+      - [E. Workflow Syncing (Soft/Hard Sync) State Machine](#e-workflow-syncing-softhard-sync-state-machine)
+      - [F. API Payload Preview Modal State Machine](#f-api-payload-preview-modal-state-machine)
+      - [G. Checkpoint Compaction Dialog State Machine](#g-checkpoint-compaction-dialog-state-machine)
+      - [H. Inline Message Editor & Action State Machine](#h-inline-message-editor--action-state-machine)
+      - [I. Main Application Layout State Machine](#i-main-application-layout-state-machine)
+      - [J. Left Sidebar State Machine](#j-left-sidebar-state-machine)
+      - [K. Preset Editor State Machine](#k-preset-editor-state-machine)
+      - [L. Workflow JSON Editor State Machine](#l-workflow-json-editor-state-machine)
+      - [M. Graph Runner Actor State Machine](#m-graph-runner-actor-state-machine)
+      - [N. Execution & Loop Control Panel State Machine](#n-execution--loop-control-panel-state-machine)
+      - [O. Code Block Control State Machine](#o-code-block-control-state-machine)
+      - [P. Preset List View State Machine](#p-preset-list-view-state-machine)
+      - [Q. Chat Input Area State Machine](#q-chat-input-area-state-machine)
+      - [R. Custom Workflow List View State Machine](#r-custom-workflow-list-view-state-machine)
+      - [S. Global Settings Form State Machine](#s-global-settings-form-state-machine)
+      - [T. New Chat Form State Machine](#t-new-chat-form-state-machine)
+      - [U. Thread Settings Modal State Machine](#u-thread-settings-modal-state-machine)
+      - [V. Chat Feed Auto-Scroll State Machine](#v-chat-feed-auto-scroll-state-machine)
+      - [W. Message Accordion State Machine](#w-message-accordion-state-machine)
+      - [X. Chat Header Quick Preset Switcher State Machine](#x-chat-header-quick-preset-switcher-state-machine)
+      - [Y. API Key Visual Status Indicator State Machine](#y-api-key-visual-status-indicator-state-machine)
+    - [13. Implementation Roadmap](#13-implementation-roadmap)
+      - [AA. Message Bubble (Multi-Agent) Render State](#aa-message-bubble-multi-agent-render-state)
+      - [AB. Storage & Data Management State Machine](#ab-storage--data-management-state-machine)
+      - [AC. Streaming Message Bubble State Machine](#ac-streaming-message-bubble-state-machine)
+  - [Implementation Roadmap](#implementation-roadmap)
+    - [Phase 9: Storage Maintenance](#phase-9-storage-maintenance)
+  - [Testing Guidelines](#testing-guidelines)
+    - [Examples](#examples)
+  - [Integration User Flow Test Plan](#integration-user-flow-test-plan) - [Phase 1: First Launch & Onboarding](#phase-1-first-launch--onboarding) - [Phase 2: Basic Chatting (Single Agent)](#phase-2-basic-chatting-single-agent) - [Phase 3: Advanced Chatting (Multi-Agent / Debate)](#phase-3-advanced-chatting-multi-agent--debate) - [Phase 4: Interactive Tools (`ask_questions`)](#phase-4-interactive-tools-ask_questions) - [Phase 5: Workflow & Preset Management](#phase-5-workflow--preset-management) - [Phase 6: Thread Life-cycle & History Manipulation](#phase-6-thread-life-cycle--history-manipulation) - [Phase 7: Global Configs & Budgeting](#phase-7-global-configs--budgeting) - [Phase 8: Error Recovery](#phase-8-error-recovery)
+  <!-- ENDTOC -->
+
 This is a scratchpad for writing down vague ideas for building this LLM chat app for personal use. The goal is to provide a clear specification so that the coding agent can later build the app with minimal human intervention while still aligning with the user's vision.
 
 This file will be collaboratively updated by the human user and the coding agent. It serves as the single source of truth for the project specification.
@@ -731,6 +825,7 @@ All API calls are executed directly from the browser using `@openrouter/sdk` or 
 To ensure the application is implemented correctly and can be verified in a test-driven manner, the following integration test scenarios must be implemented using Vitest and MSW. Each scenario should verify both the UI state and the underlying IndexedDB state.
 
 ### 1. Basic Chat Flow
+
 - **Given**: App is initialized with valid API keys and a default preset.
 - **When**: User starts a new chat with the default workflow, enters "Hello" in the input, and clicks Send.
 - **Then**:
@@ -748,6 +843,7 @@ To ensure the application is implemented correctly and can be verified in a test
   - UI displays both messages in the chat feed, and the input field is re-enabled once execution returns to `inactive`.
 
 ### 2. Multi-Agent Debate Flow
+
 - **Given**: App is initialized with valid API keys.
 - **When**: User starts a new chat with the "Debate" workflow, seeds it by sending a user message with a topic (e.g., "AI safety").
 - **Then**:
@@ -777,6 +873,7 @@ To ensure the application is implemented correctly and can be verified in a test
     - UI displays the full sequence of agents and the final summary. Verify that each assistant message bubble displays the correct agent name (e.g. "Debater A") in the header.
 
 ### 3. `ask_questions` Tool Flow
+
 - **Given**: A workflow where an agent can call the `ask_questions` tool.
 - **When**: The active agent invokes `ask_questions` with a set of questions:
   - Q1: "What is your favorite color?" (type: `single-select`, options: `["Red", "Blue", "Green"]`, required: `true`)
@@ -797,6 +894,7 @@ To ensure the application is implemented correctly and can be verified in a test
   - **Page reload restoration**: Simulate a page reload by unmounting and re-mounting the chat component while the form is active (providing the same `currentThreadId`). Verify the form restores the user's current selections from `draftAnswers` in IndexedDB. Additionally, verify that `draftAnswers` are written to the `threads` store in real-time on every change to a form field (on-change) to ensure no loss of data if the page is closed.
 
 ### 4. Budget Enforcement Flow
+
 - **Given**: A preset configured in the `presets` store with `maxStepsWithoutUser: 2` and `maxTokensPerRun: null`.
 - **When**: A workflow is executed that requires 3 consecutive agent steps without user input.
 - **Then**:
@@ -810,6 +908,7 @@ To ensure the application is implemented correctly and can be verified in a test
   - After the 3rd step, the budget counters are reset to 0.
 
 ### 5. Thread Branching Flow
+
 - **Given**: A parent thread with 5 messages (sequences 0 to 4), each associated with a unique non-null checkpoint in the `checkpoints` store.
 - **When**: User selects "Branch Thread" from the overflow menu of message 3 (sequence 2).
 - **Then**:
@@ -820,13 +919,14 @@ To ensure the application is implemented correctly and can be verified in a test
   - URL route changes to the new thread ID, and UI displays the cloned history.
 
 ### 6. Message Edit & Rollback Flow
+
 - **Given**: A thread with a sequence of messages: User(0, CP:null) $\rightarrow$ Agent(1, CP:CP1) $\rightarrow$ User(2, CP:CP2) $\rightarrow$ Agent(3, CP:CP3).
 - **When**: User edits the content of message 2 (sequence 2).
 - **Then**:
   - **Rollback Target**:
     - Scenario A (Different Checkpoints): The system traverses backward from sequence 1 (message 2's predecessor). It finds that message 1 has `checkpointId: CP1`, which is non-null and different from message 2's `CP2`. Thus, the target checkpoint is `CP1`.
     - Scenario B (Same Checkpoints): Assume message 2 and message 1 both share `checkpointId: CP2` (e.g. they were produced in the same execution step). The system traverses backward from sequence 1, sees that its checkpoint ID is identical to message 2's, and continues backward to message 0. If message 0 has `checkpointId: CP1`, the target checkpoint is set to `CP1`.
-    Verify that in both scenarios, the system correctly identifies the checkpoint that precedes the entire execution step that produced the edited message.
+      Verify that in both scenarios, the system correctly identifies the checkpoint that precedes the entire execution step that produced the edited message.
   - Messages with `sequence > 2` (e.g., message 3) are deleted from the `messages` store.
   - All checkpoints created after `CP1` (specifically `CP2` and `CP3`) are purged from the `checkpoints` store.
   - The thread's `latestCheckpointId` and `latestCheckpointNs` are updated to match `CP1`.
@@ -835,7 +935,8 @@ To ensure the application is implemented correctly and can be verified in a test
   - **Execution Resume**: Upon clicking Resume, verify that `graph.updateState` is called with the edited message 2's content to synchronize it into the LangGraph state. Verify that a new synchronized checkpoint $C_{new}$ is created and written to the `checkpoints` store before the runner calls `graph.stream`.
 
 ### 7. System Message Injection Flow
-- **Given**: 
+
+- **Given**:
   - A global system message "Use professional tone" configured at depth 0.
   - A workflow-specific system message "Be extremely concise" configured at depth 0.
   - A global system message "Use professional tone" (duplicate) configured at depth 1.
@@ -853,6 +954,7 @@ To ensure the application is implemented correctly and can be verified in a test
   - Verify that if only one system message is configured at depth 0, it is correctly placed at the start of the payload.
 
 ### 8. Workflow Customization Flow
+
 - **Given**: A custom workflow JSON is saved in the `workflows` store:
   ```json
   {
@@ -872,9 +974,10 @@ To ensure the application is implemented correctly and can be verified in a test
   - The `workflowSnapshot` in the `threads` record matches this JSON.
   - Verify that the graph executes the nodes in the specified loop: `nodeA` $\rightarrow$ `nodeB` $\rightarrow$ `nodeA`.
   - Each node's execution results in a corresponding message in the `messages` store with the correct `name` ("Agent A" or "Agent B").
-  - **Loop Termination**: Verify that if no consensus is reached and no tools are called, the execution terminates automatically after exactly 10 agent turns (5 rounds * 2 agents), as per the default `maxLoopLimit: 5`. To verify this, mock the LLM responses to always return `{"consensusReached": false}` and assert that the execution transitions to `inactive` after the 10th turn, and that a final summary is produced.
+  - **Loop Termination**: Verify that if no consensus is reached and no tools are called, the execution terminates automatically after exactly 10 agent turns (5 rounds \* 2 agents), as per the default `maxLoopLimit: 5`. To verify this, mock the LLM responses to always return `{"consensusReached": false}` and assert that the execution transitions to `inactive` after the 10th turn, and that a final summary is produced.
 
 ### 9. Cascading Deletion Flow
+
 - **Given**: A thread with 100 messages and 100 checkpoints.
 - **When**: User deletes the thread.
 - **Then**:
@@ -885,6 +988,7 @@ To ensure the application is implemented correctly and can be verified in a test
   - Verify that after the process completes, no records with the deleted `threadId` remain in `messages`, `checkpoints`, or `checkpoint_writes` stores.
 
 ### 10. Preset Management Happy Path
+
 - **Given**: App is initialized.
 - **When**: User opens the Preset Settings view, creates a new custom preset (e.g., "Fast Gemini" with model `gemini-2.5-flash` and `temperature: 0.1`), and clicks Save.
 - **Then**:
@@ -894,9 +998,10 @@ To ensure the application is implemented correctly and can be verified in a test
   - When the first message is sent, verify the API request uses the `temperature: 0.1` and model `gemini-2.5-flash` as configured in the preset.
   - User edits the "Fast Gemini" preset to `temperature: 0.7` and saves.
   - Verify the record in the `presets` store is updated.
-  - User starts a *new* chat with the same preset, and verify the API request now uses `temperature: 0.7`.
+  - User starts a _new_ chat with the same preset, and verify the API request now uses `temperature: 0.7`.
 
 ### 11. Workflow Management Happy Path
+
 - **Given**: App is initialized.
 - **When**: User opens the Workflow Management view, creates a new custom workflow via the JSON editor (e.g., a simple 2-agent sequential chain), and clicks Save.
 - **Then**:
@@ -908,7 +1013,6 @@ To ensure the application is implemented correctly and can be verified in a test
   - Verify the graph execution follows the defined sequence (Node A $\rightarrow$ Node B) and creates corresponding messages in the `messages` store. Verify that the messages are created in the correct `sequence` order and that the `name` field of each message matches the `name` defined in the `WorkflowNode` (e.g. "Agent A", then "Agent B").
 
 ## User Interface (UI) Specification
-
 
 The application layout is built using the Carbon Design System (`@carbon/react`) out-of-the-box. There are no custom styling overrides (no custom glassmorphism, HSL custom palettes, or custom animations). The UI is structured into a persistent navigation layout with a primary content area that switches depending on the active view.
 
@@ -2732,8 +2836,19 @@ test('full chat flow', async () => {
        ```json
        {
          "questions": [
-           { "id": "q1", "text": "What is your primary goal?", "type": "free-text", "required": true },
-           { "id": "q2", "text": "Which framework do you prefer?", "type": "single-select", "options": ["React", "Vue", "Angular"], "required": true }
+           {
+             "id": "q1",
+             "text": "What is your primary goal?",
+             "type": "free-text",
+             "required": true
+           },
+           {
+             "id": "q2",
+             "text": "Which framework do you prefer?",
+             "type": "single-select",
+             "options": ["React", "Vue", "Angular"],
+             "required": true
+           }
          ]
        }
        ```
@@ -2775,7 +2890,12 @@ test('full chat flow', async () => {
        "name": "Test Workflow",
        "description": "A simple test workflow",
        "nodes": [
-         { "id": "n1", "type": "agent", "name": "Test Agent", "systemPrompt": "You are a test assistant" }
+         {
+           "id": "n1",
+           "type": "agent",
+           "name": "Test Agent",
+           "systemPrompt": "You are a test assistant"
+         }
        ],
        "edges": []
      }
@@ -2809,10 +2929,20 @@ test('full chat flow', async () => {
        "name": "Test Workflow",
        "description": "A simple test workflow",
        "nodes": [
-         { "id": "n1", "type": "agent", "name": "Test Agent 1", "systemPrompt": "You are a test assistant" },
-         { "id": "n2", "type": "agent", "name": "Test Agent 2", "systemPrompt": "You are another test assistant" }
+         {
+           "id": "n1",
+           "type": "agent",
+           "name": "Test Agent 1",
+           "systemPrompt": "You are a test assistant"
+         },
+         {
+           "id": "n2",
+           "type": "agent",
+           "name": "Test Agent 2",
+           "systemPrompt": "You are another test assistant"
+         }
        ],
-       "edges": [ { "from": "n1", "to": "n2" } ]
+       "edges": [{ "from": "n1", "to": "n2" }]
      }
      ```
      $\rightarrow$ click "Save" $\rightarrow$ In an active thread using that workflow, open Thread Settings $\rightarrow$ click the "Sync to Latest Workflow" button $\rightarrow$ click the "Confirm Sync" button in the warning modal.
