@@ -11,7 +11,7 @@
     "typecheck": "tsgo --noEmit",
     "lint": "oxlint --max-warnings=0",
     "lint:fix": "oxlint --max-warnings=0 --fix",
-    "format": "oxfmt --write",
+    "format": "npx tsx scripts/generate-toc.ts docs/scratchpad.md && oxfmt --write",
     "format:check": "oxfmt --check",
     "test": "vitest run"
   },
