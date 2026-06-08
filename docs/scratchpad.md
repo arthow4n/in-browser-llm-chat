@@ -2436,7 +2436,7 @@ test('full chat flow', async () => {
    - **User Action**: Open the application URL in a clean browser session.
    - **Expected Outcome**:
      - IndexedDB database is initialized.
-     - Built-in workflows (Standard 1-agent, Debate) are provided by the code.
+     - Built-in workflows (Standard 1-agent, Debate) are provided by the code and are visible in the "New Chat" workflow selection dropdown.
      - `ViewState` transitions to `onboarding` because no API keys are found in the `settings` store.
      - A global warning banner is visible at the top: "No API keys configured. Click here to configure settings."
      - The main chat input field in the chat area is disabled.
@@ -2446,8 +2446,8 @@ test('full chat flow', async () => {
    - **User Action**: Click the global warning banner (or navigate via Left Sidebar $\rightarrow$ Global Settings) $\rightarrow$ fill the "OpenRouter API Key" input field with a valid key (e.g. "sk-...") $\rightarrow$ fill the "Gemini API Key" input field with a valid key (e.g. "AIza...") $\rightarrow$ click the "Save Settings" button.
    - **Expected Outcome**:
      - API keys are persisted in the `settings` store.
-     - Default presets ("Default Gemini Flash", "Default OpenRouter Flash") are automatically seeded into the `presets` store.
-     - `default_preset_id` is set in the `settings` store.
+     - Default presets ("Default Gemini Flash" using `gemini-2.5-flash` and "Default OpenRouter Flash" using `google/gemini-2.5-flash`) are automatically seeded into the `presets` store.
+     - `default_preset_id` is set in the `settings` store to match one of these seeded presets.
      - The global warning banner disappears.
      - `ViewState` transitions to `idle`.
    - **Implementation Requirements**: `GlobalSettingsForm` state machine, `settings` store read-write transactions, `presets` store seeding logic, `ViewState` transition logic.
@@ -2466,6 +2466,8 @@ test('full chat flow', async () => {
    - **Expected Outcome**:
      - `ViewState` transitions to `chatting`.
      - A new thread is created in the `threads` store with a generated UUID, using the "Standard 1-agent" workflow and the global default preset.
+     - The thread's title is initialized as "Hello".
+     - The thread's title is initialized as "Hello".
      - The user's initial message "Hello" is saved to the `messages` store with `sequence: 0`.
      - The URL updates to include the new thread UUID (e.g. `/chat/[uuid]`).
    - **Implementation Requirements**: `NewChatForm` state machine, `threads` store write (UUID, title, workflow snapshot, preset ID), `messages` store write, React Router navigation.
@@ -2474,16 +2476,18 @@ test('full chat flow', async () => {
    - **User Action**: In the chat interface, type "Hello, who are you?" into the main chat input area $\rightarrow$ click the "Send" button (or press Enter on desktop).
    - **Expected Outcome**:
      - `ExecutionState` transitions to `executing`.
-     - LLM response is streamed and rendered as a message bubble.
+     - Mock the LLM to return a specific response (e.g. "I am a helpful assistant").
+     - LLM response is streamed and rendered as a message bubble containing the mocked text.
      - Reasoning tokens (if present) are rendered in a collapsed "Reasoning Process" accordion within the bubble.
-     - The response is saved to the `messages` store with `sequence: 1`.
+     - The response is saved to the `messages` store with `sequence: 1` and the correct `assistant` role.
    - **Implementation Requirements**: `ChatInputArea` state machine, `ExecutionState` transition to `executing`, `graphRunnerActor` spawning, `graph.stream()` implementation, `messages` store write, `MessageAccordion` state machine for reasoning.
 
 3. **Conversation Continuity**:
    - **User Action**: Type "What can you do?" into the main chat input area $\rightarrow$ click the "Send" button.
    - **Expected Outcome**:
-     - LLM responds based on the previous context (history).
-     - Messages are displayed in correct sequential order.
+     - Mock the LLM to respond based on previous context (e.g. "As mentioned, I can help you with X and Y").
+     - LLM responds and the response is rendered in the chat feed.
+     - Messages are displayed in correct sequential order (User -> Assistant -> User -> Assistant).
    - **Implementation Requirements**: `graphRunnerActor` loading latest checkpoint, `messages` store query for historical context, LLM API call with compiled context.
 
 4. **Payload Inspection**:
@@ -2499,10 +2503,12 @@ test('full chat flow', async () => {
 1. **Debate Start**:
    - **User Action**: Create a new chat and select the "Debate" workflow from the dropdown $\rightarrow$ Seed the debate by entering "Is Pluto a planet?" in the initial message input field $\rightarrow$ click the "Submit" button.
    - **Expected Outcome**:
-     - `Initiator` node runs, seeding the debate.
-     - `Debater A` runs, providing the first argument.
-     - `Consensus Evaluator A` runs and determines no consensus is reached, routing to `Debater B`.
-     - `Debater B` runs, providing a counter-argument.
+     - Mock the LLM to simulate the sequence:
+       1. `Initiator` returns a seeding message.
+       2. `Debater A` returns a supportive argument.
+       3. `Consensus Evaluator A` returns `consensusReached: false`.
+       4. `Debater B` returns a counter-argument.
+     - Each agent's message is rendered in the chat feed with its respective name header (e.g. "Initiator", "Debater A", "Debater B").
    - **Implementation Requirements**: `Debate` workflow JSON compilation, `Initiator` node execution, `Debater A` / `Debater B` node execution, `Consensus Evaluator` routing logic.
 
 2. **UI Verification**:
@@ -2510,13 +2516,13 @@ test('full chat flow', async () => {
    - **Expected Outcome**:
      - Each agent's message clearly displays their name (e.g., "Debater A") in a header above the bubble.
      - Different agents have distinct visual indicators (e.g., different left-border colors).
-     - Loop control panel shows the current round number and total turn count.
+     - Loop control panel is visible and displays the correct `currentRound` (e.g. 1) and `turnCount` (e.g. 4) based on the number of executed nodes.
    - **Implementation Requirements**: Multi-agent bubble rendering logic, `Execution & Loop Control Panel` state machine (round counter, turn counter updating via `UPDATE_STATS`).
 
 3. **Termination by Consensus**:
    - **User Action**: Continue the debate (by providing input if interrupted or waiting for autonomous run) until an agent calls the `declare_consensus` tool.
    - **Expected Outcome**:
-     - `declare_consensus` tool is executed.
+     - Mock the LLM to return a `declare_consensus` tool call.
      - `Consensus Evaluator` detects `consensusReached: true` in the graph state.
      - `Summarizer` node runs and produces a final synthesis of the debate.
      - `ExecutionState` transitions to `inactive`.
@@ -2527,8 +2533,10 @@ test('full chat flow', async () => {
 1. **Tool Trigger**:
    - **User Action**: In a chat, send a message that triggers an agent to invoke the `ask_questions` tool (e.g. "Ask me some questions to understand my project").
    - **Expected Outcome**:
+     - Mock the LLM to return an `ask_questions` tool call containing a set of questions.
+     - Mock the LLM to return an `ask_questions` tool call containing a set of questions.
      - `ExecutionState` transitions to `awaitingHumanInput.idle`.
-     - An interactive form card (using Carbon `Tile`) is rendered inline in the chat feed at the end of the history.
+     - An interactive form card (using Carbon `Tile`) is rendered inline in the chat feed at the end of the history, displaying the mocked questions.
      - Main chat input field is disabled.
    - **Implementation Requirements**: `ask_questions` tool definition (Zod schema), `graphRunnerActor` interrupt handling, `ExecutionState` transition logic, `ask_questions` tool card rendering.
 
@@ -2537,14 +2545,15 @@ test('full chat flow', async () => {
    - **Expected Outcome**:
      - User answers are saved as a `tool` role message in the `messages` store.
      - `ExecutionState` transitions back to `executing`.
-     - The agent receives the answers and continues the conversation.
+     - Mock the LLM to return a response that acknowledges the provided answers.
+     - The agent's final response is rendered in the chat feed.
    - **Implementation Requirements**: `AskQuestionsForm` state machine, `threads` store `draftAnswers` write, `messages` store write (tool result), `ExecutionState` transition to `executing`.
 
 3. **Persistence**:
    - **User Action**: Refresh the page (browser reload) while the `ask_questions` form is active.
    - **Expected Outcome**:
      - The form is re-rendered in its active state.
-     - Draft answers are restored from the `draftAnswers` dictionary in the `threads` store.
+     - Draft answers are restored from the `draftAnswers` dictionary in the `threads` store and are visible in the form inputs.
    - **Implementation Requirements**: `ExecutionState` transition to `checkingStatus`, `threads` store read (`activeInterrupt` and `draftAnswers`), `AskQuestionsForm` restoration logic.
 
 ### Phase 5: Workflow & Preset Management
@@ -2554,13 +2563,15 @@ test('full chat flow', async () => {
    - **Expected Outcome**:
      - JSON is validated for connectivity and entry points.
      - Workflow is saved to the `workflows` store.
+     - The new workflow is visible in the Workflow list view.
+     - The new workflow is visible in the Workflow list view.
    - **Implementation Requirements**: `WorkflowJsonEditor` state machine, structural validation logic, `workflows` store write.
 
 2. **Workflow Deployment**:
    - **User Action**: From the "New Chat" panel: select the newly created custom workflow from the Workflow dropdown selector, select a preset $\rightarrow$ click the "Submit" button.
    - **Expected Outcome**:
      - Graph is compiled at runtime based on the custom JSON.
-     - Execution follows the defined custom topology.
+     - Execution follows the defined custom topology (verified by mocking node responses and asserting the sequence of agent messages in the chat feed).
    - **Implementation Requirements**: `StateGraph` factory (JSON to graph compilation), custom node execution logic.
 
 3. **Workflow Syncing**:
@@ -2568,20 +2579,20 @@ test('full chat flow', async () => {
    - **Expected Outcome (Soft Sync)**:
      - A "Soft Sync" is performed (detects only prompt/preset changes).
      - `workflowSnapshot` in the thread record is updated.
-     - History and checkpoints are preserved.
+     - History and checkpoints are preserved (verified by asserting that `messages` store size remains unchanged).
    - **Implementation Requirements**: `WorkflowSyncing` state machine, `threads` store `workflowSnapshot` update.
    - **User Action (Hard Sync)**: Navigate via Left Sidebar $\rightarrow$ Workflow Management $\rightarrow$ edit a custom workflow's topology (e.g. add a new node/edge) in the `TextArea` editor $\rightarrow$ click "Save" $\rightarrow$ In an active thread using that workflow, open Thread Settings $\rightarrow$ click the "Sync to Latest Workflow" button $\rightarrow$ click the "Confirm Sync" button in the warning modal.
    - **Expected Outcome (Hard Sync)**:
      - A "Hard Sync" is detected.
      - A confirmation modal is displayed warning that history will be purged.
-     - After clicking "Confirm Sync": `workflowSnapshot` is updated, and all checkpoints/messages for the thread are purged.
+     - After clicking "Confirm Sync": `workflowSnapshot` is updated, and all checkpoints/messages for the thread are purged from the `messages`, `checkpoints`, and `checkpoint_writes` stores.
      - Chat feed is reset to an empty state.
    - **Implementation Requirements**: `WorkflowSyncing` state machine, hard sync logic (purging `messages`, `checkpoints`, `checkpoint_writes` stores), `threads` store update.
 
 4. **Preset Customization**:
    - **User Action**: Navigate via Left Sidebar $\rightarrow$ LLM Preset Settings $\rightarrow$ click the "Edit" button for a built-in preset $\rightarrow$ click the "Clone and Customize" button in the confirmation modal $\rightarrow$ change the "Model" input field to "gemini-1.5-pro" $\rightarrow$ click the "Save" button.
    - **Expected Outcome**:
-     - New custom preset is created in the `presets` store.
+     - New custom preset is created in the `presets` store with the modified model.
      - Active thread is updated to use the new preset.
    - **Implementation Requirements**: `PresetEditor` state machine, `presets` store write (new UUID), `threads` store update.
 
@@ -2590,8 +2601,8 @@ test('full chat flow', async () => {
 1. **Branching**:
    - **User Action**: In an active thread, click the overflow menu (three-dots icon) of a message at sequence `idx` $\rightarrow$ click "Edit" $\rightarrow$ modify content in the text area $\rightarrow$ click "Save" $\rightarrow$ click the overflow menu of the edited message $\rightarrow$ click "Branch Thread" $\rightarrow$ enter "Branch 1" in the "Branch Name" input field $\rightarrow$ click the "Confirm Branch" button.
    - **Expected Outcome**:
-     - New thread created in the `threads` store.
-     - Messages up to the branch point are cloned to the new thread in the `messages` store.
+     - New thread created in the `threads` store with title "Branch 1".
+     - Messages up to the branch point (sequence <= idx) are cloned to the new thread in the `messages` store.
      - Corresponding checkpoints are cloned to the new thread in the `checkpoints` and `checkpoint_writes` stores.
      - UI navigates to the newly branched thread.
    - **Implementation Requirements**: `InlineMessageEditor` state machine, rollback logic (lineage traversal, purging descendants), `threads` store write (cloning messages and checkpoints), React Router navigation.
@@ -2601,7 +2612,7 @@ test('full chat flow', async () => {
    - **Expected Outcome**:
      - Thread status is set to `"deleting"` in the `threads` store.
      - Thread disappears from the sidebar immediately.
-     - Messages and checkpoints are deleted in background batches via `requestIdleCallback`.
+     - Messages and checkpoints are eventually deleted from the `messages`, `checkpoints`, and `checkpoint_writes` stores via background batches.
    - **Implementation Requirements**: `LeftSidebar` state machine, optimistic status update, asynchronous chunked deletion pipeline (`requestIdleCallback`), `threads`/`messages`/`checkpoints`/`checkpoint_writes` store deletes.
 
 ### Phase 7: Global Configs & Budgeting
@@ -2609,22 +2620,28 @@ test('full chat flow', async () => {
 1. **System Message Injection**:
    - **User Action**: Navigate via Left Sidebar $\rightarrow$ Global Settings $\rightarrow$ click the "Add Injected Message" button $\rightarrow$ enter "Respond in the style of a pirate" in the content input and "0" in the depth input $\rightarrow$ click the "Save Settings" button $\rightarrow$ create a new chat.
    - **Expected Outcome**:
-     - LLM responds as a pirate.
+     - Mock the LLM to include pirate-themed language (e.g. "Ahoy", "Matey") in its response.
+     - LLM responds as a pirate, and the response is rendered in the chat feed.
      - API Payload Preview modal shows the injected message at the start (index 0) of the payload.
    - **Implementation Requirements**: `GlobalSettingsForm` state machine, `settings` store write, LLM compiler system message injection logic.
 
 2. **Budget Enforcement**:
    - **User Action (Step Limit)**: Navigate via Left Sidebar $\rightarrow$ LLM Preset Settings $\rightarrow$ click "Edit" for the default preset $\rightarrow$ enter "2" in the `maxStepsWithoutUser` budget policy field $\rightarrow$ click "Save" $\rightarrow$ create a new chat using the "Debate" workflow.
    - **Expected Outcome (Step Limit)**:
-     - Execution stops after 2 autonomous agent steps.
+     - Execution stops after exactly 2 autonomous agent steps.
+     - `ExecutionState` transitions to `awaitingHumanLinput.budgetExceeded`.
      - `Budget Exceeded Card` is rendered inline in the chat feed.
-     - `ExecutionState` transitions to `awaitingHumanInput.budgetExceeded`; main chat input is disabled.
+     - `Budget Exceeded Card` is rendered inline in the chat feed.
+     - Main chat input field is disabled.
    - **Implementation Requirements**: `graphRunnerActor` step tracking, budget check logic in `STEP_COMPLETE`, `ExecutionState` transition logic, `BudgetExceededCard` rendering.
    - **User Action (Token Limit)**: Navigate via Left Sidebar $\rightarrow$ LLM Preset Settings $\rightarrow$ click "Edit" for the default preset $\rightarrow$ enter "1000" in the `maxTokensPerRun` budget policy field $\rightarrow$ click "Save" $\rightarrow$ create a new chat with a prompt that generates very long responses.
    - **Expected Outcome (Token Limit)**:
-     - Execution stops once total tokens consumed in the current run exceed 1000.
+     - Mock the LLM usage metadata to exceed 1000 tokens in the current run.
+     - Execution stops once token limit is reached.
      - `Budget Exceeded Card` is rendered inline in the chat feed.
      - `ExecutionState` transitions to `awaitingHumanInput.budgetExceeded`.
+     - `Budget Exceeded Card` is rendered inline in the chat feed.
+     - `Budget Exceeded Card` is rendered inline in the chat feed.
    - **Implementation Requirements**: `graphRunnerActor` token tracking (usage metadata), budget check logic in `STEP_COMPLETE`.
 
 3. **Budget Override**:
@@ -2632,6 +2649,8 @@ test('full chat flow', async () => {
    - **Expected Outcome**:
      - Temporary budget override is applied (original limit added to current usage).
      - Execution resumes from the last checkpoint.
+     - Mock the LLM to return a final response.
+     - Mock the LLM to return a final response.
      - `Budget Exceeded Card` transitions to a completed/read-only state.
    - **Implementation Requirements**: `BudgetExceededCard` state machine, `RESUME_WITH_BUDGET_OVERRIDE` event, `graphRunnerActor` `budgetOverride` context update.
 
