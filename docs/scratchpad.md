@@ -726,7 +726,107 @@ All API calls are executed directly from the browser using `@openrouter/sdk` or 
    - _Write_: Delete up to 500 records per chunk via `requestIdleCallback` to avoid blocking main thread.
    - _Write_: Remove `threads` record once all children are deleted.
 
+## Integration Test Plan (Happy Path)
+
+To ensure the application is implemented correctly and can be verified in a test-driven manner, the following integration test scenarios must be implemented using Vitest and MSW. Each scenario should verify both the UI state and the underlying IndexedDB state.
+
+### 1. Basic Chat Flow
+- **Given**: App is initialized with valid API keys and a default preset.
+- **When**: User starts a new chat with the default workflow, enters "Hello" in the input, and clicks Send.
+- **Then**:
+  - A new thread record is created in the `threads` store with `status: "executing"`.
+  - A user message "Hello" is created in the `messages` store with `sequence: 0`.
+  - An API request is dispatched to the LLM provider.
+  - An assistant message is created in the `messages` store with `sequence: 1`.
+  - A checkpoint is created in the `checkpoints` store mapping to the assistant's message.
+  - The thread record's `latestCheckpointId` and `tokenStats` are updated.
+  - UI displays both messages in the chat feed, and the input field is re-enabled once execution returns to `inactive`.
+
+### 2. Multi-Agent Debate Flow
+- **Given**: App is initialized with valid API keys.
+- **When**: User starts a new chat with the "Debate" workflow, seeds it with a topic (e.g., "AI safety").
+- **Then**:
+  - **Phase 1 (Seeding)**: `Initiator` node executes $\rightarrow$ message created in `messages` store $\rightarrow$ routing to `Debater_A`.
+  - **Phase 2 (Looping)**:
+    - `Debater_A` executes $\rightarrow$ message created $\rightarrow$ `Consensus_Evaluator_A` executes $\rightarrow$ (if no consensus) routes to `Debater_B`.
+    - `Debater_B` executes $\rightarrow$ message created $\rightarrow$ `Consensus_Evaluator_B` executes $\rightarrow$ (if no consensus) routes back to `Debater_A`.
+    - `currentRound` increments each time execution transitions back to `Debater_A`.
+  - **Phase 3 (Consensus)**:
+    - `Debater_A` invokes `declare_consensus` tool $\rightarrow$ tool result message created in `messages` store $\rightarrow$ `consensusReached` set to `true` in graph state.
+    - `Consensus_Evaluator_A` detects `consensusReached: true` $\rightarrow$ routes to `Summarizer` along the `on_consensus` edge.
+  - **Phase 4 (Termination)**:
+    - `Summarizer` executes $\rightarrow$ final summary message created $\rightarrow$ execution transitions to `inactive`.
+    - UI displays the full sequence of agents and the final summary.
+
+### 3. `ask_questions` Tool Flow
+- **Given**: A workflow where an agent can call the `ask_questions` tool.
+- **When**: The active agent invokes `ask_questions` with a set of questions.
+- **Then**:
+  - Execution pauses; the thread record's `activeInterrupt` is set to `{ type: "ask_questions", ... }`.
+  - UI renders an inline form card with the specified questions.
+  - User fills in the answers and clicks Submit.
+  - A `tool` result message containing the answers is written to the `messages` store.
+  - `threads.activeInterrupt` is cleared.
+  - Execution resumes and continues to the next node in the graph.
+  - Page reload restoration: Refreshing the page while the form is active restores the form from `draftAnswers` in IndexedDB.
+
+### 4. Budget Enforcement Flow
+- **Given**: A preset configured with `maxStepsWithoutUser: 2`.
+- **When**: A workflow executes 3 consecutive steps without user input.
+- **Then**:
+  - After the 2nd step is completed, the runner halts execution.
+  - The thread record's `activeInterrupt` is set to `{ type: "budget_exceeded", ... }`.
+  - UI renders the "Budget Exceeded Card".
+  - User clicks "Increase Budget & Resume".
+  - A temporary budget override is applied to the runner's context.
+  - Execution resumes and completes the 3rd step.
+
+### 5. Thread Branching Flow
+- **Given**: An existing thread with 5 messages and associated checkpoints.
+- **When**: User selects "Branch Thread" from the overflow menu of message 3 (sequence 2).
+- **Then**:
+  - A new thread record is created in the `threads` store.
+  - Messages with `sequence <= 2` are cloned from the parent thread to the new thread in the `messages` store.
+  - All checkpoints and `checkpoint_writes` associated with these cloned messages are cloned to the new thread's records in IndexedDB.
+  - The new thread's `latestCheckpointId` is set to the checkpoint of the branched message.
+  - URL route changes to the new thread ID, and UI displays the cloned history.
+
+### 6. Message Edit & Rollback Flow
+- **Given**: A thread with a sequence of messages: User(0) $\rightarrow$ Agent(1) $\rightarrow$ User(2) $\rightarrow$ Agent(3).
+- **When**: User edits the content of message 2 (sequence 2).
+- **Then**:
+  - Messages with `sequence > 2` are deleted from the `messages` store.
+  - Checkpoints created after message 2's preceding checkpoint are purged from the `checkpoints` store.
+  - The thread's `latestCheckpointId` is updated to the preceding checkpoint.
+  - Message 2 is updated with new content in the `messages` store.
+  - Execution state is reset to `inactive`.
+  - Upon clicking Resume, the runner uses `graph.updateState` to synchronize the edited message into the LangGraph state before resuming execution.
+
+### 7. System Message Injection Flow
+- **Given**: A global system message "Be concise" configured at depth 0 in global settings.
+- **When**: User starts a chat and sends a message.
+- **Then**:
+  - The "Preview API Payload" modal shows a `system` role message "Be concise" at the very beginning (index 0) of the messages array.
+  - This injected message is NOT stored in the `messages` store or checkpoints.
+
+### 8. Workflow Customization Flow
+- **Given**: A custom workflow JSON (with a unique node sequence) is saved in the `workflows` store.
+- **When**: User starts a new chat selecting this custom workflow.
+- **Then**:
+  - The `workflowSnapshot` in the `threads` record matches the JSON from the `workflows` store.
+  - The graph executes nodes in the order and condition defined in the custom JSON.
+
+### 9. Cascading Deletion Flow
+- **Given**: A thread with a large number of messages and checkpoints.
+- **When**: User deletes the thread.
+- **Then**:
+  - The thread record's status is immediately updated to `"deleting"`.
+  - The thread is removed from the sidebar list instantly.
+  - `messages`, `checkpoints`, and `checkpoint_writes` are deleted in batches of 500 using `requestIdleCallback` to ensure the UI remains responsive.
+  - Once all children are deleted, the thread record itself is removed from the `threads` store.
+
 ## User Interface (UI) Specification
+
 
 The application layout is built using the Carbon Design System (`@carbon/react`) out-of-the-box. There are no custom styling overrides (no custom glassmorphism, HSL custom palettes, or custom animations). The UI is structured into a persistent navigation layout with a primary content area that switches depending on the active view.
 
