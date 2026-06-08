@@ -741,6 +741,9 @@ To ensure the application is implemented correctly and can be verified in a test
     - Verify that the final payload includes the system prompt for the agent, merged according to the "Message Compilation" rules (Section 1 of DB Schema).
   - Mock the API response with content "Hello! How can I help you today?" and usage `{ prompt_tokens: 10, completion_tokens: 15 }`.
   - **Order of DB Writes**: Verify that the assistant message is created in the `messages` store first (with `sequence: 1`, content "Hello! How can I help you today?", and usage metadata), followed by the creation of a checkpoint record in the `checkpoints` store, and finally the update of the thread record's `latestCheckpointId` and `tokenStats`.
+  - **API Payload Verification**: Use MSW to verify the request body:
+    - **For Gemini**: Verify that the agent's system prompt and any injected system messages at depth 0 are merged and sent as the `systemInstruction` string, and the user message "Hello" is sent as a `user` role part in the `contents` array.
+    - **For OpenRouter**: Verify that the agent's system prompt and injected system messages are sent as a `role: "system"` message at the start of the `messages` array, followed by the user message "Hello" as `role: "user"`.
   - Verify `tokenStats` are updated to `{ promptTokens: 10, completionTokens: 15, totalTokens: 25 }` in the `threads` store.
   - UI displays both messages in the chat feed, and the input field is re-enabled once execution returns to `inactive`.
 
@@ -769,7 +772,7 @@ To ensure the application is implemented correctly and can be verified in a test
     - A tool result message for `declare_consensus` is created $\rightarrow$ verify `consensusReached` is set to `true` in the graph state.
     - `Consensus_Evaluator_A` detects `consensusReached: true` in graph state $\rightarrow$ routes to `Summarizer` along the `on_consensus` edge.
   - **Phase 4 (Termination)**:
-    - Mock `Summarizer` response: "In summary, both agents agreed on Point A and B."
+    - Mock `Summarizer` response: "In summary, both agents agreed on Point A and B. The debate concluded that AI safety is essential but should be balanced with efficiency."
     - `Summarizer` executes $\rightarrow$ a final summary message with `name: "Summarizer"` is created in the `messages` store $\rightarrow$ verify `lastAgentId` updated to `"Summarizer"` $\rightarrow$ execution transitions to `inactive`.
     - UI displays the full sequence of agents and the final summary.
 
@@ -859,7 +862,7 @@ To ensure the application is implemented correctly and can be verified in a test
   - The `workflowSnapshot` in the `threads` record matches this JSON.
   - Verify that the graph executes the nodes in the specified loop: `nodeA` $\rightarrow$ `nodeB` $\rightarrow$ `nodeA`.
   - Each node's execution results in a corresponding message in the `messages` store with the correct `name` ("Agent A" or "Agent B").
-  - Verify that the execution continues until the `maxLoopLimit` is reached (defaulting to 5) or a tool call terminates it.
+  - **Loop Termination**: Verify that if no consensus is reached and no tools are called, the execution terminates automatically after exactly 10 agent turns (5 rounds * 2 agents), as per the default `maxLoopLimit: 5`. Verify the final status is `inactive` and the `Summarizer` (if configured as a fallback) or a termination message is produced.
 
 ### 9. Cascading Deletion Flow
 - **Given**: A thread with 100 messages and 100 checkpoints.
@@ -870,6 +873,30 @@ To ensure the application is implemented correctly and can be verified in a test
   - Verify that messages, checkpoints, and checkpoint writes are deleted in batches (e.g. verify the `messages` store is checked in chunks of 500).
   - Once all children are deleted, the thread record itself is removed from the `threads` store.
   - Verify that after the process completes, no records with the deleted `threadId` remain in `messages`, `checkpoints`, or `checkpoint_writes` stores.
+
+### 10. Preset Management Happy Path
+- **Given**: App is initialized.
+- **When**: User opens the Preset Settings view, creates a new custom preset (e.g., "Fast Gemini" with model `gemini-2.5-flash` and `temperature: 0.1`), and clicks Save.
+- **Then**:
+  - Verify that a new record is created in the `presets` store with the specified configuration and a generated UUID.
+  - User starts a new chat and selects the "Fast Gemini" preset from the dropdown.
+  - Verify the thread record in the `threads` store is created with `activePresetId` matching the new preset's UUID.
+  - When the first message is sent, verify the API request uses the `temperature: 0.1` and model `gemini-2.5-flash` as configured in the preset.
+  - User edits the "Fast Gemini" preset to `temperature: 0.7` and saves.
+  - Verify the record in the `presets` store is updated.
+  - User starts a *new* chat with the same preset, and verify the API request now uses `temperature: 0.7`.
+
+### 11. Workflow Management Happy Path
+- **Given**: App is initialized.
+- **When**: User opens the Workflow Management view, creates a new custom workflow via the JSON editor (e.g., a simple 2-agent sequential chain), and clicks Save.
+- **Then**:
+  - Verify a new record is created in the `workflows` store with the serialized graph definition.
+  - User starts a new chat, selects this custom workflow from the "New Chat" panel, and sends a message.
+  - Verify the thread record's `workflowSnapshot` is an exact copy of the workflow JSON.
+  - Verify the graph execution follows the defined sequence (Node A $\rightarrow$ Node B) and creates corresponding messages in the `messages` store.
+  - User deletes the custom workflow.
+  - Verify the record is removed from the `workflows` store.
+  - Verify that an existing thread using this workflow still functions correctly because it uses the `workflowSnapshot` stored in the `threads` record.
 
 ## User Interface (UI) Specification
 
