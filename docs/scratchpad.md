@@ -2435,7 +2435,7 @@ test('full chat flow', async () => {
 1. **Initial Load**:
    - **User Action**: Open the application URL in a clean browser session.
    - **Expected Outcome**:
-     - IndexedDB database is initialized.
+     - IndexedDB database is initialized (all required stores are created).
      - Built-in workflows (Standard 1-agent, Debate) are provided by the code and are visible in the "New Chat" workflow selection dropdown.
      - `ViewState` transitions to `onboarding` because no API keys are found in the `settings` store.
      - A global warning banner is visible at the top: "No API keys configured. Click here to configure settings."
@@ -2466,7 +2466,6 @@ test('full chat flow', async () => {
    - **Expected Outcome**:
      - `ViewState` transitions to `chatting`.
      - A new thread is created in the `threads` store with a generated UUID, using the "Standard 1-agent" workflow and the global default preset.
-     - The thread's title is initialized as "Hello".
      - The thread's title is initialized as "Hello".
      - The user's initial message "Hello" is saved to the `messages` store with `sequence: 0`.
      - The URL updates to include the new thread UUID (e.g. `/chat/[uuid]`).
@@ -2534,7 +2533,6 @@ test('full chat flow', async () => {
    - **User Action**: In a chat, send a message that triggers an agent to invoke the `ask_questions` tool (e.g. "Ask me some questions to understand my project").
    - **Expected Outcome**:
      - Mock the LLM to return an `ask_questions` tool call containing a set of questions.
-     - Mock the LLM to return an `ask_questions` tool call containing a set of questions.
      - `ExecutionState` transitions to `awaitingHumanInput.idle`.
      - An interactive form card (using Carbon `Tile`) is rendered inline in the chat feed at the end of the history, displaying the mocked questions.
      - Main chat input field is disabled.
@@ -2563,7 +2561,6 @@ test('full chat flow', async () => {
    - **Expected Outcome**:
      - JSON is validated for connectivity and entry points.
      - Workflow is saved to the `workflows` store.
-     - The new workflow is visible in the Workflow list view.
      - The new workflow is visible in the Workflow list view.
    - **Implementation Requirements**: `WorkflowJsonEditor` state machine, structural validation logic, `workflows` store write.
 
@@ -2629,8 +2626,7 @@ test('full chat flow', async () => {
    - **User Action (Step Limit)**: Navigate via Left Sidebar $\rightarrow$ LLM Preset Settings $\rightarrow$ click "Edit" for the default preset $\rightarrow$ enter "2" in the `maxStepsWithoutUser` budget policy field $\rightarrow$ click "Save" $\rightarrow$ create a new chat using the "Debate" workflow.
    - **Expected Outcome (Step Limit)**:
      - Execution stops after exactly 2 autonomous agent steps.
-     - `ExecutionState` transitions to `awaitingHumanLinput.budgetExceeded`.
-     - `Budget Exceeded Card` is rendered inline in the chat feed.
+     - `ExecutionState` transitions to `awaitingHumanInput.budgetExceeded`.
      - `Budget Exceeded Card` is rendered inline in the chat feed.
      - Main chat input field is disabled.
    - **Implementation Requirements**: `graphRunnerActor` step tracking, budget check logic in `STEP_COMPLETE`, `ExecutionState` transition logic, `BudgetExceededCard` rendering.
@@ -2640,8 +2636,6 @@ test('full chat flow', async () => {
      - Execution stops once token limit is reached.
      - `Budget Exceeded Card` is rendered inline in the chat feed.
      - `ExecutionState` transitions to `awaitingHumanInput.budgetExceeded`.
-     - `Budget Exceeded Card` is rendered inline in the chat feed.
-     - `Budget Exceeded Card` is rendered inline in the chat feed.
    - **Implementation Requirements**: `graphRunnerActor` token tracking (usage metadata), budget check logic in `STEP_COMPLETE`.
 
 3. **Budget Override**:
@@ -2649,7 +2643,6 @@ test('full chat flow', async () => {
    - **Expected Outcome**:
      - Temporary budget override is applied (original limit added to current usage).
      - Execution resumes from the last checkpoint.
-     - Mock the LLM to return a final response.
      - Mock the LLM to return a final response.
      - `Budget Exceeded Card` transitions to a completed/read-only state.
    - **Implementation Requirements**: `BudgetExceededCard` state machine, `RESUME_WITH_BUDGET_OVERRIDE` event, `graphRunnerActor` `budgetOverride` context update.
