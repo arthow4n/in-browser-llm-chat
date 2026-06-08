@@ -2436,7 +2436,7 @@ test('full chat flow', async () => {
    - **User Action**: Open the application URL in a clean browser session.
    - **Expected Outcome**:
      - IndexedDB database is initialized (all required stores are created).
-     - Built-in workflows (Standard 1-agent, Debate) are provided by the code and are visible in the "New Chat" workflow selection dropdown.
+     - Built-in workflows (Standard 1-agent, Debate) are provided by the code (with stable IDs `workflow-standard` and `workflow-debate`) and are visible in the "New Chat" workflow selection dropdown.
      - `ViewState` transitions to `onboarding` because no API keys are found in the `settings` store.
      - A global warning banner is visible at the top: "No API keys configured. Click here to configure settings."
      - The main chat input field in the chat area is disabled.
@@ -2446,8 +2446,10 @@ test('full chat flow', async () => {
    - **User Action**: Click the global warning banner (or navigate via Left Sidebar $\rightarrow$ Global Settings) $\rightarrow$ fill the "OpenRouter API Key" input field with a valid key (e.g. "sk-...") $\rightarrow$ fill the "Gemini API Key" input field with a valid key (e.g. "AIza...") $\rightarrow$ click the "Save Settings" button.
    - **Expected Outcome**:
      - API keys are persisted in the `settings` store.
-     - Default presets ("Default Gemini Flash" using `gemini-2.5-flash` and "Default OpenRouter Flash" using `google/gemini-2.5-flash`) are automatically seeded into the `presets` store.
-     - `default_preset_id` is set in the `settings` store to match one of these seeded presets.
+     - Default presets are automatically seeded into the `presets` store upon the first successful save of API keys:
+       - "Default Gemini Flash" (`id: "preset-gemini-flash"`, model: `gemini-2.5-flash`)
+       - "Default OpenRouter Flash" (`id: "preset-openrouter-flash"`, model: `google/gemini-2.5-flash`)
+     - `default_preset_id` is set in the `settings` store to `"preset-gemini-flash"`.
      - The global warning banner disappears.
      - `ViewState` transitions to `idle`.
    - **Implementation Requirements**: `GlobalSettingsForm` state machine, `settings` store read-write transactions, `presets` store seeding logic, `ViewState` transition logic.
@@ -2475,10 +2477,10 @@ test('full chat flow', async () => {
    - **User Action**: In the chat interface, type "Hello, who are you?" into the main chat input area $\rightarrow$ click the "Send" button (or press Enter on desktop).
    - **Expected Outcome**:
      - `ExecutionState` transitions to `executing`.
-     - Mock the LLM to return a specific response (e.g. "I am a helpful assistant").
+     - Mock the LLM to return exactly: "I am a helpful assistant".
      - LLM response is streamed and rendered as a message bubble containing the mocked text.
      - Reasoning tokens (if present) are rendered in a collapsed "Reasoning Process" accordion within the bubble.
-     - The response is saved to the `messages` store with `sequence: 1` and the correct `assistant` role.
+     - The response is saved to the `messages` store with `sequence: 1`, `role: "assistant"`, and `content: "I am a helpful assistant"`.
    - **Implementation Requirements**: `ChatInputArea` state machine, `ExecutionState` transition to `executing`, `graphRunnerActor` spawning, `graph.stream()` implementation, `messages` store write, `MessageAccordion` state machine for reasoning.
 
 3. **Conversation Continuity**:
@@ -2502,12 +2504,13 @@ test('full chat flow', async () => {
 1. **Debate Start**:
    - **User Action**: Create a new chat and select the "Debate" workflow from the dropdown $\rightarrow$ Seed the debate by entering "Is Pluto a planet?" in the initial message input field $\rightarrow$ click the "Submit" button.
    - **Expected Outcome**:
-     - Mock the LLM to simulate the sequence:
-       1. `Initiator` returns a seeding message.
-       2. `Debater A` returns a supportive argument.
-       3. `Consensus Evaluator A` returns `consensusReached: false`.
-       4. `Debater B` returns a counter-argument.
+     - Mock the LLM to simulate this exact sequence of responses:
+       1. `Initiator` $\rightarrow$ "Welcome to the debate on Pluto. Let's begin. Debater A, what is your opening statement?"
+       2. `Debater A` $\rightarrow$ "Pluto is a planet because it has a complex atmosphere and geological activity."
+       3. `Consensus Evaluator A` $\rightarrow$ `{"consensusReached": false, "reasoning": "Debater B has not yet responded."}`
+       4. `Debater B` $\rightarrow$ "I disagree. Pluto is a dwarf planet because it has not cleared its neighborhood of other debris."
      - Each agent's message is rendered in the chat feed with its respective name header (e.g. "Initiator", "Debater A", "Debater B").
+     - The `messages` store contains 4 messages (sequences 0-3) with corresponding roles and names.
    - **Implementation Requirements**: `Debate` workflow JSON compilation, `Initiator` node execution, `Debater A` / `Debater B` node execution, `Consensus Evaluator` routing logic.
 
 2. **UI Verification**:
@@ -2521,10 +2524,11 @@ test('full chat flow', async () => {
 3. **Termination by Consensus**:
    - **User Action**: Continue the debate (by providing input if interrupted or waiting for autonomous run) until an agent calls the `declare_consensus` tool.
    - **Expected Outcome**:
-     - Mock the LLM to return a `declare_consensus` tool call.
+     - Mock the LLM for `Debater A` to return a `declare_consensus` tool call with: `{ reasoning: "We both agree Pluto is unique", agreedPoints: ["Pluto has a heart-shaped glacier"] }`.
      - `Consensus Evaluator` detects `consensusReached: true` in the graph state.
-     - `Summarizer` node runs and produces a final synthesis of the debate.
+     - `Summarizer` node runs and produces a final synthesis, e.g.: "The debate concluded that while Pluto's status is debated, its geological features are undisputed."
      - `ExecutionState` transitions to `inactive`.
+     - The `messages` store contains the tool call, the tool result, and the final summary message.
    - **Implementation Requirements**: `declare_consensus` tool implementation, `Consensus Evaluator` node routing logic (`on_consensus` edge), `Summarizer` node implementation, `ExecutionState` transition to `inactive`.
 
 ### Phase 4: Interactive Tools (`ask_questions`)
@@ -2532,18 +2536,34 @@ test('full chat flow', async () => {
 1. **Tool Trigger**:
    - **User Action**: In a chat, send a message that triggers an agent to invoke the `ask_questions` tool (e.g. "Ask me some questions to understand my project").
    - **Expected Outcome**:
-     - Mock the LLM to return an `ask_questions` tool call containing a set of questions.
+     - Mock the LLM to return an `ask_questions` tool call containing:
+       ```json
+       {
+         "questions": [
+           { "id": "q1", "text": "What is your primary goal?", "type": "free-text", "required": true },
+           { "id": "q2", "text": "Which framework do you prefer?", "type": "single-select", "options": ["React", "Vue", "Angular"], "required": true }
+         ]
+       }
+       ```
      - `ExecutionState` transitions to `awaitingHumanInput.idle`.
-     - An interactive form card (using Carbon `Tile`) is rendered inline in the chat feed at the end of the history, displaying the mocked questions.
+     - An interactive form card (using Carbon `Tile`) is rendered inline in the chat feed at the end of the history, displaying these two questions.
      - Main chat input field is disabled.
    - **Implementation Requirements**: `ask_questions` tool definition (Zod schema), `graphRunnerActor` interrupt handling, `ExecutionState` transition logic, `ask_questions` tool card rendering.
 
 2. **Form Interaction**:
-   - **User Action**: Fill out the form card (e.g., select options in a `RadioButtonGroup` for single-select, check `Checkbox` items for multi-select, and enter text in `TextArea` fields for comments) $\rightarrow$ click the "Submit" button.
+   - **User Action**: Fill out the form card: enter "Build a chat app" for `q1` and select "React" for `q2` $\rightarrow$ click the "Submit" button.
    - **Expected Outcome**:
-     - User answers are saved as a `tool` role message in the `messages` store.
+     - User answers are saved as a `tool` role message in the `messages` store with:
+       ```json
+       {
+         "answers": {
+           "q1": { "text": "Build a chat app" },
+           "q2": { "selected": ["React"] }
+         }
+       }
+       ```
      - `ExecutionState` transitions back to `executing`.
-     - Mock the LLM to return a response that acknowledges the provided answers.
+     - Mock the LLM to return a response that acknowledges the provided answers, e.g.: "Got it, you want to build a chat app with React."
      - The agent's final response is rendered in the chat feed.
    - **Implementation Requirements**: `AskQuestionsForm` state machine, `threads` store `draftAnswers` write, `messages` store write (tool result), `ExecutionState` transition to `executing`.
 
@@ -2557,28 +2577,53 @@ test('full chat flow', async () => {
 ### Phase 5: Workflow & Preset Management
 
 1. **Custom Workflow Creation**:
-   - **User Action**: Navigate via Left Sidebar $\rightarrow$ Workflow Management $\rightarrow$ click the "Create Workflow" button $\rightarrow$ enter a valid JSON definition in the `TextArea` editor $\rightarrow$ click the "Save" button.
+   - **User Action**: Navigate via Left Sidebar $\rightarrow$ Workflow Management $\rightarrow$ click the "Create Workflow" button $\rightarrow$ enter the following JSON definition in the `TextArea` editor $\rightarrow$ click the "Save" button:
+     ```json
+     {
+       "name": "Test Workflow",
+       "description": "A simple test workflow",
+       "nodes": [
+         { "id": "n1", "type": "agent", "name": "Test Agent", "systemPrompt": "You are a test assistant" }
+       ],
+       "edges": []
+     }
+     ```
    - **Expected Outcome**:
      - JSON is validated for connectivity and entry points.
-     - Workflow is saved to the `workflows` store.
-     - The new workflow is visible in the Workflow list view.
+     - Workflow is saved to the `workflows` store with a generated UUID.
+     - The new workflow "Test Workflow" is visible in the Workflow list view.
    - **Implementation Requirements**: `WorkflowJsonEditor` state machine, structural validation logic, `workflows` store write.
 
 2. **Workflow Deployment**:
-   - **User Action**: From the "New Chat" panel: select the newly created custom workflow from the Workflow dropdown selector, select a preset $\rightarrow$ click the "Submit" button.
+   - **User Action**: From the "New Chat" panel: select the newly created "Test Workflow" from the Workflow dropdown selector, select a preset $\rightarrow$ click the "Submit" button.
    - **Expected Outcome**:
      - Graph is compiled at runtime based on the custom JSON.
-     - Execution follows the defined custom topology (verified by mocking node responses and asserting the sequence of agent messages in the chat feed).
+     - Execution follows the defined custom topology:
+       1. User sends "Hi".
+       2. Mock the LLM for "Test Agent" to return "Hello from the test agent!".
+       3. Verify "Hello from the test agent!" is rendered in the chat feed with the name "Test Agent".
    - **Implementation Requirements**: `StateGraph` factory (JSON to graph compilation), custom node execution logic.
 
 3. **Workflow Syncing**:
-   - **User Action (Soft Sync)**: Navigate via Left Sidebar $\rightarrow$ Workflow Management $\rightarrow$ edit an existing custom workflow's system prompt in the `TextArea` editor $\rightarrow$ click "Save" $\rightarrow$ In an active thread using that workflow, open Thread Settings $\rightarrow$ click the "Sync to Latest Workflow" button.
+   - **User Action (Soft Sync)**: Navigate via Left Sidebar $\rightarrow$ Workflow Management $\rightarrow$ edit the "Test Workflow" system prompt from "You are a test assistant" to "You are a pirate test assistant" in the `TextArea` editor $\rightarrow$ click "Save" $\rightarrow$ In an active thread using that workflow, open Thread Settings $\rightarrow$ click the "Sync to Latest Workflow" button.
    - **Expected Outcome (Soft Sync)**:
      - A "Soft Sync" is performed (detects only prompt/preset changes).
      - `workflowSnapshot` in the thread record is updated.
      - History and checkpoints are preserved (verified by asserting that `messages` store size remains unchanged).
    - **Implementation Requirements**: `WorkflowSyncing` state machine, `threads` store `workflowSnapshot` update.
-   - **User Action (Hard Sync)**: Navigate via Left Sidebar $\rightarrow$ Workflow Management $\rightarrow$ edit a custom workflow's topology (e.g. add a new node/edge) in the `TextArea` editor $\rightarrow$ click "Save" $\rightarrow$ In an active thread using that workflow, open Thread Settings $\rightarrow$ click the "Sync to Latest Workflow" button $\rightarrow$ click the "Confirm Sync" button in the warning modal.
+   - **User Action (Hard Sync)**: Navigate via Left Sidebar $\rightarrow$ Workflow Management $\rightarrow$ edit the "Test Workflow" topology by adding a second agent node:
+     ```json
+     {
+       "name": "Test Workflow",
+       "description": "A simple test workflow",
+       "nodes": [
+         { "id": "n1", "type": "agent", "name": "Test Agent 1", "systemPrompt": "You are a test assistant" },
+         { "id": "n2", "type": "agent", "name": "Test Agent 2", "systemPrompt": "You are another test assistant" }
+       ],
+       "edges": [ { "from": "n1", "to": "n2" } ]
+     }
+     ```
+     $\rightarrow$ click "Save" $\rightarrow$ In an active thread using that workflow, open Thread Settings $\rightarrow$ click the "Sync to Latest Workflow" button $\rightarrow$ click the "Confirm Sync" button in the warning modal.
    - **Expected Outcome (Hard Sync)**:
      - A "Hard Sync" is detected.
      - A confirmation modal is displayed warning that history will be purged.
@@ -2650,11 +2695,11 @@ test('full chat flow', async () => {
 ### Phase 8: Error Recovery
 
 1. **Transient API Error**:
-   - **User Action**: Trigger a workflow run and simulate a transient API error (e.g. a 500 Internal Server Error or a network timeout).
+   - **User Action**: Trigger a workflow run and simulate a transient API error (e.g. mock a 500 Internal Server Error from the LLM provider).
    - **Expected Outcome**:
      - The graph runner actor performs automatic retries (exponential backoff).
-     - If retries fail, `ExecutionState` transitions to `error`.
-     - An Error Bubble is rendered inline at the end of the chat feed, showing the error code and a "Retry" button.
+     - If retries fail (e.g. after 3 attempts), `ExecutionState` transitions to `error`.
+     - An Error Bubble is rendered inline at the end of the chat feed, showing the error code (e.g. "API Error 500") and a "Retry" button.
      - Main chat input is disabled.
    - **Implementation Requirements**: `graphRunnerActor` retry logic, `ExecutionState` error transition, Error Bubble rendering.
 
