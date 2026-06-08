@@ -736,11 +736,12 @@ To ensure the application is implemented correctly and can be verified in a test
 - **Then**:
   - A new thread record is created in the `threads` store with `status: "executing"`. Verify that `workflowId` and `activePresetId` are correctly set based on the selection.
   - A user message "Hello" is created in the `messages` store with `sequence: 0`.
-  - An API request is dispatched to the LLM provider. Verify the request payload contains the user message "Hello" and the default system prompt for the agent.
+  - An API request is dispatched to the LLM provider. Use MSW to intercept the request and verify the `POST` body:
+    - If using Gemini/OpenRouter, verify the roles and content are correctly mapped (e.g., the "Hello" message has `role: "user"`).
+    - Verify that the final payload includes the system prompt for the agent, merged according to the "Message Compilation" rules (Section 1 of DB Schema).
   - Mock the API response with content "Hello! How can I help you today?" and usage `{ prompt_tokens: 10, completion_tokens: 15 }`.
-  - An assistant message is created in the `messages` store with `sequence: 1`, content "Hello! How can I help you today?", and the usage metadata.
-  - A checkpoint is created in the `checkpoints` store mapping to the assistant's message.
-  - The thread record's `latestCheckpointId` and `tokenStats` are updated. Verify `tokenStats` are updated to `{ promptTokens: 10, completionTokens: 15, totalTokens: 25 }`.
+  - **Order of DB Writes**: Verify that the assistant message is created in the `messages` store first (with `sequence: 1`, content "Hello! How can I help you today?", and usage metadata), followed by the creation of a checkpoint record in the `checkpoints` store, and finally the update of the thread record's `latestCheckpointId` and `tokenStats`.
+  - Verify `tokenStats` are updated to `{ promptTokens: 10, completionTokens: 15, totalTokens: 25 }` in the `threads` store.
   - UI displays both messages in the chat feed, and the input field is re-enabled once execution returns to `inactive`.
 
 ### 2. Multi-Agent Debate Flow
@@ -760,7 +761,7 @@ To ensure the application is implemented correctly and can be verified in a test
       - `Debater_B` executes $\rightarrow$ a message with `role: "assistant"` and `name: "Debater_B"` is created in the `messages` store $\rightarrow$ verify `lastAgentId` updated to `"Debater_B"` $\rightarrow$ `Consensus_Evaluator_B` executes.
       - Mock `Consensus_Evaluator_B` response: `{"consensusReached": false, "reasoning": "No agreement yet"}`.
       - Verify routing back to `Debater_A`.
-      - Verify `currentRound` in the graph state increments to `2` upon entering `Debater_A` again.
+      - Verify `currentRound` in the graph state increments to `2` upon entering `Debater_A` again. This is verified by inspecting the `checkpoint` record for the current step in the `checkpoints` store.
     - **Round 2**:
       - Mock `Debater_A` response: calls `declare_consensus` tool with `reasoning: "We agree on the basics"` and `agreedPoints: ["Point A", "Point B"]`.
       - `Debater_A` executes $\rightarrow$ a tool call message is created in the `messages` store $\rightarrow$ verify `lastAgentId` updated to `"Debater_A"`.
@@ -790,7 +791,7 @@ To ensure the application is implemented correctly and can be verified in a test
   - A `tool` result message containing the answers is written to the `messages` store. Verify it follows the `AskQuestionsResponse` schema: `answers: { Q1: { selected: ["Blue"] }, Q2: { selected: ["Speed", "Safety"] }, Q3: { text: "Great tool!" } }`.
   - `threads.activeInterrupt` is cleared and `draftAnswers` for this `toolCallId` are deleted from the thread record.
   - Execution resumes and continues to the next node in the graph.
-  - **Page reload restoration**: Simulate a page reload by unmounting and re-mounting the chat component while the form is active (providing the same `currentThreadId`). Verify the form restores the user's current selections from `draftAnswers` in IndexedDB.
+  - **Page reload restoration**: Simulate a page reload by unmounting and re-mounting the chat component while the form is active (providing the same `currentThreadId`). Verify the form restores the user's current selections from `draftAnswers` in IndexedDB. Additionally, verify that `draftAnswers` are written to the `threads` store in real-time on every change to a form field (on-change) to ensure no loss of data if the page is closed.
 
 ### 4. Budget Enforcement Flow
 - **Given**: A preset configured in the `presets` store with `maxStepsWithoutUser: 2` and `maxTokensPerRun: null`.
@@ -811,7 +812,7 @@ To ensure the application is implemented correctly and can be verified in a test
 - **Then**:
   - A new thread record is created in the `threads` store. Verify `parentThreadId` and `parentMessageId` (sequence 2's UUID) are correctly set.
   - Messages with `sequence <= 2` are cloned from the parent thread to the new thread in the `messages` store. Verify exactly 3 messages are cloned, each with newly generated UUIDs but preserving their `sequence` and `content`.
-  - All checkpoints and `checkpoint_writes` associated with these cloned messages (identified by their `[checkpointNs, checkpointId]` pairs) are cloned to the new thread's records in IndexedDB. Verify the cloned checkpoints have keys matching the new `threadId` but preserve their `checkpoint` state.
+  - All checkpoints and `checkpoint_writes` associated with these cloned messages (identified by their `[checkpointNs, checkpointId]` pairs) are cloned to the new thread's records in IndexedDB. Verify the cloned checkpoints and writes have keys matching the new `threadId` (i.e., compound keys `[newThreadId, checkpointNs, checkpointId]` and `[newThreadId, checkpointNs, checkpointId, taskId, idx]`) but preserve their internal `checkpoint` and `value` state.
   - The new thread's `latestCheckpointId` and `latestCheckpointNs` are set to the checkpoint of the branched message (sequence 2).
   - URL route changes to the new thread ID, and UI displays the cloned history.
 
