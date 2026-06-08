@@ -749,7 +749,7 @@ To ensure the application is implemented correctly and can be verified in a test
 
 ### 2. Multi-Agent Debate Flow
 - **Given**: App is initialized with valid API keys.
-- **When**: User starts a new chat with the "Debate" workflow, seeds it with a topic (e.g., "AI safety").
+- **When**: User starts a new chat with the "Debate" workflow, seeds it by sending a user message with a topic (e.g., "AI safety").
 - **Then**:
   - **Phase 1 (Seeding)**:
     - Mock `Initiator` response: "Let's debate AI safety. The core question is..."
@@ -764,7 +764,7 @@ To ensure the application is implemented correctly and can be verified in a test
       - `Debater_B` executes $\rightarrow$ a message with `role: "assistant"` and `name: "Debater_B"` is created in the `messages` store $\rightarrow$ verify `lastAgentId` in the `GraphState` is updated to `"Debater_B"` $\rightarrow$ `Consensus_Evaluator_B` executes.
       - Mock `Consensus_Evaluator_B` response: `{"consensusReached": false, "reasoning": "No agreement yet"}`.
       - Verify routing back to `Debater_A`.
-      - Verify `currentRound` in the graph state increments to `2` upon entering `Debater_A` again. This is verified by inspecting the `checkpoint` record for the current step in the `checkpoints` store.
+      - Verify `currentRound` in the graph state increments to `2` upon entering `Debater_A` again. This is verified by inspecting the `checkpoint` record created immediately after `Consensus_Evaluator_B` executes and routes to `Debater_A`, ensuring the updated round count is persisted in the graph state.
     - **Round 2**:
       - Mock `Debater_A` response: calls `declare_consensus` tool with `reasoning: "We agree on the basics"` and `agreedPoints: ["Point A", "Point B"]`.
       - `Debater_A` executes $\rightarrow$ a tool call message is created in the `messages` store $\rightarrow$ verify `lastAgentId` updated to `"Debater_A"`.
@@ -829,17 +829,21 @@ To ensure the application is implemented correctly and can be verified in a test
   - The thread's `latestCheckpointId` and `latestCheckpointNs` are updated to match `CP1`.
   - Message 2 is updated with new content in the `messages` store. Assert that the DB record for message 2 now contains the updated text.
   - Verify `tokenStats` are accurately recalculated by summing usage of messages 0, 1, and the edited message 2.
-  - **Execution Resume**: Upon clicking Resume, verify that `graph.updateState` is called with the edited message 2's content to synchronize it into the LangGraph state before the runner calls `graph.stream`.
+  - **Execution Resume**: Upon clicking Resume, verify that `graph.updateState` is called with the edited message 2's content to synchronize it into the LangGraph state. Verify that a new synchronized checkpoint $C_{new}$ is created and written to the `checkpoints` store before the runner calls `graph.stream`.
 
 ### 7. System Message Injection Flow
 - **Given**: 
   - A global system message "Use professional tone" configured at depth 0.
   - A workflow-specific system message "Be extremely concise" configured at depth 0.
+  - A global system message "Use professional tone" (duplicate) configured at depth 1.
+  - A workflow-specific system message "Always start with 'Hello!'" configured at depth 1.
 - **When**: User starts a chat and sends a message.
 - **Then**:
-  - The "Preview API Payload" modal shows a `system` role message "Be extremely concise\n\nUse professional tone" at the very beginning (index 0) of the messages array.
-  - Verify that the workflow-specific message ("Be extremely concise") appears before the global message ("Use professional tone") in the merged content.
-  - Verify that this merged system message is NOT stored in the `messages` store or checkpoints.
+  - **Index 0 Merging & Precedence**: The "Preview API Payload" modal shows a `system` role message "Be extremely concise\n\nUse professional tone" at the very beginning (index 0) of the messages array. Verify that the workflow-specific message ("Be extremely concise") appears before the global message ("Use professional tone").
+  - **Deduplication**: Verify that the duplicate global system message "Use professional tone" at depth 1 is discarded and not included in the payload.
+  - **Positive Depth Injection**: Verify that the system message "Always start with 'Hello!'" is injected at index 1. For APIs that do not support arbitrary system roles (like Gemini), verify it is mapped to a `user` role message with the content prefixed as `[System Notification]: Always start with 'Hello!'`.
+  - **Non-Entry Agent Verification**: Change the agent selector in the "Preview API Payload" modal to a non-entry agent (e.g., `Debater_B` in a debate workflow). Verify that this agent's specific system prompt is also correctly merged with the global system messages at the specified depths.
+  - **Persistence**: Verify that none of these injected or merged system messages are stored in the `messages` store or checkpoints.
   - Verify that if only one system message is configured at depth 0, it is correctly placed at the start of the payload.
 
 ### 8. Workflow Customization Flow
@@ -893,10 +897,9 @@ To ensure the application is implemented correctly and can be verified in a test
   - Verify a new record is created in the `workflows` store with the serialized graph definition.
   - User starts a new chat, selects this custom workflow from the "New Chat" panel, and sends a message.
   - Verify the thread record's `workflowSnapshot` is an exact copy of the workflow JSON.
+  - User deletes the custom workflow from the Workflow Management view. Verify the record is removed from the `workflows` store.
+  - Verify that the thread still functions correctly and can be resumed or continued, as it uses the `workflowSnapshot` stored in the `threads` record rather than querying the `workflows` store.
   - Verify the graph execution follows the defined sequence (Node A $\rightarrow$ Node B) and creates corresponding messages in the `messages` store. Verify that the messages are created in the correct `sequence` order and that the `name` field of each message matches the `name` defined in the `WorkflowNode` (e.g. "Agent A", then "Agent B").
-  - User deletes the custom workflow.
-  - Verify the record is removed from the `workflows` store.
-  - Verify that an existing thread using this workflow still functions correctly because it uses the `workflowSnapshot` stored in the `threads` record.
 
 ## User Interface (UI) Specification
 
