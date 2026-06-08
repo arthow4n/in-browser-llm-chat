@@ -746,16 +746,16 @@ To ensure the application is implemented correctly and can be verified in a test
 - **Given**: App is initialized with valid API keys.
 - **When**: User starts a new chat with the "Debate" workflow, seeds it with a topic (e.g., "AI safety").
 - **Then**:
-  - **Phase 1 (Seeding)**: `Initiator` node executes $\rightarrow$ message created in `messages` store $\rightarrow$ verify `lastAgentId` in graph state is updated to `"Initiator"` $\rightarrow$ routing to `Debater_A`.
+  - **Phase 1 (Seeding)**: `Initiator` node executes $\rightarrow$ a message with `role: "assistant"` and `name: "Initiator"` is created in the `messages` store $\rightarrow$ verify `lastAgentId` in graph state is updated to `"Initiator"` $\rightarrow$ verify that the next node scheduled for execution is `Debater_A`.
   - **Phase 2 (Looping)**:
-    - `Debater_A` executes $\rightarrow$ message created $\rightarrow$ verify `lastAgentId` updated to `"Debater_A"` $\rightarrow$ `Consensus_Evaluator_A` executes $\rightarrow$ (if no consensus) routes to `Debater_B`.
-    - `Debater_B` executes $\rightarrow$ message created $\rightarrow$ verify `lastAgentId` updated to `"Debater_B"` $\rightarrow$ `Consensus_Evaluator_B` executes $\rightarrow$ (if no consensus) routes back to `Debater_A`.
-    - Verify `currentRound` increments each time execution transitions back to `Debater_A`.
+    - `Debater_A` executes $\rightarrow$ a message with `role: "assistant"` and `name: "Debater_A"` is created in the `messages` store $\rightarrow$ verify `lastAgentId` updated to `"Debater_A"` $\rightarrow$ `Consensus_Evaluator_A` executes $\rightarrow$ (if no consensus) verify it routes to `Debater_B`.
+    - `Debater_B` executes $\rightarrow$ a message with `role: "assistant"` and `name: "Debater_B"` is created in the `messages` store $\rightarrow$ verify `lastAgentId` updated to `"Debater_B"` $\rightarrow$ `Consensus_Evaluator_B` executes $\rightarrow$ (if no consensus) verify it routes back to `Debater_A`.
+    - Verify `currentRound` in the graph state increments each time execution transitions back to `Debater_A`.
   - **Phase 3 (Consensus)**:
-    - `Debater_A` invokes `declare_consensus` tool $\rightarrow$ tool result message created in `messages` store $\rightarrow$ verify `consensusReached` set to `true` in graph state.
-    - `Consensus_Evaluator_A` detects `consensusReached: true` $\rightarrow$ routes to `Summarizer` along the `on_consensus` edge.
+    - `Debater_A` invokes `declare_consensus` tool $\rightarrow$ a tool result message is created in the `messages` store $\rightarrow$ verify `consensusReached` is set to `true` in the graph state.
+    - `Consensus_Evaluator_A` detects `consensusReached: true` in graph state $\rightarrow$ routes to `Summarizer` along the `on_consensus` edge.
   - **Phase 4 (Termination)**:
-    - `Summarizer` executes $\rightarrow$ final summary message created $\rightarrow$ execution transitions to `inactive`.
+    - `Summarizer` executes $\rightarrow$ a final summary message with `name: "Summarizer"` is created in the `messages` store $\rightarrow$ execution transitions to `inactive`.
     - UI displays the full sequence of agents and the final summary.
 
 ### 3. `ask_questions` Tool Flow
@@ -778,7 +778,7 @@ To ensure the application is implemented correctly and can be verified in a test
   - The thread record's `activeInterrupt` is set to `{ type: "budget_exceeded", ... }`.
   - UI renders the "Budget Exceeded Card". Verify it correctly displays the current token count and step count from the interrupt details.
   - User clicks "Increase Budget & Resume".
-  - Verify a temporary budget override is applied to the runner's context and persisted as intended.
+  - Verify that the runner's context is updated with the new budget limit and that the 3rd step now executes successfully without triggering another budget interrupt.
   - Execution resumes and completes the 3rd step.
 
 ### 5. Thread Branching Flow
@@ -816,7 +816,7 @@ To ensure the application is implemented correctly and can be verified in a test
 - **When**: User starts a new chat selecting this custom workflow.
 - **Then**:
   - The `workflowSnapshot` in the `threads` record matches the JSON from the `workflows` store.
-  - Verify the graph successfully executes a non-linear path (e.g. a loop) as defined in the custom JSON.
+  - Verify that the graph executes the nodes in the sequence specified in the custom JSON (e.g., Node A $\rightarrow$ Node B $\rightarrow$ Node A), with each node's execution resulting in a corresponding message in the `messages` store.
   - The graph executes nodes in the order and condition defined in the custom JSON.
 
 ### 9. Cascading Deletion Flow
