@@ -91,8 +91,17 @@
     - [Phase 9: Storage Maintenance](#phase-9-storage-maintenance)
   - [Testing Guidelines](#testing-guidelines)
     - [Examples](#examples)
-  - [Integration User Flow Test Plan](#integration-user-flow-test-plan) - [Phase 1: First Launch & Onboarding](#phase-1-first-launch--onboarding) - [Phase 2: Basic Chatting (Single Agent)](#phase-2-basic-chatting-single-agent) - [Phase 3: Advanced Chatting (Multi-Agent / Debate)](#phase-3-advanced-chatting-multi-agent--debate) - [Phase 4: Interactive Tools (`ask_questions`)](#phase-4-interactive-tools-ask_questions) - [Phase 5: Workflow & Preset Management](#phase-5-workflow--preset-management) - [Phase 6: Thread Life-cycle & History Manipulation](#phase-6-thread-life-cycle--history-manipulation) - [Phase 7: Global Configs & Budgeting](#phase-7-global-configs--budgeting) - [Phase 8: Error Recovery](#phase-8-error-recovery)
-  <!-- ENDTOC -->
+  - [Integration User Flow Test Plan](#integration-user-flow-test-plan)
+    - [Phase 1: First Launch & Onboarding](#phase-1-first-launch--onboarding)
+    - [Phase 2: Basic Chatting (Single Agent)](#phase-2-basic-chatting-single-agent)
+    - [Phase 3: Advanced Chatting (Multi-Agent / Debate)](#phase-3-advanced-chatting-multi-agent--debate)
+    - [Phase 4: Interactive Tools (`ask_questions`)](#phase-4-interactive-tools-ask_questions)
+    - [Phase 5: Workflow & Preset Management](#phase-5-workflow--preset-management)
+    - [Phase 6: Thread Life-cycle & History Manipulation](#phase-6-thread-life-cycle--history-manipulation)
+    - [Phase 7: Global Configs & Budgeting](#phase-7-global-configs--budgeting)
+    - [Phase 8: Error Recovery](#phase-8-error-recovery)
+
+<!-- ENDTOC -->
 
 This is a scratchpad for writing down vague ideas for building this LLM chat app for personal use. The goal is to provide a clear specification so that the coding agent can later build the app with minimal human intervention while still aligning with the user's vision.
 

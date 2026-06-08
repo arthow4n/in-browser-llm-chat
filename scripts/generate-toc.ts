@@ -60,7 +60,7 @@ async function main() {
     process.exit(1);
   }
 
-  const replacement = `${startMarker}\n${warning}\n${toc}\n${endMarker}`;
+  const replacement = `${startMarker}\n${warning}\n\n${toc}\n\n${endMarker}`;
   const newContent = content.replace(tocRegex, replacement);
 
   if (content === newContent) {
