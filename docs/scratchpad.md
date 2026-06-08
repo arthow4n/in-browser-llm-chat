@@ -2486,7 +2486,7 @@ test('full chat flow', async () => {
 3. **Conversation Continuity**:
    - **User Action**: Type "What can you do?" into the main chat input area $\rightarrow$ click the "Send" button.
    - **Expected Outcome**:
-     - Mock the LLM to respond based on previous context (e.g. "As mentioned, I can help you with X and Y").
+     - Mock the LLM to return exactly: "As mentioned, I can help you with coding and debugging tasks."
      - LLM responds and the response is rendered in the chat feed.
      - Messages are displayed in correct sequential order (User -> Assistant -> User -> Assistant).
    - **Implementation Requirements**: `graphRunnerActor` loading latest checkpoint, `messages` store query for historical context, LLM API call with compiled context.
@@ -2563,7 +2563,7 @@ test('full chat flow', async () => {
        }
        ```
      - `ExecutionState` transitions back to `executing`.
-     - Mock the LLM to return a response that acknowledges the provided answers, e.g.: "Got it, you want to build a chat app with React."
+     - Mock the LLM to return exactly: "Got it, you want to build a chat app with React. I can help you with that!"
      - The agent's final response is rendered in the chat feed.
    - **Implementation Requirements**: `AskQuestionsForm` state machine, `threads` store `draftAnswers` write, `messages` store write (tool result), `ExecutionState` transition to `executing`.
 
@@ -2654,7 +2654,7 @@ test('full chat flow', async () => {
    - **Expected Outcome**:
      - Thread status is set to `"deleting"` in the `threads` store.
      - Thread disappears from the sidebar immediately.
-     - Messages and checkpoints are eventually deleted from the `messages`, `checkpoints`, and `checkpoint_writes` stores via background batches.
+     - Using `vi.runAllTimers()` or a short polling interval, verify that the messages, checkpoints, and checkpoint_writes stores for the deleted thread are empty, and finally, that the thread record itself is removed from the `threads` store.
    - **Implementation Requirements**: `LeftSidebar` state machine, optimistic status update, asynchronous chunked deletion pipeline (`requestIdleCallback`), `threads`/`messages`/`checkpoints`/`checkpoint_writes` store deletes.
 
 ### Phase 7: Global Configs & Budgeting
@@ -2662,7 +2662,7 @@ test('full chat flow', async () => {
 1. **System Message Injection**:
    - **User Action**: Navigate via Left Sidebar $\rightarrow$ Global Settings $\rightarrow$ click the "Add Injected Message" button $\rightarrow$ enter "Respond in the style of a pirate" in the content input and "0" in the depth input $\rightarrow$ click the "Save Settings" button $\rightarrow$ create a new chat.
    - **Expected Outcome**:
-     - Mock the LLM to include pirate-themed language (e.g. "Ahoy", "Matey") in its response.
+     - Mock the LLM to return exactly: "Ahoy there, matey! I be ready to help ye with yer questions!"
      - LLM responds as a pirate, and the response is rendered in the chat feed.
      - API Payload Preview modal shows the injected message at the start (index 0) of the payload.
    - **Implementation Requirements**: `GlobalSettingsForm` state machine, `settings` store write, LLM compiler system message injection logic.
@@ -2688,7 +2688,7 @@ test('full chat flow', async () => {
    - **Expected Outcome**:
      - Temporary budget override is applied (original limit added to current usage).
      - Execution resumes from the last checkpoint.
-     - Mock the LLM to return a final response.
+     - Mock the LLM to return exactly: "Budget increased. I have now completed the task as requested."
      - `Budget Exceeded Card` transitions to a completed/read-only state.
    - **Implementation Requirements**: `BudgetExceededCard` state machine, `RESUME_WITH_BUDGET_OVERRIDE` event, `graphRunnerActor` `budgetOverride` context update.
 
