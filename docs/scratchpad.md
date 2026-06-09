@@ -3,7 +3,7 @@
 <!-- TOC -->
 <!-- This Table of Contents is generated automatically. Do not edit it manually. -->
 
-- [Scratchpad](#scratchpad)
+- [Scratchpad](#scratchpad) - [V. Chat Feed Auto-Scroll State Machine](#v-chat-feed-auto-scroll-state-machine)
   - [Tech stack](#tech-stack)
   - [Features and use cases to support](#features-and-use-cases-to-support)
   - [Technical Architecture Proposals](#technical-architecture-proposals)
@@ -77,7 +77,7 @@
       - [G. Checkpoint Compaction Dialog State Machine](#g-checkpoint-compaction-dialog-state-machine)
       - [H. Inline Message Editor & Action State Machine](#h-inline-message-editor--action-state-machine)
       - [I. Main Application Layout State Machine](#i-main-application-layout-state-machine)
-      - [J. Left Sidebar State Machine](#j-left-sidebar-state-machine)
+      - [J. SideNav State Machine](#j-sidenav-state-machine)
       - [K. Preset Editor State Machine](#k-preset-editor-state-machine)
       - [L. Workflow JSON Editor State Machine](#l-workflow-json-editor-state-machine)
       - [M. Graph Runner Actor State Machine](#m-graph-runner-actor-state-machine)
@@ -163,7 +163,7 @@ This file will be collaboratively updated by the human user and the coding agent
 - Thread management CRUD
   - Current thread ID is synced with the URL so refreshing leads to the same thread.
   - Thread-level presets are strictly inherited from the selected preset. The active preset is displayed as a dropdown trigger in the Chat Header, allowing quick switching. A configure icon next to it allows editing the preset in a modal panel. If a built-in preset is edited, the UI prompts the user to "Clone and Customize" to create a new custom preset copy.
-  - Cascading deletes for thread checkpoints, checkpoint writes, and messages are performed in batched transactions (deleting up to 500 records per chunk) scheduled asynchronously via `requestIdleCallback` to keep the UI responsive. See the [Left Sidebar State Machine](#j-left-sidebar-state-machine) section for complete transaction and scheduling details.
+  - Cascading deletes for thread checkpoints, checkpoint writes, and messages are performed in batched transactions (deleting up to 500 records per chunk) scheduled asynchronously via `requestIdleCallback` to keep the UI responsive. See the [SideNav State Machine](#j-sidenav-state-machine) section for complete transaction and scheduling details.
   - Active thread workflows use a snapshot (`workflowSnapshot`) stored in the thread record. If the custom workflow definition is modified in the Workflow Manager, it does not affect already active/paused threads. Users can manually sync the thread to the latest workflow definition via a "Sync to Latest Workflow" button in the thread settings. The sync feature automatically detects if the update is a simple update to system prompts or presets (i.e. identical node IDs and edges). If so, it performs a "Soft Sync" that updates the `workflowSnapshot` inline without clearing the message history or checkpoints, allowing execution to resume with the new prompts/presets. If the graph topology has changed (nodes or edges added, removed, or renamed), it performs a "Hard Sync" (destructive) which prompts the user for confirmation, updates the snapshot, and purges all checkpoints/messages for the thread. A Hard Sync purges all checkpoints and message history, resetting the thread's chat feed to an empty state, while preserving the thread's metadata (such as its title, creation date, and selected preset ID).
 - System message management CRUD for automatically inserting system message to agents upon API request, but these automatically inserted messages shouldn't be persisted in the chat history.
   - Should support insertion depth (similar to SillyTavern, should be able to specify to attach system message at the Nth message from the beginning/end of the chat messages thread).
@@ -716,7 +716,7 @@ When the user confirms the deletion of a thread:
 1. **Phase 1: UI Optimistic Invalidation (Immediate)**:
    - The deletion processor opens a quick, atomic read-write transaction on the `threads` store.
    - It updates the thread record's status to `"deleting"`.
-   - The Left Sidebar navigation immediately filters out any thread with status `"deleting"` from the rendered thread list context. To the user, the deletion appears instantaneous and zero-latency. If the active thread was deleted, the UI immediately redirects the URL route to a new empty chat view or the next available thread.
+   - The SideNav navigation immediately filters out any thread with status `"deleting"` from the rendered thread list context. To the user, the deletion appears instantaneous and zero-latency. If the active thread was deleted, the UI immediately redirects the URL route to a new empty chat view or the next available thread.
 2. **Phase 2: Asynchronous Chunking Pipeline**:
    - The deletion processor initiates an asynchronous execution loop, scheduling batches using `requestIdleCallback` (with a timeout configuration of `1000ms` as a fallback) to run during the browser's idle periods. If `requestIdleCallback` is unavailable, `setTimeout(..., 0)` or microtasks are used.
    - Each scheduled execution run performs the deletion of **at most 500 records** in a single database transaction across the child stores to keep transaction execution time under `16ms` (one frame at 60fps).
@@ -743,7 +743,7 @@ When the user confirms the deletion of a thread:
    - Open a transaction on `threads` in `readwrite` mode.
    - Delete the single thread record from the `threads` store using its `id`.
    - Commit the transaction.
-   - Dispatch `DELETE_SUCCESS` to the Left Sidebar State Machine.
+   - Dispatch `DELETE_SUCCESS` to the SideNav State Machine.
 7. **Phase 7: Error Recovery / Startup Sweep**:
    - If the user closes the browser tab or refreshes the page during the chunking loop, some messages or checkpoints will remain in the database, and the thread record will still exist with status `"deleting"`.
    - During the application initialization phase (the `ViewState.initializing` state), the coordinator queries the `threads` store for any records matching `status == "deleting"`.
@@ -879,7 +879,7 @@ To ensure the application is implemented correctly and can be verified in a test
     - **For OpenRouter**: The request messages array starts with a `role: "system"` message containing the merged system prompts, followed by the user message "Hello" as `role: "user"`.
   - Assert `tokenStats` in the `threads` store are updated to `{ promptTokens: 10, completionTokens: 15, totalTokens: 25 }`.
   - UI displays both messages in the `ChatFeed` using `MessageBubble` components (with an `Avatar` for the assistant), and the `ChatInputArea` `TextInput` field is enabled once `ExecutionState` returns to `inactive`.
-- **Exercised Components**: `ChatInputArea`, `ChatFeed`, `MessageBubble`, `LeftSidebar`, `TextInput`, `Button`, `Avatar`.
+- **Exercised Components**: `ChatInputArea`, `ChatFeed`, `MessageBubble`, `SideNav`, `TextInput`, `Button`, `Avatar`.
 - **Exercised State Machines**: `ViewState`, `ExecutionState`, `GraphRunnerActor`.
 - **Exercised Systems**: `IndexedDB`, `MSW`, `Custom Runner`, `Vercel AI SDK`.
 
@@ -994,7 +994,7 @@ To ensure the application is implemented correctly and can be verified in a test
     - Assert all checkpoints and `checkpoint_writes` associated with these cloned messages (identified by their `[checkpointNs, checkpointId]` pairs) are cloned to the new thread's records in IndexedDB. Specifically, assert that for every `checkpoint_write` in the parent thread matching the filtered `checkpointId`s, a corresponding record with the new `threadId` exists in the `checkpoint_writes` store.
     - Assert the new thread's `latestCheckpointId` and `latestCheckpointNs` are set to the checkpoint of the branched message (sequence 2).
   - UI navigates to the new thread ID using `MessageOptionsMenu` and `Toggled Sidebar` context, and displays the cloned history in the `ChatFeed`.
-- **Exercised Components**: `MessageBubble`, `OverflowMenu`, `MessageOptionsMenu`, `LeftSidebar`, `Modal`, `Button`.
+- **Exercised Components**: `MessageBubble`, `OverflowMenu`, `MessageOptionsMenu`, `SideNav`, `Modal`, `Button`.
 - **Exercised State Machines**: `ViewState`, `InlineMessageEditorAction`.
 - **Exercised Systems**: `IndexedDB`.
 
@@ -1117,17 +1117,17 @@ To ensure the application is implemented correctly and can be verified in a test
 - **Prerequisites**:
   - A thread exists with 100 messages and 100 checkpoints.
 - **Given**: A thread with 100 messages and 100 checkpoints.
-- **When**: User deletes the thread $\rightarrow$ dispatches `TRIGGER_DELETE` followed by `CONFIRM_DELETE` in the `ConfirmationModal` (rendered by `LeftSidebar` machine).
+- **When**: User deletes the thread $\rightarrow$ dispatches `TRIGGER_DELETE` followed by `CONFIRM_DELETE` in the `ConfirmationModal` (rendered by `SideNav` machine).
 - **Then**:
-  - **State Transitions**: Assert the `LeftSidebar` machine transitions `idle` $\rightarrow$ `confirmingDelete` $\rightarrow$ `deleting` $\rightarrow$ `idle`.
+  - **State Transitions**: Assert the `SideNav` machine transitions `idle` $\rightarrow$ `confirmingDelete` $\rightarrow$ `deleting` $\rightarrow$ `idle`.
   - **Event Dispatch**: Assert the `TRIGGER_DELETE` and `CONFIRM_DELETE` events are dispatched.
   - Assert the thread record's status is immediately updated to `"deleting"` in the `threads` store. Assert the thread is removed from the `SideNav` list instantly.
   - Mock `requestIdleCallback` using `vi.stubGlobal('requestIdleCallback', (cb) => cb({ didTimeout: false, timeRemaining: () => 50 }))` to execute synchronously for test efficiency.
   - Assert that messages, checkpoints, and checkpoint writes are deleted in batches (e.g. verify the `messages` store is checked in chunks of 500) using a `ConfirmationModal` for the confirmation step.
   - Once all children are deleted, assert the thread record itself is removed from the `threads` store.
   - Assert that after the process completes, no records with the deleted `threadId` remain in `messages`, `checkpoints`, or `checkpoint_writes` stores.
-- **Exercised Components**: `LeftSidebar`, `ConfirmationModal`, `Button`.
-- **Exercised State Machines**: `LeftSidebar`.
+- **Exercised Components**: `SideNav`, `ConfirmationModal`, `Button`.
+- **Exercised State Machines**: `SideNav`.
 - **Exercised Systems**: `IndexedDB`.
 
 ### 11. Preset Management Happy Path
@@ -1210,12 +1210,12 @@ To ensure the application is implemented correctly and can be verified in a test
   - **Then**: Verify Thread `T2`'s status is updated to `"inactive"` in the `threads` store.
 - **Case 3: Thread Switching during Execution**:
   - **Given**: Thread `T3` is currently in `executing` state (runner actor is active, streaming a response).
-  - **When**: User selects Thread `T4` from the Left Sidebar.
+  - **When**: User selects Thread `T4` from the SideNav.
   - **Then**:
     - Verify the `graphRunnerActor` for `T3` is stopped and its internal `AbortController` is triggered to cancel the active API request.
     - Verify `ExecutionState` transitions `executing` $\rightarrow$ `checkingStatus` $\rightarrow$ `inactive` (or `awaitingHumanInput` if `T4` was interrupted).
     - Verify that returning to `T3` later starts execution from the last successfully persisted checkpoint.
-- **Exercised Components**: `ApplicationLayout`, `LeftSidebar`.
+- **Exercised Components**: `ApplicationLayout`, `SideNav`.
 - **Exercised State Machines**: `ViewState`, `ExecutionState`, `GraphRunnerActor`.
 - **Exercised Systems**: `IndexedDB`.
 
@@ -1261,12 +1261,12 @@ To ensure the application is implemented correctly and can be verified in a test
   - **Then**: Verify Thread `T2`'s status is updated to `"inactive"` in the `threads` store.
 - **Case 3: Thread Switching during Execution**:
   - **Given**: Thread `T3` is currently in `executing` state (runner actor is active, streaming a response).
-  - **When**: User selects Thread `T4` from the Left Sidebar.
+  - **When**: User selects Thread `T4` from the SideNav.
   - **Then**:
     - Verify the `graphRunnerActor` for `T3` is stopped and its internal `AbortController` is triggered to cancel the active API request.
     - Verify `ExecutionState` transitions `executing` $\rightarrow$ `checkingStatus` $\rightarrow$ `inactive` (or `awaitingHumanInput` if `T4` was interrupted).
     - Verify that returning to `T3` later starts execution from the last successfully persisted checkpoint.
-- **Exercised Components**: `ApplicationLayout`, `LeftSidebar`.
+- **Exercised Components**: `ApplicationLayout`, `SideNav`.
 - **Exercised State Machines**: `ViewState`, `ExecutionState`, `GraphRunnerActor`.
 - **Exercised Systems**: `IndexedDB`.
 
@@ -1402,7 +1402,16 @@ These components are built using the Core Components above to create complex UI 
   - **Components**: Uses `Button`, `Badge`, and `LoadingSpinner`.
 - **`ChatInputArea`**: Complex input section using `TextInput`, `TextArea`, `Dropdown` for role selection, and `Button`.
 - **`NewChatForm`**: Initialization form using `Dropdown` for workflow/preset and `TextArea` for initial message.
-- **`AskQuestionsToolForm`**: Tool-driven form using `Card`, `TextInput`, `TextArea`, `Dropdown`, and `Button`.
+- **`AskQuestionsToolForm`**:
+  - **Structure**: A specialized tool-driven form rendered as a `Card` (variant `"prompt"`) inline in the chat feed.
+  - **Components**:
+    - Displays a sequence of questions.
+    - `single-select` questions use radio button groups.
+    - `multi-select` questions use checkbox groups.
+    - `free-text` questions use `TextInput` or `TextArea`.
+    - Contains "Submit" and "Refuse to Answer" buttons.
+  - **Interactions**: Submit button is disabled until all `required: true` questions are answered.
+  - **Sizing**: All form controls have a minimum touch target of `44x44px`.
 - **`BudgetExceededCard`**: Notification-style `Card` using `Badge` and `Button`.
 - **`ProposedActionCard`**: Approval-style `Card` using `Badge` and `Button`.
 - **`WorkflowJsonEditor`**: Editor pane combining `TextArea` and `Button` for JSON management.
@@ -1413,9 +1422,21 @@ These components are built using the Core Components above to create complex UI 
 - **`ThreadSettingsModal`**: Management modal using `TextInput`, `Dropdown`, `Button`, and `Modal`.
 - **`ConfirmationModal`**: A generic confirmation dialog featuring a title, description, and "Confirm"/"Cancel" buttons.
 - **`PromptingBranchModal`**: A specialized modal for naming a new branched thread.
-- **`ApiPayloadPreviewModal`**: A modal for inspecting the JSON payload sent to LLM APIs, featuring an agent selector and a JSON code view.
+- **`ApiPayloadPreviewModal`**:
+  - **Structure**: A `Modal` displaying the current LLM API payload as a JSON `CodeView`.
+  - **Components**:
+    - An agent selector `Dropdown` allowing the user to switch between agents in the current workflow to inspect their specific payload.
+    - A `CodeView` displaying the messages array, highlighting injected system messages with an `[INJECTED]` badge.
+  - **Interactions**: Agent selection updates the displayed JSON in real-time.
 - **`InlineMessageEditor`**: A component that replaces a message bubble with a text area for inline editing.
 - **`ErrorBubble`**: Special `Card` (variant `"notification"`, theme `"danger"`) with integrated `Button` for recovery.
+- **`ChatFeed`**:
+  - **Structure**: A vertically scrollable container that manages the rendering of `MessageBubble` components in chronological order.
+  - **Features**:
+    - Implements a debounced Markdown and LaTeX rendering pipeline.
+    - Manages the `ChatFeedAutoScroll` state machine to keep the latest message or active form in view.
+    - Dynamically adjusts its `padding-bottom` based on the height of the `ChatInputArea` and `ExecutionControlPanel`.
+  - **Sizing**: Occupies the remaining vertical space of the main content area.
 - **`MessageBubble`**: Core chat unit using `Card`, `Avatar`, `Accordion` for reasoning/tools, and `OverflowMenu`.
 - **`MessageOptionsMenu`**:
   - **Structure**: A composite component that uses an `OverflowMenu` trigger. On desktop, it renders as a floating dropdown menu. On mobile viewports, it renders as a `Modal` centered in the viewport for easier touch interaction.
@@ -1430,7 +1451,7 @@ The application layout is built using a custom design system with Vanilla CSS. T
 
 ### 1. Global Navigation and Layout
 
-- **Left Sidebar Navigation (Custom Sidebar Navigation)**:
+- **SideNav Navigation (Custom Sidebar Navigation)**:
   - **Header Area**: App branding, manual theme toggle selector (Light / Dark / Auto-sync with System), and a hamburger menu button.
   - **Thread List**: A scrollable list of chat threads, showing thread titles, active workflow/preset indicators, and a branch indicator if a thread was cloned.
   - **Quick Links / Accordion**: Dedicated tabs or accordion navigation options to switch the main content area between:
@@ -1450,7 +1471,7 @@ The application layout is built using a custom design system with Vanilla CSS. T
 - **Execution & Loop Control Panel (Sticky)**:
   - **Desktop**: Rendered as a sticky control bar at the top of the chat area.
   - **Mobile**: Collapses into a compact, sticky status bar at the top or bottom of the viewport to save vertical space; tapping it opens a modal overlay containing detailed turn counters and control actions.
-  - **Controls**: Displays the current execution stats. For workflows with loops, it shows the current loop round, turn count, and token usage. For sequential workflows, it shows the current node/step, turn count, and token usage (prompt and completion tokens tracked separately, without currency calculation). Contains buttons to Pause, Resume, or Abort execution, plus "Force Consensus" / "Summarize early" buttons specifically visible during loop workflows.
+  - **Controls**: Displays the current execution stats. For workflows with loops, it shows the current loop round, turn count, and token usage. For sequential workflows, it shows the current node/step, turn count, and token usage (prompt and completion tokens tracked separately, without currency calculation). Contains buttons to Pause, Resume, or Abort execution, plus "Force Consensus" (triggers `graph.updateState` to set `consensusReached: true`) and "Summarize early" (triggers `FORCE_SUMMARIZE` to bypass remaining loop nodes) buttons specifically visible during loop workflows.
 - **Chat Feed**:
   - **Message Bubbles**: Render user and assistant/agent messages with rich markdown formatting, GitHub Flavored Markdown (e.g. tables, checkboxes), and LaTeX math support (both inline and block equations). During active streaming, the rendering of Markdown and LaTeX will be debounced by 100ms. A lightweight streaming text renderer will display incoming text immediately without full Markdown/LaTeX compilation. When the 100ms debounce interval is reached, or when the stream naturally completes a chunk, the full `react-markdown` compilation is triggered. This maintains smooth 60fps scrolling while ensuring math and formatted text appear promptly. Before passing the streamed string to `react-markdown`, the rendering layer checks the count of triple backticks (` ``` `). If the count is odd (meaning a block is open), it automatically appends `\n``` ` to the end of the streaming text to handle unclosed code blocks safely.
     - **Multi-Agent Distinction**: To ensure multi-agent orchestrations are readable, assistant messages MUST clearly display the name of the agent (e.g. "Debater A", "Summarizer") in a header above the message text. If multiple agents participate, assign a subtle, distinct background tint or left-border color to each agent's message bubble, deterministically generated from a hash of the agent's name to ensure visual consistency across sessions. This makes the conversation easy to follow even on small mobile screens.
@@ -1518,7 +1539,7 @@ To ensure the application UI is readable and clearly understandable on both desk
 
 - **Mobile Readability**: To prevent iOS auto-zoom on focus, all input elements (text inputs, textareas, dropdowns, and form fields in inline tools like `ask_questions`) MUST use a minimum font-size of 16px.
 - **Touch Targets**: All interactive elements (buttons, links, form controls, accordion toggles) MUST have a minimum tap target size of 44x44px.
-- **Viewport Constraints**: Modals and off-canvas elements (like the Left Sidebar) must never exceed `100vw` or `100vh`. Use appropriate `max-height` and `overflow-y: auto` for internal content to allow scrolling within the bounds of the viewport.
+- **Viewport Constraints**: Modals and off-canvas elements (like the SideNav) must never exceed `100vw` or `100vh`. Use appropriate `max-height` and `overflow-y: auto` for internal content to allow scrolling within the bounds of the viewport.
 - **Loading & Transitions**: Skeleton loaders, spinners, or localized "Thinking..." text should always replace or overlay empty views when executing API calls or database operations to give the user immediate feedback and prevent confusing "dead" states.
 - **Empty States**: All lists (threads, presets, workflows) MUST have beautifully designed empty states with a clear call-to-action (e.g., "Create your first thread") and explanatory text, rather than just showing a blank table or list.
 - **Dynamic Input Resizing**: Chat input textareas should dynamically grow in height as the user types (up to a maximum height constraint) to ensure visibility of long prompts before submitting.
@@ -2165,7 +2186,7 @@ Governs the top-level application shell, responsive navigation drawer, and globa
   - Transitions are applied instantly to prevent flashing.
 - **API Request/Response Sequence**: None (coordinated locally).
 
-#### J. Left Sidebar State Machine
+#### J. SideNav State Machine
 
 Manages the active thread list loading, searching, and thread-level cascading deletion interactions. Supports page-based infinite scrolling to efficiently handle lists with thousands of threads.
 
@@ -2793,7 +2814,7 @@ Governs renaming a thread, switching thread-specific presets, syncing workflows,
   - `SAVE_FAILURE` (contains error): Transitions to `opened.error` (updates `errorMessage`).
   - `TRIGGER_SYNC`: Dispatches `START_SYNC` to the Workflow Syncing State Machine.
   - `TRIGGER_COMPACTION`: Dispatches `START_COMPACT` to the Checkpoint Compaction Dialog State Machine.
-  - `TRIGGER_DELETE`: Dispatches `TRIGGER_DELETE` to the Left Sidebar State Machine and transitions modal to `closed`.
+  - `TRIGGER_DELETE`: Dispatches `TRIGGER_DELETE` to the SideNav State Machine and transitions modal to `closed`.
   - `DISMISS_ERROR`: Transitions `opened.error` to `opened.idle` (clears `errorMessage`).
 - **Database Reads/Writes**:
   - **Reads**: Reads target thread details from the `threads` store, and active presets list from the `presets` store.
@@ -3036,7 +3057,7 @@ To ensure a stable and iterative development process, the implementation should 
 
 2. **Global State & Navigation Shell**:
    - Implement the Parent Coordinator XState machine (`ViewState` and `ExecutionState`).
-   - Build the basic application layout using our custom design system with Vanilla CSS, including the Left Sidebar and the responsive navigation drawer.
+   - Build the basic application layout using our custom design system with Vanilla CSS, including the SideNav and the responsive navigation drawer.
    - Integrate React Router for thread-based routing.
    - Implement the Global Settings and Onboarding flow.
 
