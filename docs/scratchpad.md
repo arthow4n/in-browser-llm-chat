@@ -1519,9 +1519,12 @@ To ensure full implementation, the following mapping defines which components ar
 
 - **`Notification` / `Banner`**:
   - **Variants**:
-    - `global`: Fixed at the top of the viewport.
-    - `inline`: Rendered within the content flow (e.g., under a form).
-  - **Types**: `info`, `success`, `warning`, `error`.
+    - `global`: Fixed at the top of the viewport, spanning full width.
+    - `inline`: Rendered within the content flow (e.g. under a form).
+  - **Types**:
+    - `info` (blue), `success` (green), `warning` (yellow), `error` (red).
+  - **Structure**: A container with a background color matching the type, a leading status icon (e.g. checkmark for success, warning sign for warning), a primary message, and an optional "Dismiss" button (ghost variant) in the top-right corner.
+  - **Sizing**: Minimum height of `44px`. Padding of `12px 16px`. Text is centered vertically.
 
 - **`RadioGroup`**:
   - **Structure**: A group of radio inputs with associated labels.
