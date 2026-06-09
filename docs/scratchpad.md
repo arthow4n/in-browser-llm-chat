@@ -1424,11 +1424,11 @@ To achieve a premium, fluid feel, all UI transitions must adhere to the followin
 
 To ensure full implementation, the following mapping defines which components are used in each view:
 
-- **Global Navigation & Layout**: `SideNav`, `ApplicationLayout`, `Button`, `Dropdown`, `Notification`.
-- **Main Chat Interface**: `ChatHeader`, `ExecutionControlPanel`, `ChatFeed`, `MessageBubble`, `ChatInputArea`, `NewChatForm`, `BudgetExceededCard`, `ProposedActionCard`, `AskQuestionsToolForm`, `ErrorBubble`, `InlineMessageEditor`, `MessageOptionsMenu`, `ApiPayloadPreviewModal`, `CodeBlockControl`, `Avatar`, `Accordion`, `Badge`, `LoadingSpinner`.
-- **Workflow Management**: `WorkflowListView`, `WorkflowJsonEditor`, `TextArea`, `Button`, `Card`, `Badge`.
+- **Global Navigation & Layout**: `SideNav`, `ApplicationLayout`, `Button`, `Dropdown`, `Notification`, `Modal`.
+- **Main Chat Interface**: `ChatHeader`, `ExecutionControlPanel`, `ChatFeed`, `MessageBubble`, `ChatInputArea`, `NewChatForm`, `BudgetExceededCard`, `ProposedActionCard`, `AskQuestionsToolForm`, `ErrorBubble`, `InlineMessageEditor`, `MessageOptionsMenu`, `ApiPayloadPreviewModal`, `CodeBlockControl`, `Avatar`, `Accordion`, `Badge`, `LoadingSpinner`, `CodeView`.
+- **Workflow Management**: `WorkflowListView`, `WorkflowJsonEditor`, `TextArea`, `Button`, `Card`, `Badge`, `RadioGroup`, `CheckboxGroup`.
 - **LLM Preset CRUD**: `PresetListView`, `PresetEditor`, `TextInput`, `Dropdown`, `Button`, `Card`, `Badge`.
-- **Global Settings**: `GlobalSettingsForm`, `TextInput`, `Dropdown`, `Button`, `Notification`.
+- **Global Settings**: `GlobalSettingsForm`, `TextInput`, `Dropdown`, `Button`, `Notification`, `CheckpointCompactionDialog`.
 - **Thread Management**: `ThreadSettingsModal`, `ConfirmationModal`, `PromptingBranchModal`.
 
 - **`Text` Components**:
@@ -1604,8 +1604,23 @@ These components are built using the Core Components above to create complex UI 
 - **`ChatInputArea`**:
   - **Structure**: A composite input section containing a role selector `Dropdown`, a dynamic `TextArea` for user input, and a `Button` for submission.
   - **Interactions**: Supports `Shift+Enter` for newlines and `Enter` for submission (on desktop). Controls are dynamically disabled/enabled based on the `ExecutionState`.
+  - **Sizing**: Minimum height of `48px` to ensure all interactive elements meet the `44x44px` touch target requirement. Dynamic height expansion up to a maximum constraint.
 
-- **`NewChatForm`**:
+- **`Modal`**:
+  - **Structure**: A base generic modal overlay used as a wrapper for specific dialogs.
+  - **Components**: A semi-transparent backdrop, a centered content container with a title bar (containing a close button), a scrollable body, and a footer for primary/secondary action buttons.
+  - **Animations**: Smooth fade-in and scale-up transitions.
+  - **Accessibility**: Focus trapping and "Escape" key to close.
+
+- **`GlobalSettingsForm`**:
+  - **Structure**: A full-page configuration form for managing API keys, theme preferences, and injected system messages.
+  - **Components**: Uses `TextInput` (masked for keys), `Dropdown` for theme, and a dynamic list of `TextInput` pairs for system messages.
+  - **Interactions**: Triggers API key validation on save and dynamic theme updates across the app.
+
+- **`CheckpointCompactionDialog`**:
+  - **Structure**: A specialized `ConfirmationModal` for purging historical checkpoints.
+  - **Components**: Warning text explaining the consequences of compaction and a "Confirm Compact" button.
+  - **Interactions**: triggers the database purge of all checkpoints except the latest active one.
   - **Structure**: A centered layout displayed when no thread is active.
   - **Components**:
     - Workflow Selector: A `Dropdown` for selecting the starting workflow (built-in or custom).
