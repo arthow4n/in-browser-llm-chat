@@ -50,6 +50,7 @@
     - [15. Lifecycle and Recovery Flow](#15-lifecycle-and-recovery-flow)
   - [Design System Description](#design-system-description)
     - [Core Components](#core-components)
+    - [Layout & Composite Components](#layout--composite-components)
   - [User Interface (UI) Specification](#user-interface-ui-specification)
     - [1. Global Navigation and Layout](#1-global-navigation-and-layout)
     - [2. Main Chat Interface](#2-main-chat-interface)
@@ -1339,6 +1340,28 @@ The application uses a custom, premium design system built with Vanilla CSS and 
 
 - **`Icon`**:
   - A library of consistent SVG icons used across all buttons and menus (e.g., `Send`, `Pause`, `Resume`, `Delete`, `Edit`, `Branch`, `Settings`, `User`, `Bot`, `ChevronDown`, `Check`, `X`).
+
+### Layout & Composite Components
+
+These components are built using the Core Components above to create complex UI sections.
+
+- **`SideNav`**: Navigation drawer containing `Button`, `Dropdown`, and `Card` based thread items.
+- **`ChatHeader`**: Top bar featuring a `Dropdown` for presets and `Button` for payload preview.
+- **`ExecutionControlPanel`**: Sticky panel containing `Button` controls, `Badge` status, and `LoadingSpinner`.
+- **`ChatInputArea`**: Complex input section using `TextInput`, `TextArea`, `Dropdown` for role selection, and `Button`.
+- **`NewChatForm`**: Initialization form using `Dropdown` for workflow/preset and `TextArea` for initial message.
+- **`AskQuestionsToolForm`**: Tool-driven form using `Card`, `TextInput`, `TextArea`, `Dropdown`, and `Button`.
+- **`BudgetExceededCard`**: Notification-style `Card` using `Badge` and `Button`.
+- **`ProposedActionCard`**: Approval-style `Card` using `Badge` and `Button`.
+- **`WorkflowJsonEditor`**: Editor pane combining `TextArea` and `Button` for JSON management.
+- **`PresetEditor`**: Configuration form using `TextInput`, `Dropdown`, and `Button`.
+- **`PresetListView`**: List view utilizing `Card`, `Button`, and `Badge`.
+- **`WorkflowListView`**: List view utilizing `Card`, `Button`, and `Badge`.
+- **`GlobalSettingsForm`**: Full-page form using `TextInput`, `Dropdown`, `Button`, and `Notification`.
+- **`ThreadSettingsModal`**: Management modal using `TextInput`, `Dropdown`, `Button`, and `Modal`.
+- **`ErrorBubble`**: Special `Card` (variant `"notification"`, theme `"danger"`) with integrated `Button` for recovery.
+- **`MessageBubble`**: Core chat unit using `Card`, `Avatar`, `Accordion` for reasoning/tools, and `OverflowMenu`.
+- **`OverflowMenu`**: Contextual `Dropdown` menu using `Button` items for message actions.
 
 ---
 
