@@ -48,6 +48,8 @@
     - [14. Error Recovery Flow](#14-error-recovery-flow)
     - [15. Lifecycle and Recovery Flow](#15-lifecycle-and-recovery-flow)
     - [15. Lifecycle and Recovery Flow](#15-lifecycle-and-recovery-flow)
+  - [Design System Description](#design-system-description)
+    - [Core Components](#core-components)
   - [User Interface (UI) Specification](#user-interface-ui-specification)
     - [1. Global Navigation and Layout](#1-global-navigation-and-layout)
     - [2. Main Chat Interface](#2-main-chat-interface)
@@ -832,24 +834,24 @@ To ensure the application is implemented correctly and can be verified in a test
 - **Given**: App is launched for the first time.
 - **When**:
   1. User lands on the homepage.
-  2. User clicks the onboarding warning banner $\rightarrow$ dispatches `OPEN_SETTINGS`.
-  3. User enters API keys (e.g., Gemini API key) and clicks Save $\rightarrow$ dispatches `SAVE` to `GlobalSettingsForm` machine.
-  4. User navigates via Left Sidebar $\rightarrow$ Global Settings $\rightarrow$ select "Dark" from the theme override dropdown selector $\rightarrow$ click the "Save Settings" button.
+  2. User clicks the onboarding `Notification` banner $\rightarrow$ dispatches `OPEN_SETTINGS`.
+  3. User enters API keys (e.g., Gemini API key) into `TextInput` fields and clicks the `Button` with `variant="primary"` (Save) $\rightarrow$ dispatches `SAVE` to `GlobalSettingsForm` machine.
+  4. User navigates via `SideNav` $\rightarrow$ Global Settings $\rightarrow$ select "Dark" from the `Dropdown` selector $\rightarrow$ click the `Button` with `variant="primary"` (Save Settings) button.
   5. User navigates back to the chat interface $\rightarrow$ dispatches `CLOSE_SETTINGS`.
 - **Then**:
   - **State Transitions**: Assert `ViewState` transitions `initializing` $\rightarrow$ `onboarding` $\rightarrow$ `globalSettings` $\rightarrow$ `idle`.
   - **Initial Load Checks**:
     - Assert IndexedDB database `in-browser-llm-chat-db` is initialized and all required stores (`settings`, `presets`, `workflows`, `threads`, `messages`, `checkpoints`, `checkpoint_writes`) are created.
-    - Assert built-in workflows ("Standard 1-agent", "Debate") are visible in the "New Chat" workflow selection dropdown.
+    - Assert built-in workflows ("Standard 1-agent", "Debate") are visible in the `Dropdown` selection of the "New Chat" form.
   - **Database Writes**:
     - Assert the `settings` store contains a record with `key: "api_keys"` and the provided keys.
     - Assert the `presets` store is automatically seeded with default presets ("Default Gemini Flash" using `gemini-2.5-flash` and "Default OpenRouter Flash" using `google/gemini-2.5-flash`).
     - Assert that the `settings` store contains a record `{ key: "default_preset_id", value: [UUID] }` where `[UUID]` matches one of the seeded presets.
     - Assert theme preference is saved in `settings` as `{ key: "ui_config", value: { theme: "dark" } }`.
   - **UI Feedback**:
-    - Assert the onboarding warning banner is removed and the `ChatInputArea` input field is enabled.
+    - Assert the onboarding `Notification` banner is removed and the `ChatInputArea` `TextInput` field is enabled.
     - Assert the `<html>` or `<body>` element has the dark theme class `theme-dark`.
-- **Exercised Components**: `GlobalSettingsForm`, `SideNav`, `ChatInputArea`, `ApplicationLayout`.
+- **Exercised Components**: `GlobalSettingsForm`, `SideNav`, `ChatInputArea`, `ApplicationLayout`, `Notification`, `TextInput`, `Button`, `Dropdown`.
 - **Exercised State Machines**: `ViewState`, `ApplicationLayout`.
 - **Exercised Systems**: `IndexedDB`.
 
@@ -859,7 +861,7 @@ To ensure the application is implemented correctly and can be verified in a test
   - `settings` store contains valid `api_keys` and a valid `default_preset_id`.
   - `presets` store contains the preset matching `default_preset_id`.
 - **Given**: App is initialized with valid API keys and a default preset, and the "Standard 1-agent" built-in workflow is selected.
-- **When**: User starts a new chat with the default workflow, enters "Hello" in the `ChatInputArea` input, and clicks Send $\rightarrow$ dispatches `SUBMIT_MESSAGE` { content: "Hello" } to the Parent Coordinator.
+- **When**: User starts a new chat with the default workflow, enters "Hello" in the `ChatInputArea` `TextInput`, and clicks the `Button` (Send) $\rightarrow$ dispatches `SUBMIT_MESSAGE` { content: "Hello" } to the Parent Coordinator.
 - **Then**:
   - **State Transitions**: Assert `ViewState` transitions `initializing` $\rightarrow$ `idle` $\rightarrow$ `chatting` and the `ExecutionState` transitions `inactive` $\rightarrow$ `executing` $\rightarrow$ `inactive`.
   - **Database Sequence**:
@@ -874,8 +876,8 @@ To ensure the application is implemented correctly and can be verified in a test
     - **For Gemini**: The request contains both the agent's system prompt and any injected system messages (merged with `\n\n`), and the user message "Hello" is sent as a `user` role part in the contents.
     - **For OpenRouter**: The request messages array starts with a `role: "system"` message containing the merged system prompts, followed by the user message "Hello" as `role: "user"`.
   - Assert `tokenStats` in the `threads` store are updated to `{ promptTokens: 10, completionTokens: 15, totalTokens: 25 }`.
-  - UI displays both messages in the `ChatFeed` using `MessageBubble` components, and the `ChatInputArea` input field is enabled once `ExecutionState` returns to `inactive`.
-- **Exercised Components**: `ChatInputArea`, `ChatFeed`, `MessageBubble`, `LeftSidebar`.
+  - UI displays both messages in the `ChatFeed` using `MessageBubble` components (with an `Avatar` for the assistant), and the `ChatInputArea` `TextInput` field is enabled once `ExecutionState` returns to `inactive`.
+- **Exercised Components**: `ChatInputArea`, `ChatFeed`, `MessageBubble`, `LeftSidebar`, `TextInput`, `Button`, `Avatar`.
 - **Exercised State Machines**: `ViewState`, `ExecutionState`, `GraphRunnerActor`.
 - **Exercised Systems**: `IndexedDB`, `MSW`, `Custom Runner`, `Vercel AI SDK`.
 
@@ -918,8 +920,8 @@ To ensure the application is implemented correctly and can be verified in a test
   - **Phase 4 (Termination)**:
     - Mock `Summarizer` response: "In summary, both agents agreed on Point A and B. The debate concluded that AI safety is essential but should be balanced with efficiency."
     - `Summarizer` executes $\rightarrow$ a final summary message with `name: "Summarizer"` is created in the `messages` store $\rightarrow$ assert `lastAgentId` updated to `"Summarizer"` $\rightarrow$ execution transitions to `inactive`.
-    - UI displays the full sequence of agents in the `ChatFeed` using `MessageBubble` components, and each assistant message bubble displays the correct agent name (e.g. "Debater A") in the header.
-- **Exercised Components**: `ChatFeed`, `MessageBubble`, `ExecutionControlPanel`.
+    - UI displays the full sequence of agents in the `ChatFeed` using `MessageBubble` components (each with a unique `Avatar` and background tint) and each assistant message bubble displays the correct agent name (e.g. "Debater A") in the header.
+- **Exercised Components**: `ChatFeed`, `MessageBubble`, `ExecutionControlPanel`, `Avatar`.
 - **Exercised State Machines**: `ExecutionState`, `GraphRunnerActor`, `ExecutionControlPanel`.
 - **Exercised Systems**: `IndexedDB`, `MSW`, `Custom Runner`.
 
@@ -967,12 +969,12 @@ To ensure the application is implemented correctly and can be verified in a test
   - **Step Limit Trigger**: Mock API responses for the first 2 steps, ensuring the 2nd step completes normally. After the 2nd step, the runner halts execution.
   - **Token Limit Trigger**: Mock an API response for a single step that returns `completionTokens: 1100`. The runner halts execution immediately after this step.
   - Assert the thread record's `activeInterrupt` is set to `{ type: "budget_exceeded", budgetDetails: { stepCount: ..., currentTokens: ..., maxTokens: ... } }`.
-  - UI renders the "Budget Exceeded Card". Assert it correctly displays the current value (steps or tokens) and the limit.
-  - User clicks "Increase Budget & Resume" $\rightarrow$ dispatches `INCREASE_BUDGET` to `BudgetExceededCard` machine.
+  - UI renders the `Budget Exceeded Card` as a `Card` (variant `"notification"`) inline in the chat feed. Assert it correctly displays the current value (steps or tokens) and the limit using `Badge` components.
+  - User clicks the `Button` (variant `"primary"`) "Increase Budget & Resume" $\rightarrow$ dispatches `INCREASE_BUDGET` to `BudgetExceededCard` machine.
   - Assert the runner's local `budgetOverride` context is updated to extend the limits (e.g., `stepsOverride = currentSteps + originalMaxSteps`).
   - Assert that the next step(s) execute successfully until the new override limit is hit or the workflow terminates.
   - **Run Reset Verification**: Assert that once the run concludes (transitions to `inactive`) or is interrupted by a new user message, the runner's local `stepsInCurrentRun` and `tokensInCurrentRun` are reset to 0, and `budgetOverride` is reset to `null`.
-- **Exercised Components**: `ChatFeed`, `BudgetExceededCard`.
+- **Exercised Components**: `ChatFeed`, `BudgetExceededCard`, `Card`, `Badge`, `Button`.
 - **Exercised State Machines**: `ExecutionState`, `BudgetExceededCard`, `GraphRunnerActor`.
 - **Exercised Systems**: `IndexedDB`.
 
@@ -981,7 +983,7 @@ To ensure the application is implemented correctly and can be verified in a test
 - **Prerequisites**:
   - A parent thread exists with 5 messages (sequences 0 to 4), each associated with a unique non-null checkpoint in the `checkpoints` store.
 - **Given**: A parent thread with 5 messages (sequences 0 to 4), where each message $M_i$ is associated with a unique non-null checkpoint $CP_i$ in the `checkpoints` store (e.g., $M_0 \rightarrow CP_0, M_1 \rightarrow CP_1, \dots, M_4 \rightarrow CP_4$).
-- **When**: User selects "Branch Thread" from the overflow menu of message 3 (sequence 2) $\rightarrow$ dispatches `TRIGGER_BRANCH` followed by `CONFIRM_BRANCH`.
+- **When**: User selects "Branch Thread" from the `OverflowMenu` of message 3 (sequence 2) $\rightarrow$ dispatches `TRIGGER_BRANCH` followed by `CONFIRM_BRANCH` in the `PromptingBranch` modal.
 - **Then**:
   - **State Transitions**: Assert `ViewState` transitions `chatting` (via `MessageOptionsMenu`) $\rightarrow$ `chatting` (new thread).
   - **Database Writes**:
@@ -990,14 +992,14 @@ To ensure the application is implemented correctly and can be verified in a test
     - Assert all checkpoints and `checkpoint_writes` associated with these cloned messages (identified by their `[checkpointNs, checkpointId]` pairs) are cloned to the new thread's records in IndexedDB. Specifically, assert that for every `checkpoint_write` in the parent thread matching the filtered `checkpointId`s, a corresponding record with the new `threadId` exists in the `checkpoint_writes` store.
     - Assert the new thread's `latestCheckpointId` and `latestCheckpointNs` are set to the checkpoint of the branched message (sequence 2).
   - UI navigates to the new thread ID using `MessageOptionsMenu` and `Toggled Sidebar` context, and displays the cloned history in the `ChatFeed`.
-- **Exercised Components**: `MessageBubble`, `OverflowMenu`, `MessageOptionsMenu`, `LeftSidebar`.
+- **Exercised Components**: `MessageBubble`, `OverflowMenu`, `MessageOptionsMenu`, `LeftSidebar`, `Modal`, `Button`.
 - **Exercised State Machines**: `ViewState`, `InlineMessageEditorAction`.
 - **Exercised Systems**: `IndexedDB`.
 
 ### 6. Message Edit & Rollback Flow
 
 - **Given**: A thread with a sequence of messages: User(0, $CP:null$) $\rightarrow$ Agent(1, $CP:CP1$) $\rightarrow$ User(2, $CP:CP2$) $\rightarrow$ Agent(3, $CP:CP3$). Each $CP_i$ corresponds to a distinct record in the `checkpoints` store.
-- **When**: User edits the content of message 2 (sequence 2).
+- **When**: User edits the content of message 2 (sequence 2) using the `InlineMessageEditor`.
 - **Then**:
   - **Rollback Target**:
     - Scenario A (Different Checkpoints): The system traverses backward from sequence 1 (message 2's predecessor). It finds that message 1 has `checkpointId: CP1`, which is non-null and different from message 2's `CP2`. Thus, the target checkpoint is `CP1`.
@@ -1008,8 +1010,8 @@ To ensure the application is implemented correctly and can be verified in a test
   - The thread's `latestCheckpointId` and `latestCheckpointNs` are updated to match `CP1`.
   - Message 2 is updated with new content in the `messages` store. Assert that the DB record for message 2 now contains the updated text.
   - Verify `tokenStats` are accurately recalculated by summing the `promptTokens` and `completionTokens` usage metadata of all remaining messages (sequence $\le$ 2) and updating the thread record.
-  - **Execution Resume**: Upon clicking Resume, verify that the custom runner merges the edited message 2 (retaining its original message ID) into the execution state, saves a new synchronized checkpoint $C_{new}$ to the `checkpoints` store, and resumes execution.
-- **Exercised Components**: `MessageBubble`, `OverflowMenu`, `MessageOptionsMenu`, `InlineMessageEditor`.
+  - **Execution Resume**: Upon clicking the `Button` (Resume), verify that the custom runner merges the edited message 2 (retaining its original message ID) into the execution state, saves a new synchronized checkpoint $C_{new}$ to the `checkpoints` store, and resumes execution.
+- **Exercised Components**: `MessageBubble`, `OverflowMenu`, `MessageOptionsMenu`, `InlineMessageEditor`, `TextInput`, `Button`.
 - **Exercised State Machines**: `InlineMessageEditorAction`, `ExecutionState`, `GraphRunnerActor`.
 - **Exercised Systems**: `IndexedDB`, `Custom Runner`.
 
@@ -1025,7 +1027,7 @@ To ensure the application is implemented correctly and can be verified in a test
 - **Then**:
   - **State Transitions**: Assert `ApiPayloadPreviewModal` machine transitions `closed` $\rightarrow$ `opened.loading` $\rightarrow$ `opened.displaying`.
   - **Event Dispatch**: Assert `OPEN` and `CHANGE_AGENT` (if selecting a specific agent) events are dispatched.
-  - **Index 0 Merging & Precedence**: Assert the "Preview API Payload" modal shows a `system` role message "Be extremely concise\n\nUse professional tone" at the very beginning (index 0) of the messages array. Assert that the workflow-specific message ("Be extremely concise") appears before the global message ("Use professional tone").
+  - **Index 0 Merging & Precedence**: Assert the "Preview API Payload" `Modal` shows a `system` role message "Be extremely concise\n\nUse professional tone" at the very beginning (index 0) of the messages array. Assert that the workflow-specific message ("Be extremely concise") appears before the global message ("Use professional tone").
   - **Deduplication**:
     - Assert that the duplicate global system message "Use professional tone" at depth 1 is discarded and not included in the payload.
     - Assert precedence: if both a global and a workflow-specific system message have the same content, only the workflow-specific one is kept.
@@ -1034,10 +1036,10 @@ To ensure the application is implemented correctly and can be verified in a test
   - **Exact Payload Verification (Gemini)**: For the Gemini mock, assert the final `contents` array has exactly two entries:
     1. A `user` role entry containing the merged content of any messages at index 1 (including the `[System Notification]: ...` prefixed injected message) and the actual user message.
     2. The `systemInstruction` property of the API call contains the merged text from index 0.
-  - **Non-Entry Agent Verification**: Change the agent selector in the modal to a non-entry agent (e.g., `Debater_B`). Assert that this agent's specific system prompt is also correctly merged with the global system messages at the specified depths.
+  - **Non-Entry Agent Verification**: Change the agent selector in the `Dropdown` within the modal to a non-entry agent (e.g., `Debater_B`). Assert that this agent's specific system prompt is also correctly merged with the global system messages at the specified depths.
   - **Persistence**: Assert that none of these injected or merged system messages are stored in the `messages` store or checkpoints.
   - Assert that if only one system message is configured at depth 0, it is correctly placed at the start of the payload.
-- **Exercised Components**: `ApiPayloadPreviewModal`, `ChatHeader`.
+- **Exercised Components**: `ApiPayloadPreviewModal`, `ChatHeader`, `Modal`, `Dropdown`.
 - **Exercised State Machines**: `ApiPayloadPreviewModal`.
 - **Exercised Systems**: `IndexedDB`.
 
@@ -1064,7 +1066,7 @@ To ensure the application is implemented correctly and can be verified in a test
     - Assert `workflowSnapshot` in the thread record is updated to S3.
     - Assert that all message history and checkpoints for the thread are purged from the `messages` and `checkpoints` stores.
     - Assert the thread's `latestCheckpointId` and `latestCheckpointNs` are reset to `null`.
-- **Exercised Components**: `ThreadSettingsModal`, `WorkflowJsonEditor`.
+- **Exercised Components**: `ThreadSettingsModal`, `WorkflowJsonEditor`, `Modal`, `Button`.
 - **Exercised State Machines**: `WorkflowSyncing`.
 - **Exercised Systems**: `IndexedDB`.
 
@@ -1094,7 +1096,7 @@ To ensure the application is implemented correctly and can be verified in a test
     "edges": [{ "from": "n1", "to": "n2" }]
   }
   ```
-- **When**: User starts a new chat selecting this custom workflow, enters "Hello" in the `ChatInputArea`, and clicks Send $\rightarrow$ dispatches `SUBMIT_MESSAGE` { content: "Hello" }.
+- **When**: User starts a new chat selecting this custom workflow from the `Dropdown` in the `NewChatForm`, enters "Hello" in the `ChatInputArea` `TextInput`, and clicks the `Button` (Send) $\rightarrow$ dispatches `SUBMIT_MESSAGE` { content: "Hello" }.
 - **Then**:
   - **State Transitions**: Assert the `ExecutionState` transitions `inactive` $\rightarrow$ `executing` $\rightarrow$ `inactive`.
   - Assert the `workflowSnapshot` in the `threads` record matches this JSON.
@@ -1104,7 +1106,7 @@ To ensure the application is implemented correctly and can be verified in a test
   - Assert that the graph executes the nodes in the specified sequence and creates corresponding messages in the `messages` store with the correct `sequence` (User:0, Agent A:1, Agent B:2) and `name` from the `WorkflowNode` definitions.
   - Assert the execution terminates as there are no further outgoing edges from `n2`.
   - UI displays the sequence of responses in the `ChatFeed` using `MessageBubble` components.
-- **Exercised Components**: `NewChatForm`, `ChatFeed`, `MessageBubble`.
+- **Exercised Components**: `NewChatForm`, `ChatFeed`, `MessageBubble`, `Dropdown`, `TextInput`, `Button`.
 - **Exercised State Machines**: `ViewState`, `ExecutionState`, `GraphRunnerActor`.
 - **Exercised Systems**: `IndexedDB`, `Custom Runner`.
 
@@ -1113,7 +1115,7 @@ To ensure the application is implemented correctly and can be verified in a test
 - **Prerequisites**:
   - A thread exists with 100 messages and 100 checkpoints.
 - **Given**: A thread with 100 messages and 100 checkpoints.
-- **When**: User deletes the thread $\rightarrow$ dispatches `TRIGGER_DELETE` followed by `CONFIRM_DELETE` in `LeftSidebar` machine.
+- **When**: User deletes the thread $\rightarrow$ dispatches `TRIGGER_DELETE` followed by `CONFIRM_DELETE` in the `ConfirmationModal` (rendered by `LeftSidebar` machine).
 - **Then**:
   - **State Transitions**: Assert the `LeftSidebar` machine transitions `idle` $\rightarrow$ `confirmingDelete` $\rightarrow$ `deleting` $\rightarrow$ `idle`.
   - **Event Dispatch**: Assert the `TRIGGER_DELETE` and `CONFIRM_DELETE` events are dispatched.
@@ -1122,7 +1124,7 @@ To ensure the application is implemented correctly and can be verified in a test
   - Assert that messages, checkpoints, and checkpoint writes are deleted in batches (e.g. verify the `messages` store is checked in chunks of 500) using a `ConfirmationModal` for the confirmation step.
   - Once all children are deleted, assert the thread record itself is removed from the `threads` store.
   - Assert that after the process completes, no records with the deleted `threadId` remain in `messages`, `checkpoints`, or `checkpoint_writes` stores.
-- **Exercised Components**: `LeftSidebar`, `ConfirmationModal`.
+- **Exercised Components**: `LeftSidebar`, `ConfirmationModal`, `Button`.
 - **Exercised State Machines**: `LeftSidebar`.
 - **Exercised Systems**: `IndexedDB`.
 
@@ -1131,38 +1133,38 @@ To ensure the application is implemented correctly and can be verified in a test
 - **Prerequisites**:
   - App is initialized with valid API keys and presets in IndexedDB.
 - **Given**: App is initialized.
-- **When**: User opens the Preset Settings view, creates a new custom preset (e.g., "Fast Gemini" with model `gemini-2.5-flash` and `temperature: 0.1`), and clicks Save $\rightarrow$ dispatches `SAVE` in `PresetEditor` machine.
+- **When**: User opens the Preset Settings view, creates a new custom preset (e.g., "Fast Gemini" with model `gemini-2.5-flash` and `temperature: 0.1`) using the `PresetEditor` form, and clicks the `Button` (variant `"primary"`, Save) $\rightarrow$ dispatches `SAVE` in `PresetEditor` machine.
 - **Then**:
   - **State Transitions**: Assert the `ViewState` transitions `idle` $\rightarrow$ `presetConfig` $\rightarrow$ `idle`.
   - **Event Dispatch**: Assert the `LOAD_PRESET` and `SAVE` events are dispatched.
   - Assert a new record is created in the `presets` store using the `PresetEditor` component, with the specified configuration and a generated UUID.
-  - User starts a new chat and selects the "Fast Gemini" preset from the dropdown $\rightarrow$ dispatches `SUBMIT` in `NewChatForm`.
+  - User starts a new chat and selects the "Fast Gemini" preset from the `Dropdown` in the `NewChatForm` $\rightarrow$ dispatches `SUBMIT` in `NewChatForm`.
   - Assert the thread record in the `threads` store is created with `activePresetId` matching the new preset's UUID.
   - When the first message is sent, assert the API request uses the `temperature: 0.1` and model `gemini-2.5-flash` as configured in the preset.
-  - User edits a built-in preset (e.g. "Default Gemini Flash") and clicks Save $\rightarrow$ dispatches `SAVE` in `PresetEditor`.
-  - Assert the UI prompts the user to "Clone and Customize" via a confirmation dialog.
-  - User clicks "Clone and Customize" $\rightarrow$ a new custom preset record is created in the `presets` store with the updated configuration, while the original built-in preset remains unchanged.
+  - User edits a built-in preset (e.g. "Default Gemini Flash") and clicks the `Button` (Save) $\rightarrow$ dispatches `SAVE` in `PresetEditor`.
+  - Assert the UI prompts the user to "Clone and Customize" via a `ConfirmationModal`.
+  - User clicks the `Button` (Clone and Customize) $\rightarrow$ a new custom preset record is created in the `presets` store with the updated configuration, while the original built-in preset remains unchanged.
   - Assert the `PresetEditor` now displays the newly created custom preset.
   - User starts a new chat and selects this newly cloned preset.
   - Assert the API request uses the updated configuration.
-- **Exercised Components**: `PresetEditor`, `PresetListView`.
+- **Exercised Components**: `PresetEditor`, `PresetListView`, `ConfirmationModal`, `TextInput`, `Dropdown`, `Button`.
 - **Exercised State Machines**: `ViewState`, `PresetEditor`.
 - **Exercised Systems**: `IndexedDB`.
 
 ### 12. Workflow Management Happy Path
 
 - **Given**: App is initialized.
-- **When**: User opens the Workflow Management view, creates a new custom workflow via the JSON editor (e.g., a simple 2-agent sequential chain), and clicks Save.
+- **When**: User opens the Workflow Management view, creates a new custom workflow via the `WorkflowJsonEditor` `TextArea`, and clicks the `Button` (variant `"primary"`, Save).
 - **Then**:
   - **State Transitions**: Verify the `ViewState` transitions `idle` $\rightarrow$ `workflowConfig` $\rightarrow$ `idle`.
   - **Event Dispatch**: Verify the `LOAD_WORKFLOW` and `SAVE` events are dispatched.
   - Verify a new record is created in the `workflows` store using the `WorkflowJsonEditor` component, with the serialized graph definition.
-  - User starts a new chat, selects this custom workflow from the "New Chat" panel, and sends a message.
+  - User starts a new chat, selects this custom workflow from the `Dropdown` in the `NewChatForm`, and sends a message.
   - Verify the thread record's `workflowSnapshot` is an exact copy of the workflow JSON.
-  - User deletes the custom workflow from the Workflow Management view. Verify the record is removed from the `workflows` store.
+  - User deletes the custom workflow from the Workflow Management view via the `Button` (Delete). Verify the record is removed from the `workflows` store.
   - Verify that the thread still functions correctly and can be resumed or continued, as it uses the `workflowSnapshot` stored in the `threads` record rather than querying the `workflows` store. Specifically, mock a scenario where the workflow is deleted from the database and verify that the thread still executes using its snapshot.
   - Verify the graph execution follows the defined sequence (Node A $\rightarrow$ Node B) and creates corresponding messages in the `messages` store. Verify that the messages are created in the correct `sequence` order and that the `name` field of each message matches the `name` defined in the `WorkflowNode` (e.g. "Agent A", then "Agent B").
-- **Exercised Components**: `WorkflowJsonEditor`, `WorkflowListView`, `NewChatForm`.
+- **Exercised Components**: `WorkflowJsonEditor`, `WorkflowListView`, `NewChatForm`, `TextArea`, `Dropdown`, `Button`.
 - **Exercised State Machines**: `ViewState`, `WorkflowJsonEditor`.
 - **Exercised Systems**: `IndexedDB`, `Custom Runner`.
 
@@ -1265,6 +1267,80 @@ To ensure the application is implemented correctly and can be verified in a test
 - **Exercised Components**: `ApplicationLayout`, `LeftSidebar`.
 - **Exercised State Machines**: `ViewState`, `ExecutionState`, `GraphRunnerActor`.
 - **Exercised Systems**: `IndexedDB`.
+
+## Design System Description
+
+The application uses a custom, premium design system built with Vanilla CSS and React. All UI components must be implemented as reusable React components following these specifications to ensure visual consistency and a high-quality user experience.
+
+### Core Components
+
+- **`Button`**:
+  - **Variants**:
+    - `primary`: Filled background, high contrast, used for main actions.
+    - `secondary`: Outlined background, used for complementary actions.
+    - `danger`: Red background/border, used for destructive actions (e.g., Delete).
+    - `ghost`: Text-only, used for low-priority or subtle actions.
+  - **States**:
+    - `idle`: Default state.
+    - `loading`: Displays a `LoadingSpinner` and is disabled.
+    - `disabled`: Greyed out, non-interactive.
+  - **Sizing**: Minimum touch target of `44x44px`.
+
+- **`TextInput` / `TextArea`**:
+  - **Variants**:
+    - `outlined`: Standard border.
+    - `error`: Red border with an associated error message displayed below.
+    - `readOnly`: Greyed out background, non-editable.
+  - **Features**:
+    - `min-font-size: 16px` to prevent iOS auto-zoom on focus.
+    - `TextArea` must support dynamic height expansion as the user types.
+    - Floating labels or clear placeholders.
+
+- **`Card` / `Tile`**:
+  - **Variants**:
+    - `standard`: Subtle shadow, rounded corners, used for message bubbles and general content.
+    - `notification`: Colored border/background (e.g., red for errors, blue for info), used for alerts.
+    - `prompt`: Specialized layout for tool-driven forms (e.g., `ask_questions` card).
+  - **Sizing**: Standard padding of `16px`.
+
+- **`Modal` / `Dialog`**:
+  - **Structure**: Centered overlay with a blurred/dimmed backdrop, a title bar with a close button, a scrollable content area, and a footer for action buttons.
+  - **Animations**: Smooth fade-in and scale-up transitions.
+  - **Accessibility**: Focus trapping and "Escape" key to close.
+
+- **`Dropdown` / `Select`**:
+  - **Variants**:
+    - `searchable`: Includes a text input to filter options.
+    - `singleSelect`: Only one option can be active.
+    - `multiSelect`: Multiple options can be selected via checkboxes.
+  - **Components**: A trigger button displaying the current selection and a floating menu of options.
+
+- **`Badge`**:
+  - **Variants**:
+    - `success` (green), `warning` (yellow), `danger` (red), `info` (blue).
+  - **Style**: Small, rounded capsules with high-contrast text. Used for status indicators (e.g., "Submitted", "Refused").
+
+- **`Notification` / `Banner`**:
+  - **Variants**:
+    - `global`: Fixed at the top of the viewport.
+    - `inline`: Rendered within the content flow (e.g., under a form).
+  - **Types**: `info`, `success`, `warning`, `error`.
+
+- **`Accordion`**:
+  - **Structure**: An expandable header (containing a title and a toggle icon) and a collapsible body.
+  - **Sizing**: The body is capped at `max-height: 250px` with vertical scrolling enabled.
+
+- **`LoadingSpinner` / `SkeletonLoader`**:
+  - `LoadingSpinner`: SVG animation for active processes.
+  - `SkeletonLoader`: Pulsing grey placeholders used during initial data loads.
+
+- **`Avatar`**:
+  - **Logic**: Generates a circular avatar with a deterministic background color and the user's/agent's initials based on a hash of the name.
+
+- **`Icon`**:
+  - A library of consistent SVG icons used across all buttons and menus (e.g., `Send`, `Pause`, `Resume`, `Delete`, `Edit`, `Branch`, `Settings`, `User`, `Bot`, `ChevronDown`, `Check`, `X`).
+
+---
 
 ## User Interface (UI) Specification
 
