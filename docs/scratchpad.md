@@ -49,6 +49,7 @@
     - [15. Lifecycle and Recovery Flow](#15-lifecycle-and-recovery-flow)
     - [15. Lifecycle and Recovery Flow](#15-lifecycle-and-recovery-flow)
   - [Design System Description](#design-system-description)
+    - [Theme Palette & Typography](#theme-palette--typography)
     - [Core Components](#core-components)
     - [Layout & Composite Components](#layout--composite-components)
   - [User Interface (UI) Specification](#user-interface-ui-specification)
@@ -835,9 +836,9 @@ To ensure the application is implemented correctly and can be verified in a test
 - **Given**: App is launched for the first time.
 - **When**:
   1. User lands on the homepage.
-  2. User clicks the onboarding `Notification` banner $\rightarrow$ dispatches `OPEN_SETTINGS`.
-  3. User enters API keys (e.g., Gemini API key) into `TextInput` fields and clicks the `Button` with `variant="primary"` (Save) $\rightarrow$ dispatches `SAVE` to `GlobalSettingsForm` machine.
-  4. User navigates via `SideNav` $\rightarrow$ Global Settings $\rightarrow$ select "Dark" from the `Dropdown` selector $\rightarrow$ click the `Button` with `variant="primary"` (Save Settings) button.
+  2. User clicks the onboarding `Notification` (type 'warning') banner $\rightarrow$ dispatches `OPEN_SETTINGS`.
+  3. User enters API keys (e.g., Gemini API key) into `TextInput` fields and clicks the `Button` (variant 'primary') $\rightarrow$ dispatches `SAVE` to `GlobalSettingsForm` machine.
+  4. User navigates via `SideNav` $\rightarrow$ Global Settings $\rightarrow$ select "Dark" from the `Dropdown` selector $\rightarrow$ click the `Button` (variant 'primary') $\rightarrow$ dispatches `SAVE` to `GlobalSettingsForm`.
   5. User navigates back to the chat interface $\rightarrow$ dispatches `CLOSE_SETTINGS`.
 - **Then**:
   - **State Transitions**: Assert `ViewState` transitions `initializing` $\rightarrow$ `onboarding` $\rightarrow$ `globalSettings` $\rightarrow$ `idle`.
@@ -862,7 +863,7 @@ To ensure the application is implemented correctly and can be verified in a test
   - `settings` store contains valid `api_keys` and a valid `default_preset_id`.
   - `presets` store contains the preset matching `default_preset_id`.
 - **Given**: App is initialized with valid API keys and a default preset, and the "Standard 1-agent" built-in workflow is selected.
-- **When**: User starts a new chat with the default workflow, enters "Hello" in the `ChatInputArea` `TextInput`, and clicks the `Button` (Send) $\rightarrow$ dispatches `SUBMIT_MESSAGE` { content: "Hello" } to the Parent Coordinator.
+- **When**: User starts a new chat with the default workflow, enters "Hello" in the `ChatInputArea` `TextInput`, and clicks the `Button` (variant 'primary') $\rightarrow$ dispatches `SUBMIT_MESSAGE` { content: "Hello" } to the Parent Coordinator.
 - **Then**:
   - **State Transitions**: Assert `ViewState` transitions `initializing` $\rightarrow$ `idle` $\rightarrow$ `chatting` and the `ExecutionState` transitions `inactive` $\rightarrow$ `executing` $\rightarrow$ `inactive`.
   - **Database Sequence**:
@@ -1273,6 +1274,43 @@ To ensure the application is implemented correctly and can be verified in a test
 
 The application uses a custom, premium design system built with Vanilla CSS and React. All UI components must be implemented as reusable React components following these specifications to ensure visual consistency and a high-quality user experience.
 
+### Theme Palette & Typography
+
+To achieve a premium, modern aesthetic, the following color palette and typography guidelines must be used. All colors should be implemented as CSS variables on the root element.
+
+- **Typography**:
+  - Primary Font: 'Inter' or 'Outfit' (Google Fonts), sans-serif.
+  - Scale: Use a modular scale (e.g., 1.25) for headings.
+  - Body: 16px (minimum for inputs to prevent iOS auto-zoom).
+
+- **Light Theme (`theme-light`)**:
+  - `--bg-primary`: `#FFFFFF` (Pure white)
+  - `--bg-secondary`: `#F8F9FA` (Light grey for sidebars/backgrounds)
+  - `--bg-tertiary`: `#E9ECEF` (Lighter grey for cards/inputs)
+  - `--text-primary`: `#212529` (Near black)
+  - `--text-secondary`: `#6C757D` (Grey for subtitles/placeholders)
+  - `--accent-primary`: `#0D6EFD` (Bright blue for primary actions)
+  - `--accent-hover`: `#0A58CA` (Darker blue)
+  - `--status-success`: `#198754` (Green)
+  - `--status-warning`: `#FFC107` (Yellow)
+  - `--status-danger`: `#DC3545` (Red)
+  - `--border-color`: `#DEE2E6` (Soft grey border)
+  - `--shadow-sm`: `0 2px 4px rgba(0,0,0,0.05)`
+
+- **Dark Theme (`theme-dark`)**:
+  - `--bg-primary`: `#121212` (Deep black/grey)
+  - `--bg-secondary`: `#1E1E1E` (Dark grey for sidebars/backgrounds)
+  - `--bg-tertiary`: `#2D2D2D` (Lighter dark grey for cards/inputs)
+  - `--text-primary`: `#F8F9FA` (Near white)
+  - `--text-secondary`: `#ADB5BD` (Light grey for subtitles/placeholders)
+  - `--accent-primary`: `#3D8BFD` (Lighter blue for readability)
+  - `--accent-hover`: `#6E9BFF` (Lighter blue)
+  - `--status-success`: `#2ECC71` (Bright green)
+  - `--status-warning`: `#F1C40F` (Bright yellow)
+  - `--status-danger`: `#E74C3C` (Bright red)
+  - `--border-color`: `#3F3F3F` (Dark grey border)
+  - `--shadow-sm`: `0 2px 4px rgba(0,0,0,0.3)`
+
 ### Core Components
 
 - **`Button`**:
@@ -1334,6 +1372,11 @@ The application uses a custom, premium design system built with Vanilla CSS and 
 - **`LoadingSpinner` / `SkeletonLoader`**:
   - `LoadingSpinner`: SVG animation for active processes.
   - `SkeletonLoader`: Pulsing grey placeholders used during initial data loads.
+
+- **`CodeView`**:
+  - **Structure**: A read-only, formatted display for JSON or code. Uses a monospaced font (e.g., 'JetBrains Mono' or 'Fira Code').
+  - **Style**: Background matches `--bg-tertiary`, with subtle padding and a border. Supports syntax highlighting colors for JSON keys and values.
+  - **Features**: Integrated scrollbars (horizontal and vertical) and a "Copy" button in the top-right corner.
 
 - **`Avatar`**:
   - **Logic**: Generates a circular avatar with a deterministic background color and the user's/agent's initials based on a hash of the name.
