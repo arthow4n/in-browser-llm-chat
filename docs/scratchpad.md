@@ -47,7 +47,6 @@
     - [13. LLM Database Modification Approval Flow](#13-llm-database-modification-approval-flow)
     - [14. Error Recovery Flow](#14-error-recovery-flow)
     - [15. Lifecycle and Recovery Flow](#15-lifecycle-and-recovery-flow)
-    - [15. Lifecycle and Recovery Flow](#15-lifecycle-and-recovery-flow)
   - [Design System Description](#design-system-description)
     - [Theme Palette & Typography](#theme-palette--typography)
     - [Core Components](#core-components)
@@ -866,7 +865,7 @@ To ensure the application is implemented correctly and can be verified in a test
 - **When**: User starts a new chat with the default workflow, enters "Hello" in the `ChatInputArea` `TextInput`, and clicks the `Button` (variant 'primary') $\rightarrow$ dispatches `SUBMIT_MESSAGE` { content: "Hello" } to the Parent Coordinator.
 - **Then**:
   - **State Transitions**: Assert `ViewState` transitions `initializing` $\rightarrow$ `idle` $\rightarrow$ `chatting` and the `ExecutionState` transitions `inactive` $\rightarrow$ `executing` $\rightarrow$ `inactive`.
-  - **Database Sequence**:
+  - **Database Writes**:
     - Assert the `threads` store contains a new record with `status: "executing"`, `workflowId` and `activePresetId` matching selection. Assert the thread's title is initialized as "Hello".
     - Assert a user message "Hello" is created in the `messages` store with `threadId: [ID]` and `sequence: 0`.
     - Mock the API response using MSW with content "Hello! How can I help you today?" and usage metadata `{ promptTokens: 10, completionTokens: 15 }`.
@@ -970,7 +969,7 @@ To ensure the application is implemented correctly and can be verified in a test
 - **Then**:
   - **Step Limit Trigger**: Mock API responses for the first 2 steps, ensuring the 2nd step completes normally. After the 2nd step, the runner halts execution.
   - **Token Limit Trigger**: Mock an API response for a single step that returns `completionTokens: 1100`. The runner halts execution immediately after this step.
-  - Assert the thread record's `activeInterrupt` is set to `{ type: "budget_exceeded", budgetDetails: { stepCount: ..., currentTokens: ..., maxTokens: ... } }`.
+  - Assert the thread record's `activeInterrupt` in the `threads` store is set to `{ type: "budget_exceeded", budgetDetails: { stepCount: ..., currentTokens: ..., maxTokens: ... } }`.
   - UI renders the BudgetExceededCard component inline in the chat feed. Assert it correctly displays the current value (steps or tokens) and the limit using `Badge` components.
   - User clicks the `Button` (variant `"primary"`) "Increase Budget & Resume" $\rightarrow$ dispatches `INCREASE_BUDGET` to `BudgetExceededCard` machine.
   - Assert the runner's local `budgetOverride` context is updated to extend the limits (e.g., `stepsOverride = currentSteps + originalMaxSteps`).
@@ -1246,29 +1245,6 @@ To ensure the application is implemented correctly and can be verified in a test
 - **Exercised Components**: `ChatFeed`, `ErrorBubble`, `InlineMessageEditor`.
 - **Exercised State Machines**: `ExecutionState`, `GraphRunnerActor`.
 - **Exercised Systems**: `IndexedDB`, `MSW`, `Custom Runner`.
-
-### 15. Lifecycle and Recovery Flow
-
-- **Case 1: Startup Sweep (Interrupted Deletion)**:
-  - **Prerequisites**: Thread `T1` exists with `status: "deleting"` and 10 messages remaining in the `messages` store.
-  - **Given**: App is launched.
-  - **When**: `ViewState.initializing` executes.
-  - **Then**: Verify the `threads` store is queried for `"deleting"` status, and the asynchronous batched deletion process for `T1` is restarted and completed (messages and checkpoints purged, then thread record deleted).
-- **Case 2: Startup Sweep (Crashed Execution)**:
-  - **Prerequisites**: Thread `T2` exists with `status: "executing"`.
-  - **Given**: App is launched.
-  - **When**: `ViewState.initializing` executes.
-  - **Then**: Verify Thread `T2`'s status is updated to `"inactive"` in the `threads` store.
-- **Case 3: Thread Switching during Execution**:
-  - **Given**: Thread `T3` is currently in `executing` state (runner actor is active, streaming a response).
-  - **When**: User selects Thread `T4` from the SideNav.
-  - **Then**:
-    - Verify the `graphRunnerActor` for `T3` is stopped and its internal `AbortController` is triggered to cancel the active API request.
-    - Verify `ExecutionState` transitions `executing` $\rightarrow$ `checkingStatus` $\rightarrow$ `inactive` (or `awaitingHumanInput` if `T4` was interrupted).
-    - Verify that returning to `T3` later starts execution from the last successfully persisted checkpoint.
-- **Exercised Components**: `ApplicationLayout`, `SideNav`.
-- **Exercised State Machines**: `ViewState`, `ExecutionState`, `GraphRunnerActor`.
-- **Exercised Systems**: `IndexedDB`.
 
 ## Design System Description
 
