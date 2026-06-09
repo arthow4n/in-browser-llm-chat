@@ -1621,7 +1621,10 @@ These components are built using the Core Components above to create complex UI 
   - **Components**: Contains `Button`, `Dropdown`, and `Card` based thread items.
   - **Header Area**: App branding, manual theme toggle selector (using a `Dropdown` component), and a hamburger menu button.
 
-- **`ApplicationLayout`**: The top-level layout coordinator that manages the `SideNav` visibility and the main content area.
+- **`ApplicationLayout`**:
+  - **Structure**: The top-level layout coordinator that manages the `SideNav` visibility and the main content area.
+  - **Loading/Initializing Layout**: When the `ViewState` is in the `initializing` state, the `ApplicationLayout` must render `SkeletonLoader` components as placeholders for the `SideNav` thread list and the main content area (e.g., the `NewChatForm` or `ChatFeed`) to prevent layout shift and provide immediate visual feedback.
+  - **Sizing**: Full viewport width and height (100vw, 100vh), with `overflow: hidden` on the root and `overflow-y: auto` on the main content area.
 
 - **`ChatFeed`**:
   - **Structure**: A scrollable container that renders `MessageBubble` components in chronological order.
@@ -1677,6 +1680,7 @@ These components are built using the Core Components above to create complex UI 
 
 - **`MessageBubble`**:
   - **Structure**: A `Card` (variant `"standard"`) representing a single message.
+  - **Loading State**: When the `GraphRunnerActor` is in `running.requesting` state, the UI should render a 'Thinking...' bubble. This is a `MessageBubble` variant that replaces the content area with a `SkeletonLoader` (pulsing text lines) to indicate that the agent is preparing a response.
   - **Components**:
     - Header: Displays the agent/user `Avatar` and `name` (for assistant messages), and a timestamp.
     - Content: Renders markdown/math using `react-markdown` and `rehype-katex`.
