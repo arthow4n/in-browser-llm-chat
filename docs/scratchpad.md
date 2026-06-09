@@ -1005,7 +1005,7 @@ To ensure the application is implemented correctly and can be verified in a test
 - **Then**:
   - **Step Limit Trigger**: Mock API responses for the first 2 steps, ensuring the 2nd step completes normally. After the 2nd step, the runner halts execution.
   - **Token Limit Trigger**: Mock an API response for a single step that returns `completionTokens: 1100`. The runner halts execution immediately after this step.
-  - Assert the thread record's `activeInterrupt` in the `threads` store is set to `{ type: "budget_exceeded", budgetDetails: { stepCount: ..., currentTokens: ..., maxTokens: ... } }`.
+  - Assert the thread record's `activeInterrupt` in the `threads` store is set to `{ type: "budget_exceeded", budgetDetails: { stepCount: ..., currentTokens: ..., maxTokens: ... } }`, where `currentTokens` is the sum of `promptTokens` and `completionTokens` for the current run.
   - UI renders the BudgetExceededCard component inline in the chat feed. Assert it correctly displays the current value (steps or tokens) and the limit using `Badge` components.
   - User clicks the `Button` (variant `"primary"`) "Increase Budget & Resume" $\rightarrow$ dispatches `INCREASE_BUDGET` to `BudgetExceededCard` machine.
   - Assert the runner's local `budgetOverride` context is updated to extend the limits (e.g., `stepsOverride = currentSteps + originalMaxSteps`). Verify that this override is used for subsequent API calls instead of the preset's base limit.
@@ -1307,7 +1307,7 @@ To ensure the application is implemented correctly and can be verified in a test
 - **Given**: A preset is being edited in the `PresetEditor`.
 - **When (Success)**: User clicks "Test Connection" $\rightarrow$ dispatches `TEST_CONNECTION`.
 - **Then**:
-  - Mock a successful 1-token dummy response from the LLM provider using MSW.
+  - Mock a successful 1-token dummy response from the LLM provider using MSW (e.g., a JSON response `{"choices": [{"message": {"content": "OK"}}]}` or equivalent for the provider).
   - Assert the `PresetConnectionTester` machine transitions `testing` $\rightarrow$ `success`.
   - UI displays a green badge with the latency (e.g. `150ms`) and the model name.
 - **When (Failure)**: User clicks "Test Connection" with an invalid API key.
@@ -1559,33 +1559,48 @@ To ensure full implementation, the following mapping defines which components ar
 
 To ensure a predictable TDD implementation, the following mapping defines which XState machine governs each UI component's internal state:
 
-| Component                       | Governing State Machine                               |
-| :------------------------------ | :---------------------------------------------------- |
-| `ApplicationLayout`             | `MainApplicationLayout`                               |
-| `SideNav`                       | `SideNav`                                             |
-| `ChatHeader`                    | `ChatHeaderQuickPresetSwitcher`                       |
-| `ExecutionControlPanel`         | `Execution&LoopControlPanel`                          |
-| `ChatInputArea`                 | `ChatInputArea`                                       |
-| `MessageBubble` (Inline Editor) | `InlineMessageEditorAction`                           |
-| `MessageBubble` (Accordions)    | `MessageAccordion`                                    |
-| `MessageOptionsMenu`            | `InlineMessageEditorAction`                           |
-| `AskQuestionsToolForm`          | `AskQuestionsToolForm`                                |
-| `BudgetExceededCard`            | `BudgetExceededCard`                                  |
-| `ProposedActionCard`            | `ProposedActionCard`                                  |
-| `ApiPayloadPreviewModal`        | `ApiPayloadPreviewModal`                              |
-| `WorkflowJsonEditor`            | `WorkflowJsonEditor`                                  |
-| `PresetEditor`                  | `PresetEditor`                                        |
-| `PresetListView`                | `PresetListView`                                      |
-| `WorkflowListView`              | `CustomWorkflowListView`                              |
-| `GlobalSettingsForm`            | `GlobalSettingsForm`                                  |
-| `ThreadSettingsModal`           | `ThreadSettingsModal`                                 |
-| `ConfirmationModal`             | (Handled by the initiating machine's prompting state) |
-| `PromptingBranchModal`          | `InlineMessageEditorAction`                           |
-| `PresetConnectionTester`        | `PresetConnectionTester`                              |
-| `CheckpointCompactionDialog`    | `CheckpointCompactionDialog`                          |
-| `CodeBlockControl`              | `CodeBlockControl`                                    |
-| `NewChatForm`                   | `NewChatForm`                                         |
-| `ErrorBubble`                   | `ExecutionState`                                      |
+| Component                       | Governing State Machine          |
+| :------------------------------ | :------------------------------- |
+| `ApplicationLayout`             | `MainApplicationLayout`          |
+| `SideNav`                       | `SideNav`                        |
+| `ChatHeader`                    | `ChatHeaderQuickPresetSwitcher`  |
+| `ExecutionControlPanel`         | `Execution&LoopControlPanel`     |
+| `ChatInputArea`                 | `ChatInputArea`                  |
+| `MessageBubble` (Inline Editor) | `InlineMessageEditorAction`      |
+| `MessageBubble` (Accordions)    | `MessageAccordion`               |
+| `MessageOptionsMenu`            | `InlineMessageEditorAction`      |
+| `AskQuestionsToolForm`          | `AskQuestionsToolForm`           |
+| `BudgetExceededCard`            | `BudgetExceededCard`             |
+| `ProposedActionCard`            | `ProposedActionCard`             |
+| `ApiPayloadPreviewModal`        | `ApiPayloadPreviewModal`         |
+| `WorkflowJsonEditor`            | `WorkflowJsonEditor`             |
+| `PresetEditor`                  | `PresetEditor`                   |
+| `PresetListView`                | `PresetListView`                 |
+| `WorkflowListView`              | `CustomWorkflowListView`         |
+| `GlobalSettingsForm`            | `GlobalSettingsForm`             |
+| `ThreadSettingsModal`           | `ThreadSettingsModal`            |
+| `NewChatForm`                   | `NewChatForm`                    |
+| `ErrorBubble`                   | `ExecutionState`                 |
+| `CodeBlockControl`              | `CodeBlockControl`               |
+| `PresetConnectionTester`        | `PresetConnectionTester`         |
+| `CheckpointCompactionDialog`    | `CheckpointCompactionDialog`     |
+| `CodeView`                      | (Managed by parent component)    |
+| `Avatar`                        | (Pure functional component)      |
+| `Badge`                         | (Pure functional component)      |
+| `LoadingSpinner`                | (Pure functional component)      |
+| `SkeletonLoader`                | (Pure functional component)      |
+| `TextInput`                     | (Managed by parent form machine) |
+| `TextArea`                      | (Managed by parent form machine) |
+| `Button`                        | (Managed by parent component)    |
+| `Dropdown`                      | (Managed by parent component)    |
+| `Notification`                  | (Managed by parent component)    |
+| `Modal`                         | (Managed by parent component)    |
+| `RadioGroup`                    | (Managed by parent form machine) |
+| `CheckboxGroup`                 | (Managed by parent form machine) |
+| `Accordion`                     | `MessageAccordion`               |
+| `CodeView`                      | (Managed by parent component)    |
+| `OverflowMenu`                  | (Managed by parent component)    |
+| `Icon`                          | (Pure functional component)      |
 
 ### Layout & Composite Components
 
