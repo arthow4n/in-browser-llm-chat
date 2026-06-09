@@ -1706,7 +1706,6 @@ These components are built using the Core Components above to create complex UI 
     - Tool Accordion: An `Accordion` that reveals tool calls/results (collapsed by default).
     - Overflow Menu Trigger: An `OverflowMenu` button that opens the `MessageOptionsMenu`.
   - **Sizing**: Max-width 80% of viewport, aligned left (agent) or right (user).
-  - **Visual Distinction**: For assistant messages, the bubble must display a distinct background tint or a left-border color (e.g. 4px width) deterministically generated from a hash of the agent's name to ensure visual consistency across sessions and easy differentiation in multi-agent debates. Use the same HSL hue calculation as the `Avatar` component for this color.
 
 - **`ErrorBubble`**:
   - **Structure**: A specialized `Card` (variant `"notification"`, theme `"danger"`) used to render execution errors inline in the chat feed.
