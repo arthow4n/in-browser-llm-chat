@@ -52,6 +52,7 @@
     - [Theme Palette & Typography](#theme-palette--typography)
     - [Interaction Policies](#interaction-policies)
     - [Responsive Behavior](#responsive-behavior)
+    - [Global Animations & Transitions](#global-animations--transitions)
     - [Design System Component Mapping](#design-system-component-mapping)
     - [Layout & Composite Components](#layout--composite-components)
   - [User Interface (UI) Specification](#user-interface-ui-specification)
@@ -1345,6 +1346,15 @@ The application adapts its layout for viewports below `672px` (Mobile Viewport):
 - **Workflow JSON Editor**: Disables custom helper keyboard bars, relying on native mobile keyboard inputs, and displays a dismissible warning banner: "Editing complex workflows on mobile devices is not recommended and may lead to syntax errors."
 - **Chat Input**: The "Enter" key defaults to inserting a newline rather than submitting the message. Submission is performed strictly via the Send Button.
 
+### Global Animations & Transitions
+
+To achieve a premium, fluid feel, all UI transitions must adhere to the following guidelines:
+
+- **Duration**: Standard transition duration is `200ms` for most interactions (hover, focus, state changes) and `300ms` for larger layout transitions (modals, overlays).
+- **Easing**: Use `cubic-bezier(0.4, 0, 0.2, 1)` (standard ease-in-out) for all movement and opacity transitions to ensure smooth motion.
+- **Micro-interactions**: Interactive elements like buttons should have a subtle scale effect (e.g. `scale(0.98)`) on the `active` state to provide tactile feedback.
+- **Loading Transitions**: Transitions into loading states (e.g., entering `executing` or `loading`) should use a soft fade-in for skeleton loaders to avoid jarring visual pops.
+
 ### Design System Component Mapping
 
 To ensure full implementation, the following mapping defines which components are used in each view:
@@ -1354,6 +1364,18 @@ To ensure full implementation, the following mapping defines which components ar
 - **Workflow Management**: `WorkflowListView`, `WorkflowJsonEditor`, `TextArea`, `Button`, `Card`, `Badge`.
 - **LLM Preset CRUD**: `PresetListView`, `PresetEditor`, `TextInput`, `Dropdown`, `Button`, `Card`, `Badge`.
 - **Global Settings**: `GlobalSettingsForm`, `TextInput`, `Dropdown`, `Button`, `Notification`.
+
+- **`Text` Components**:
+  - `Heading`: Uses the modular typography scale; bold weight.
+  - `Body`: Standard body text (16px), normal weight.
+  - `Caption`: Smaller text (12px-14px), `text-secondary` color, used for timestamps or metadata.
+  - `Label`: Semibold, used for form labels and badge text.
+
+- **`Text` Components**:
+  - `Heading`: Uses the modular typography scale; bold weight.
+  - `Body`: Standard body text (16px), normal weight.
+  - `Caption`: Smaller text (12px-14px), `text-secondary` color, used for timestamps or metadata.
+  - `Label`: Semibold, used for form labels and badge text.
 
 - **`Button`**:
   - **Variants**:
@@ -1465,6 +1487,8 @@ These components are built using the Core Components above to create complex UI 
   - **Mobile**: A sliding overlay that enters from the left, covering a portion of the screen (max-width `280px`), accompanied by a semi-transparent backdrop that closes the menu when tapped.
   - **Animations**: Uses smooth CSS transitions for the sliding effect (e.g., `transform: translateX()` with `ease-in-out`).
   - **Components**: Contains `Button`, `Dropdown`, and `Card` based thread items.
+  - **Header Area**: App branding, manual theme toggle selector (using a `Dropdown` component), and a hamburger menu button.
+
 - **`ApplicationLayout`**: The top-level layout coordinator that manages the `SideNav` visibility and the main content area.
 
 - **`ChatHeader`**:
@@ -1485,6 +1509,8 @@ These components are built using the Core Components above to create complex UI 
     - Tool Accordion: An `Accordion` that reveals tool calls/results (collapsed by default).
     - Overflow Menu Trigger: An `OverflowMenu` button that opens the `MessageOptionsMenu`.
   - **Sizing**: Max-width 80% of viewport, aligned left (agent) or right (user).
+  - **Visual Distinction**: For assistant messages, the bubble must display a distinct background tint or a left-border color (e.g. 4px width) deterministically generated from a hash of the agent's name to ensure visual consistency across sessions and easy differentiation in multi-agent debates.
+  - **Visual Distinction**: For assistant messages, the bubble must display a distinct background tint or a left-border color (e.g. 4px width) deterministically generated from a hash of the agent's name to ensure visual consistency across sessions and easy differentiation in multi-agent debates.
 
 - **`NewChatForm`**:
   - **Structure**: A centered layout displayed when no thread is active.
