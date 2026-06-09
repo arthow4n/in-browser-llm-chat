@@ -607,7 +607,7 @@ These tools allow LLM agents to interactively create or modify custom workflows 
     - **Force Summarize early**: Bypasses any remaining evaluation and uses a state update or routing override to transition the graph execution directly to the summarizer node.
     - **Availability**: Force Consensus and Force Summarize early are available when execution is paused/inactive. If the graph is running, the user must first click Pause to suspend the run before these buttons become active, avoiding concurrent state update conflicts.
   - **Error Recovery and Resume Policy**:
-    - The application performs automatic retries with exponential backoff (up to 3 times) for transient API or network errors. If the error persists, the graph runner pauses execution, transitions the state machine to the `error` state, and displays a "Retry Step" button in the UI to allow manually resuming execution from the last successful checkpoint.
+    - The application performs automatic retries with exponential backoff (using a formula of $2^n \times 100ms$ where $n$ is the retry attempt index starting from 0, up to 3 retries) for transient API or network errors. If the error persists, the graph runner pauses execution, transitions the state machine to the `error` state, and displays a "Retry Step" button in the UI to allow manually resuming execution from the last successful checkpoint.
   - **Abort and Token Preservation on Interruption**:
     - When thread execution is paused or the user switches threads, the `AbortController` aborts any active API request immediately. Any partially received tokens/content for the active node execution step are discarded. Upon resumption, execution restarts from the beginning of the interrupted node using the state stored in the last persisted checkpoint.
   - **Loop Round & Turn Tracking**: `turnCount` is defined as the total number of agent execution steps (nodes executed or messages generated) during the active run. `currentRound` tracks loop iterations and is incremented each time execution transitions back to a designated loop header node (e.g. `Debater_A` in the debate workflow). The workflow JSON schema supports designating a node as the `loopHeader` to identify where a round boundary is.
@@ -895,16 +895,16 @@ To ensure the application is implemented correctly and can be verified in a test
 - **Then**:
   - **Submit Message**:
     - Assert `ViewState` transitions `initializing` $\rightarrow$ `idle` $\rightarrow$ `chatting` and `ExecutionState` transitions `inactive` $\rightarrow$ `executing`.
-    - Assert a user message "Hello" is created in the `messages` store with `threadId: [ID]` and `sequence: 0`.
+    - Assert that by querying the `messages` store using the `threadId` index, a record exists with `content: "Hello"`, `role: "user"`, and `sequence: 0`.
     - Assert the `threads` store contains a new record with `status: "executing"`.
   - **API Call**:
     - Mock the API response using MSW with content "Hello! How can I help you today?" and usage metadata `{ promptTokens: 10, completionTokens: 15 }`.
     - Assert the API request contains the correct API key (from preset or global settings) and merged system prompts.
   - **Process Response**:
-    - Assert an assistant message is created in the `messages` store with `role: "assistant"`, `content: "Hello! How can I help you today?"`, and usage metadata.
-    - Assert a checkpoint record is created in the `checkpoints` store.
-    - Assert the thread record's `latestCheckpointId` is updated.
-    - Assert `tokenStats` in the `threads` store are updated to `{ promptTokens: 10, completionTokens: 15, totalTokens: 25 }`.
+    - Assert that by querying the `messages` store using the `threadId` index, a record exists with `role: "assistant"`, `content: "Hello! How can I help you today?"`, and the expected usage metadata, with `sequence: 1`.
+    - Assert that by querying the `checkpoints` store using the compound key `[threadId, checkpointNs, checkpointId]`, a record exists containing the current execution state.
+    - Assert that by querying the `threads` store using the thread UUID, the record's `latestCheckpointId` is updated to match the newly created checkpoint's ID.
+    - Assert the `tokenStats` in the `threads` store are updated to `{ promptTokens: 10, completionTokens: 15, totalTokens: 25 }`.
     - Assert the sequence of writes: User Message $\rightarrow$ Assistant Message $\rightarrow$ Checkpoint $\rightarrow$ Thread Metadata.
   - **UI Update**:
     - Assert "Thinking..." skeleton bubble is rendered during `executing` state.
@@ -935,15 +935,15 @@ To ensure the application is implemented correctly and can be verified in a test
   - **State Transitions**: Assert the `ExecutionState` remains in `executing` throughout the autonomous run until termination.
   - **Phase 1 (Seeding)**:
     - Mock `Initiator` response: "Let's debate AI safety. The core question is whether superintelligence is controllable."
-    - Assert `Initiator` node executes $\rightarrow$ a message with `role: "assistant"`, `name: "Initiator"`, and the above content is created in the `messages` store $\rightarrow$ assert `lastAgentId` in the graph state (within the checkpoint record) and XState context is updated to `"Initiator"` $\rightarrow$ assert that the next node scheduled for execution is `Debater_A`.
+    - Assert that by querying the `messages` store using the `threadId` index, a record exists with `role: "assistant"`, `name: "Initiator"`, and the above content $\rightarrow$ assert `lastAgentId` in the graph state (within the checkpoint record) and XState context is updated to `"Initiator"` $\rightarrow$ assert that the next node scheduled for execution is `Debater_A`.
   - **Phase 2 (Looping)**:
     - **Round 1**:
       - Mock `Debater_A` response: "I argue that AI safety is the priority because a single failure is catastrophic."
-      - Assert `Debater_A` executes $\rightarrow$ API request uses the `Debater_A` specific system prompt $\rightarrow$ a message with `role: "assistant"`, `name: "Debater_A"`, and the above content is created in the `messages` store $\rightarrow$ assert `lastAgentId` in the graph state and XState context is updated to `"Debater_A"` $\rightarrow$ `Consensus_Evaluator_A` executes.
+      - Assert that by querying the `messages` store using the `threadId` index, a record exists with `role: "assistant"`, `name: "Debater_A"`, and the above content $\rightarrow$ API request uses the `Debater_A` specific system prompt $\rightarrow$ assert `lastAgentId` in the graph state and XState context is updated to `"Debater_A"` $\rightarrow$ `Consensus_Evaluator_A` executes.
       - Mock `Consensus_Evaluator_A` response: `{"consensusReached": false, "reasoning": "Arguments are still diverging"}`.
       - Assert routing to `Debater_B`.
       - Mock `Debater_B` response: "I disagree, efficiency and development speed are more important to solve current problems."
-      - `Debater_B` executes $\rightarrow$ API request uses the `Debater_B` specific system prompt $\rightarrow$ a message with `role: "assistant"`, `name: "Debater_B"`, and the above content is created in the `messages` store $\rightarrow$ assert `lastAgentId` in the graph state and XState context is updated to `"Debater_B"` $\rightarrow$ assert that the next node scheduled for execution is `Consensus_Evaluator_B`.
+      - Assert that by querying the `messages` store using the `threadId` index, a record exists with `role: "assistant"`, `name: "Debater_B"`, and the above content $\rightarrow$ API request uses the `Debater_B` specific system prompt $\rightarrow$ assert `lastAgentId` in the graph state and XState context is updated to `"Debater_B"` $\rightarrow$ assert that the next node scheduled for execution is `Consensus_Evaluator_B`.
       - Mock `Consensus_Evaluator_B` response: `{"consensusReached": false, "reasoning": "No agreement yet"}`.
       - Assert routing back to `Debater_A`.
       - Assert `currentRound` in the graph state increments to `2` upon entering `Debater_A` again. This is verified by inspecting the `checkpoint` record created immediately after `Consensus_Evaluator_B` executes and routes to `Debater_A`, ensuring the updated round count is persisted.
@@ -959,7 +959,7 @@ To ensure the application is implemented correctly and can be verified in a test
     - `Consensus_Evaluator_A` detects `consensusReached: true` in graph state $\rightarrow$ routes to `Summarizer` along the `on_consensus` edge.
   - **Phase 4 (Termination)**:
     - Mock `Summarizer` response: "In summary, both agents agreed on Point A and B. The debate concluded that AI safety is essential but should be balanced with efficiency."
-    - `Summarizer` executes $\rightarrow$ a final summary message with `name: "Summarizer"` is created in the `messages` store $\rightarrow$ assert `lastAgentId` updated to `"Summarizer"` $\rightarrow$ execution transitions to `inactive`.
+    - Assert that by querying the `messages` store using the `threadId` index, a final summary message with `name: "Summarizer"` is created in the `messages` store $\rightarrow$ assert `lastAgentId` updated to `"Summarizer"` $\rightarrow$ execution transitions to `inactive`.
     - UI displays the full sequence of agents in the `ChatFeed` using `MessageBubble` components (each with a unique `Avatar` and background tint) and each assistant message bubble displays the correct agent name (e.g. "Debater A") in the header.
 - **Exercised Components**: `ChatFeed`, `MessageBubble`, `ExecutionControlPanel`, `Avatar`, `Badge`, `Button`, `Card`, `Accordion`.
 - **Exercised State Machines**: `ExecutionState`, `GraphRunnerActor`, `ExecutionControlPanel`.
@@ -1012,7 +1012,7 @@ To ensure the application is implemented correctly and can be verified in a test
 - **Then**:
   - **Step Limit Trigger**: Mock API responses for the first 2 steps, ensuring the 2nd step completes normally. After the 2nd step, the runner halts execution.
   - **Token Limit Trigger**: Mock an API response for a single step that returns `completionTokens: 1100`. The runner halts execution immediately after this step.
-  - Assert the thread record's `activeInterrupt` in the `threads` store is set to `{ type: "budget_exceeded", budgetDetails: { stepCount: ..., currentTokens: ..., maxTokens: ... } }`, where `currentTokens` is the sum of `promptTokens` and `completionTokens` for the current run.
+  - Assert that by querying the `threads` store using the thread UUID, the record's `activeInterrupt` is set to `{ type: "budget_exceeded", budgetDetails: { stepCount: ..., currentTokens: ..., maxTokens: ... } }`, where `currentTokens` is the sum of `promptTokens` and `completionTokens` for the current run.
   - UI renders the BudgetExceededCard component inline in the chat feed. Assert it correctly displays the current value (steps or tokens) and the limit using `Badge` components.
   - User clicks the `Button` (variant `"primary"`) "Increase Budget & Resume" $\rightarrow$ dispatches `INCREASE_BUDGET` to `BudgetExceededCard` machine.
   - Assert the runner's local `budgetOverride` context is updated to extend the limits (e.g., `stepsOverride = currentSteps + originalMaxSteps`). Verify that this override is used for subsequent API calls instead of the preset's base limit.
@@ -1033,10 +1033,10 @@ To ensure the application is implemented correctly and can be verified in a test
 - **Then**:
   - **State Transitions**: Assert `ViewState` transitions `chatting` (via `MessageOptionsMenu`) $\rightarrow$ `chatting` (new thread).
   - **Database Writes**:
-    - Assert a new thread record is created in the `threads` store with a newly generated UUID `newThreadId`, cloning the parent's `workflowSnapshot`, `activePresetId`, and settings, and setting `parentThreadId = parentThreadId`, `parentMessageId = parentMessageId`, and `status = "inactive"`.
-    - Assert messages with `sequence <= 2` are cloned from the parent thread to the new thread in the `messages` store. Assert exactly 3 messages are cloned, each with newly generated UUIDs but preserving their `sequence` and `content`.
-    - Assert all checkpoints and `checkpoint_writes` associated with these cloned messages (identified by their `[checkpointNs, checkpointId]` pairs) are cloned to the new thread's records in IndexedDB. Specifically, assert that for every `checkpoint_write` in the parent thread matching the filtered `checkpointId`s, a corresponding record with the new `threadId` exists in the `checkpoint_writes` store.
-    - Assert the new thread's `latestCheckpointId` and `latestCheckpointNs` are set to the checkpoint of the branched message (sequence 2).
+    - Assert that by querying the `threads` store using the newly generated UUID, a record exists with the expected cloned properties (cloned `workflowSnapshot`, `activePresetId`, and settings), setting `parentThreadId = parentThreadId`, `parentMessageId = parentMessageId`, and `status = "inactive"`.
+    - Assert that by querying the `messages` store using the new `threadId` index, exactly 3 records exist with `sequence` values 0, 1, and 2, each with newly generated UUIDs but preserving their `sequence` and `content`.
+    - Assert that by querying the `checkpoints` and `checkpoint_writes` stores using the new `threadId` index, records exist matching the `[checkpointNs, checkpointId]` pairs of the cloned messages.
+    - Assert that by querying the `threads` store using the new thread UUID, the `latestCheckpointId` and `latestCheckpointNs` are set to the checkpoint of the branched message (sequence 2).
   - UI navigates to the new thread ID using `MessageOptionsMenu` and `Toggled Sidebar` context, and displays the cloned history in the `ChatFeed`.
 - **Exercised Components**: `MessageBubble`, `OverflowMenu`, `MessageOptionsMenu`, `SideNav`, `Modal`, `Button`, `Card`, `TextInput`, `Accordion`.
 - **Exercised State Machines**: `ViewState`, `InlineMessageEditorAction`.
