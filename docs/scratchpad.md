@@ -756,7 +756,7 @@ When a workflow run fails (due to API failures, network dropouts, or graph compi
 
 If the thread execution fails and the coordinator enters `ExecutionState.error`, a dedicated, styled error bubble is rendered inline at the very end of the chat feed (as the latest item in the sequence, representing the failed execution turn).
 
-- **Visual Style**: Structured using a Carbon `Tile` or `InlineNotification` styled with Carbon's danger theme (`theme="danger"`, red border, light-red background, and a warning/error icon). Sized with a minimum of `44x44px` touch targets for interactive items.
+- **Visual Style**: Structured using a `Card` (variant `"notification"`) styled with the design system's danger theme (red border, light-red background, and a warning/error icon). Sized with a minimum of `44x44px` touch targets for interactive items.
 - **Content**: Displays:
   - The name of the agent node that was executing when the error occurred.
   - The specific error type/code (e.g. `401 Unauthorized`, `429 Rate Limit Exceeded`, `Timeout`, `CORS Blocked`).
@@ -1346,6 +1346,7 @@ The application uses a custom, premium design system built with Vanilla CSS and 
 These components are built using the Core Components above to create complex UI sections.
 
 - **`SideNav`**: Navigation drawer containing `Button`, `Dropdown`, and `Card` based thread items.
+- **`ApplicationLayout`**: The top-level layout coordinator that manages the `SideNav` visibility and the main content area.
 - **`ChatHeader`**: Top bar featuring a `Dropdown` for presets and `Button` for payload preview.
 - **`ExecutionControlPanel`**: Sticky panel containing `Button` controls, `Badge` status, and `LoadingSpinner`.
 - **`ChatInputArea`**: Complex input section using `TextInput`, `TextArea`, `Dropdown` for role selection, and `Button`.
@@ -1359,6 +1360,10 @@ These components are built using the Core Components above to create complex UI 
 - **`WorkflowListView`**: List view utilizing `Card`, `Button`, and `Badge`.
 - **`GlobalSettingsForm`**: Full-page form using `TextInput`, `Dropdown`, `Button`, and `Notification`.
 - **`ThreadSettingsModal`**: Management modal using `TextInput`, `Dropdown`, `Button`, and `Modal`.
+- **`ConfirmationModal`**: A generic confirmation dialog featuring a title, description, and "Confirm"/"Cancel" buttons.
+- **`PromptingBranchModal`**: A specialized modal for naming a new branched thread.
+- **`ApiPayloadPreviewModal`**: A modal for inspecting the JSON payload sent to LLM APIs, featuring an agent selector and a JSON code view.
+- **`InlineMessageEditor`**: A component that replaces a message bubble with a text area for inline editing.
 - **`ErrorBubble`**: Special `Card` (variant `"notification"`, theme `"danger"`) with integrated `Button` for recovery.
 - **`MessageBubble`**: Core chat unit using `Card`, `Avatar`, `Accordion` for reasoning/tools, and `OverflowMenu`.
 - **`OverflowMenu`**: Contextual `Dropdown` menu using `Button` items for message actions.
