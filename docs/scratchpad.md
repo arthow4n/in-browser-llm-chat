@@ -1014,8 +1014,8 @@ To ensure the application is implemented correctly and can be verified in a test
 - **Given**: A preset configured in the `presets` store with `maxStepsWithoutUser: 2` and `maxTokensPerRun: 1000`.
 - **When**: A workflow is executed that requires 3 consecutive agent steps without user input, or where the total tokens consumed in a run exceed 1000.
 - **Then**:
-  - **Step Limit Trigger**: Mock API responses for the first 2 steps, ensuring the 2nd step completes normally. After the 2nd step, the runner halts execution.
-  - **Token Limit Trigger**: Mock an API response for a single step that returns `completionTokens: 1100`. The runner halts execution immediately after this step.
+  - **Step Limit Trigger**: Mock API responses for the first 2 steps. After the 2nd step, verify that the runner halts execution and the thread record's `activeInterrupt` is set to `{ type: "budget_exceeded", budgetDetails: { stepCount: 2, ... } }`.
+  - **Token Limit Trigger**: Mock an API response for a single step that returns `metadata.usage: { promptTokens: 100, completionTokens: 900 }` when the `maxTokensPerRun` limit is 1000. Verify the runner halts execution immediately after this step.
   - Assert that by querying the `threads` store using the thread UUID, the record's `activeInterrupt` is set to `{ type: "budget_exceeded", budgetDetails: { stepCount: ..., currentTokens: ..., maxTokens: ... } }`, where `currentTokens` is the sum of `promptTokens` and `completionTokens` for the current run.
   - UI renders the BudgetExceededCard component inline in the chat feed. Assert it correctly displays the current value (steps or tokens) and the limit using `Badge` components.
   - User clicks the `Button` (variant `"primary"`) "Increase Budget & Resume" $\rightarrow$ dispatches `INCREASE_BUDGET` to `BudgetExceededCard` machine.
@@ -1770,10 +1770,11 @@ These components are built using the Core Components above to create complex UI 
   - **Structure**: A centered layout displayed when no thread is active.
   - **Visual Spec**: `display: flex`, `flex-direction: column`, `align-items: center`, `justify-content: center`, `gap: 24px`, `max-width: 600px`, `margin: 0 auto`.
   - **Components**:
-    - Workflow Selector: A `Dropdown` for selecting the starting workflow.
-    - Preset Selector: A `Dropdown` for selecting the initial LLM preset.
+    - Workflow Selector: A `Dropdown` for selecting the starting workflow (defaulting to standard 1-agent).
+    - Preset Selector: A `Dropdown` for selecting the initial LLM preset (defaulting to the global default preset).
     - Initial Message Input: A `TextArea` for the first user prompt.
     - Submit Button: A `Button` (variant `"primary"`) to create the thread and start execution.
+  - **Sizing**: All interactive elements must have a minimum touch target of `44x44px`.
 
 - **`BudgetExceededCard`**:
   - **Structure**: A `Card` (variant `"notification"`, theme `"danger"`) rendered inline in the chat feed.
@@ -1972,8 +1973,9 @@ These components are built using the Core Components above to create complex UI 
 - **`ApiPayloadPreviewModal`**:
   - **Structure**: A `Modal` displaying the current LLM API payload as a JSON `CodeView`.
   - **Components**:
-    - An agent selector `Dropdown` allowing the user to switch between agents in the current workflow to inspect their specific payload.
-    - A `CodeView` displaying the messages array, highlighting injected system messages with an `[INJECTED]` badge.
+    - Header: An agent selector `Dropdown` allowing the user to switch between agents in the current workflow to inspect their specific payload.
+    - Content: A `CodeView` displaying the compiled messages array.
+    - Visuals: Injected system messages within the JSON are highlighted with a distinct background color and marked with an `[INJECTED]` badge.
   - **Interactions**: Agent selection updates the displayed JSON in real-time.
 - **`InlineMessageEditor`**:
   - **Structure**: A specialized input component that replaces a message bubble inline for editing.
