@@ -50,7 +50,9 @@
     - [15. Lifecycle and Recovery Flow](#15-lifecycle-and-recovery-flow)
   - [Design System Description](#design-system-description)
     - [Theme Palette & Typography](#theme-palette--typography)
-    - [Core Components](#core-components)
+    - [Interaction Policies](#interaction-policies)
+    - [Responsive Behavior](#responsive-behavior)
+    - [Design System Component Mapping](#design-system-component-mapping)
     - [Layout & Composite Components](#layout--composite-components)
   - [User Interface (UI) Specification](#user-interface-ui-specification)
     - [1. Global Navigation and Layout](#1-global-navigation-and-layout)
@@ -883,10 +885,13 @@ To ensure the application is implemented correctly and can be verified in a test
     - Assert the thread record's `latestCheckpointId` is updated to match this new checkpoint.
     - Use a spy on the `idb` store's `put`/`add` methods to assert that the writes to `messages`, `checkpoints`, and `threads` occur in this chronological order: (1) User Message $\rightarrow$ (2) Assistant Message $\rightarrow$ (3) Checkpoint $\rightarrow$ (4) Thread Metadata Update. Since `idb` is a wrapper, this is achieved by spying on the underlying `IDBObjectStore.prototype.put` and `IDBObjectStore.prototype.add` methods when using `fake-indexeddb`.
   - **API Payload Verification**: Use MSW to intercept the request (e.g., standard Gemini API or OpenRouter API endpoints called by the Vercel AI SDK integrations) and assert:
+    - **API Key Sourcing**: Verify that the request header contains the correct API key (cloned from the preset if present, otherwise from the global settings).
     - **For Gemini**: The request contains both the agent's system prompt and any injected system messages (merged with `\n\n`), and the user message "Hello" is sent as a `user` role part in the contents.
     - **For OpenRouter**: The request messages array starts with a `role: "system"` message containing the merged system prompts, followed by the user message "Hello" as `role: "user"`.
-  - Assert `tokenStats` in the `threads` store are updated to `{ promptTokens: 10, completionTokens: 15, totalTokens: 25 }`.
-  - UI displays both messages in the `ChatFeed` using `MessageBubble` components (with an `Avatar` for the assistant), and the `ChatInputArea` `TextInput` field is enabled once `ExecutionState` returns to `inactive`.
+  - **UI Feedback**:
+    - Assert the "Thinking..." skeleton bubble is rendered in the `ChatFeed` while the `ExecutionState` is `executing` and the runner is in `running.requesting`.
+    - Assert `tokenStats` in the `threads` store are updated to `{ promptTokens: 10, completionTokens: 15, totalTokens: 25 }`.
+    - UI displays both messages in the `ChatFeed` using `MessageBubble` components (with an `Avatar` for the assistant), and the `ChatInputArea` `TextInput` field is enabled once `ExecutionState` returns to `inactive`.
 - **Exercised Components**: `ChatInputArea`, `ChatFeed`, `MessageBubble`, `SideNav`, `TextInput`, `Button`, `Avatar`, `Card`, `LoadingSpinner`.
 - **Exercised State Machines**: `ViewState`, `ExecutionState`, `GraphRunnerActor`.
 - **Exercised Systems**: `IndexedDB`, `MSW`, `Custom Runner`, `Vercel AI SDK`.
@@ -1302,7 +1307,39 @@ To achieve a premium, modern aesthetic, the following color palette and typograp
   - `--border-color`: `#3F3F3F` (Dark grey border)
   - `--shadow-sm`: `0 2px 4px rgba(0,0,0,0.3)`
 
-### Core Components
+### Interaction Policies
+
+To ensure a consistent and accessible user experience, the following interaction rules are globally applied to all UI components:
+
+- **Touch Targets**: All interactive elements (buttons, links, form controls, accordion toggles) MUST have a minimum tap target size of `44x44px`.
+- **Visibility**: Interactive elements (like the overflow menu button on message bubbles) must be persistently visible with a light opacity (e.g. `0.6`), rather than relying on hover-only visibility, to ensure accessibility across all device types.
+- **Checkpoint Compaction Enabling Rules**: The "Edit", "Delete", and "Branch" options for a message are enabled if and only if:
+  1. The parent coordinator `ExecutionState` is `inactive` or `error`.
+  2. AND either:
+     a. The message has a non-null `checkpointId` and `checkpointNs` in the database.
+     b. OR the message is the initial user message (sequence 0).
+     c. OR traversing backward from the message to the beginning of the thread finds only messages with `checkpointId == null`.
+     If a message's associated checkpoints were purged during compaction, these options are disabled, and a tooltip explains that historical checkpoints have been compacted.
+
+### Responsive Behavior
+
+The application adapts its layout for viewports below `672px` (Mobile Viewport):
+
+- **SideNav**: Transitions from a persistent vertical drawer to a sliding overlay. The overlay enters from the left (max-width `280px`) with a semi-transparent backdrop. Tapping the backdrop or any menu item auto-collapses the overlay.
+- **Execution Control Panel**: Collapses from a sticky horizontal bar into a compact sticky status bar (top or bottom). Tapping this bar opens a full-screen modal overlay containing all turn counters and control actions.
+- **Message Options Menu**: Transitions from a floating dropdown menu to a centered viewport modal for easier touch interaction.
+- **Workflow JSON Editor**: Disables custom helper keyboard bars, relying on native mobile keyboard inputs, and displays a dismissible warning banner: "Editing complex workflows on mobile devices is not recommended and may lead to syntax errors."
+- **Chat Input**: The "Enter" key defaults to inserting a newline rather than submitting the message. Submission is performed strictly via the Send Button.
+
+### Design System Component Mapping
+
+To ensure full implementation, the following mapping defines which components are used in each view:
+
+- **Global Navigation & Layout**: `SideNav`, `ApplicationLayout`, `Button`, `Dropdown`, `Notification`.
+- **Main Chat Interface**: `ChatHeader`, `ExecutionControlPanel`, `ChatFeed`, `MessageBubble`, `ChatInputArea`, `NewChatForm`, `BudgetExceededCard`, `ProposedActionCard`, `AskQuestionsToolForm`, `ErrorBubble`, `InlineMessageEditor`, `MessageOptionsMenu`, `Avatar`, `Accordion`, `Badge`, `LoadingSpinner`.
+- **Workflow Management**: `WorkflowListView`, `WorkflowJsonEditor`, `TextArea`, `Button`, `Card`, `Badge`.
+- **LLM Preset CRUD**: `PresetListView`, `PresetEditor`, `TextInput`, `Dropdown`, `Button`, `Card`, `Badge`.
+- **Global Settings**: `GlobalSettingsForm`, `TextInput`, `Dropdown`, `Button`, `Notification`.
 
 - **`Button`**:
   - **Variants**:
@@ -1557,7 +1594,10 @@ To ensure the application UI is readable and clearly understandable on both desk
 - **Touch Targets**: All interactive elements (buttons, links, form controls, accordion toggles) MUST have a minimum tap target size of 44x44px.
 - **Viewport Constraints**: Modals and off-canvas elements (like the SideNav) must never exceed `100vw` or `100vh`. Use appropriate `max-height` and `overflow-y: auto` for internal content to allow scrolling within the bounds of the viewport.
 - **Loading & Transitions**: Skeleton loaders, spinners, or localized "Thinking..." text should always replace or overlay empty views when executing API calls or database operations to give the user immediate feedback and prevent confusing "dead" states.
-- **Empty States**: All lists (threads, presets, workflows) MUST have beautifully designed empty states with a clear call-to-action (e.g., "Create your first thread") and explanatory text, rather than just showing a blank table or list.
+- **Empty States**: All lists (threads, presets, workflows) MUST have beautifully designed empty states with a clear call-to-action and explanatory text, rather than just showing a blank table or list.
+  - **Thread List**: "You have no threads yet. Start a new conversation to begin!"
+  - **Preset List**: "No LLM presets configured. Create one in the settings to connect to an AI provider."
+  - **Workflow List**: "No custom workflows created. Design an orchestration graph to automate your agent loops!"
 - **Dynamic Input Resizing**: Chat input textareas should dynamically grow in height as the user types (up to a maximum height constraint) to ensure visibility of long prompts before submitting.
 
 The application state is managed by a central XState machine (the Parent Coordinator Machine) configured with parallel state regions. This design decouples UI view navigation from LangGraph background execution, allowing background workflows to run concurrently (in active-only execution mode) while the user navigates settings or configurations.
@@ -2422,7 +2462,10 @@ Governs the lifecycle of the custom background execution runner, which runs as a
   - `budgetOverride`: `{ maxStepsWithoutUser: number; maxTokensPerRun: number | null } | null` (active temporary budget override values)
 - **States**:
   - `initializing`: Compiles the workflow graph using the `workflowSnapshot`, instantiates the custom checkpointer, and prepares the runner. Loads the thread's latest checkpoint config.
-    - **API Key Resolution**: The runner resolves the final API key for each agent node: if the `presetId`'s associated preset has a non-empty `apiKey`, it is used; otherwise, it falls back to the corresponding provider's global API key stored in the `settings` store. If neither is available, the runner dispatches an `ERROR` event with a "Missing API Key" message and transitions to `failed`.
+    - **API Key Resolution Fallback Sequence**:
+      1. Check if the `presetId`'s associated preset in the `presets` store has a non-empty `apiKey`. If yes, use it.
+      2. If not, check the `settings` store for the corresponding provider's global API key (OpenRouter or Gemini). If yes, use it.
+      3. If neither is available, the runner dispatches an `ERROR` event with a "Missing API Key" message and transitions to `failed`.
     - **Message Synchronization**: Queries the `messages` store for any messages with `sequence` higher than the sequence of the latest message in the loaded checkpoint. If newer messages exist in the database, merges them into the checkpoint execution state, updating the latest checkpoint references.
   - `running`: Actively executing steps of the compiled workflow graph.
     - `running.requesting`: Sending request to LLM API (direct client call).
