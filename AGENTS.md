@@ -46,11 +46,11 @@ Use the following commands to run the project's quality checks and builds:
 
 - **Frontend Framework**: React ^19.2.6
 - **State Management**: XState ^5.32.0
-- **UI Framework**: Carbon Design System ^1.108.0
+- **UI Framework**: Custom Design System (Vanilla CSS)
 - **Routing**: React Router ^7.16.0
 - **Build Tool**: Vite ^8.0.14
-- **LLM Orchestration**: LangChain Core ^1.1.48, LangGraph ^1.3.2
-- **LLM SDKs**: Google GenAI ^2.7.0, OpenRouter SDK ^0.12.79
+- **LLM Orchestration**: Custom Orchestration (XState & XState Persist)
+- **LLM SDKs**: Vercel AI SDK (`ai` ^6.0.197)
 - **Testing**: Vitest ^4.1.7, MSW ^2.14.6, Testing Library ^16.3.2
 - **Linting/Formatting**: Oxlint ^1.67.0, Oxfmt ^0.52.0
 - **Validation**: Zod ^4.4.3
@@ -61,8 +61,10 @@ Use the following commands to run the project's quality checks and builds:
 
 ## UI Aesthetics Policy
 
-- Use ONLY the Carbon Design System.
-- Do NOT use "premium design aesthetics" like glassmorphism, custom micro-animations, or custom typography (like Inter/Outfit). Adhere strictly to the Carbon Design System defaults and tokens.
+- Design a custom, modern design system using Vanilla CSS.
+- Prioritize high-quality, premium design aesthetics including modern typography (e.g., from Google Fonts like Inter or Outfit), smooth gradients, sleek dark and light modes, and subtle micro-animations/transitions.
+- Ensure a clean, responsive layout and clear visual hierarchies.
+- Ensure all interactive elements have touch targets of at least 44x44px.
 
 ## Business Logic Documentation
 
