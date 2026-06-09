@@ -1037,7 +1037,8 @@ To ensure the application is implemented correctly and can be verified in a test
     - Assert that by querying the `messages` store using the new `threadId` index, exactly 3 records exist with `sequence` values 0, 1, and 2, each with newly generated UUIDs but preserving their `sequence` and `content`.
     - Assert that by querying the `checkpoints` and `checkpoint_writes` stores using the new `threadId` index, records exist matching the `[checkpointNs, checkpointId]` pairs of the cloned messages.
     - Assert that by querying the `threads` store using the new thread UUID, the `latestCheckpointId` and `latestCheckpointNs` are set to the checkpoint of the branched message (sequence 2).
-  - UI navigates to the new thread ID using `MessageOptionsMenu` and `Toggled Sidebar` context, and displays the cloned history in the `ChatFeed`.
+  - **UI Update**:
+    - Assert the `SideNav` is updated to show the new thread as active and displays the cloned history in the `ChatFeed`.
 - **Exercised Components**: `MessageBubble`, `OverflowMenu`, `MessageOptionsMenu`, `SideNav`, `Modal`, `Button`, `Card`, `TextInput`, `Accordion`.
 - **Exercised State Machines**: `ViewState`, `InlineMessageEditorAction`.
 - **Exercised Systems**: `IndexedDB`.
@@ -1647,7 +1648,7 @@ To ensure a predictable TDD implementation, the following mapping defines which 
 | `ApplicationLayout`             | `MainApplicationLayout`          |
 | `SideNav`                       | `SideNav`                        |
 | `ChatHeader`                    | `ChatHeaderQuickPresetSwitcher`  |
-| `ExecutionControlPanel`         | `Execution&LoopControlPanel`     |
+| `ExecutionControlPanel`         | `ExecutionControlPanel`          |
 | `ChatInputArea`                 | `ChatInputArea`                  |
 | `MessageBubble` (Inline Editor) | `InlineMessageEditorAction`      |
 | `MessageBubble` (Accordions)    | `MessageAccordion`               |
@@ -1704,6 +1705,7 @@ These components are built using the Core Components above to create complex UI 
     - Each card displays the preset name, provider, and model using `Text` and `Badge` (variant `"info"`).
     - Includes a `Button` (variant `"ghost"`) for editing (triggers `OPEN_PRESET_EDIT`) and a `Button` (variant `"danger"`) for deleting (triggers `DELETE_PRESET`).
   - **Sizing**: Occupies the main content area, with cards spaced by `16px`.
+  - **Pagination**: Implements infinite scroll; initially loads 10 items and fetches the next 10 upon reaching the bottom of the list. Supports search-based filtering and alphabetical sorting by name.
 
 - **`CustomWorkflowListView`**:
   - **Structure**: A vertical list of agent orchestration workflows.
@@ -1712,6 +1714,7 @@ These components are built using the Core Components above to create complex UI 
     - Each card displays the workflow name, a short description, and a `Badge` identifying it as "Built-in" (green) or "Custom" (blue).
     - Includes a `Button` (variant `"ghost"`) for editing (triggers `OPEN_WORKFLOW_EDIT`) and a `Button` (variant `"danger"`) for deleting (triggers `DELETE_WORKFLOW` - only for custom workflows).
   - **Sizing**: Occupies the main content area, with cards spaced by `16px`.
+  - **Pagination**: Implements infinite scroll; initially loads 10 items and fetches the next 10 upon reaching the bottom of the list. Supports search-based filtering and alphabetical sorting by name.
 
 - **`SideNav`**:
   - **Desktop**: A persistent vertical drawer on the left side of the viewport.
@@ -1776,7 +1779,7 @@ These components are built using the Core Components above to create complex UI 
     - Active workflow name (Text/Badge).
     - Preset Dropdown Switcher: A `Dropdown` allowing quick switching of LLM presets. Includes a "Configure" icon button next to it that opens the `PresetEditor` modal.
     - API Payload Preview Button: A `Button` (variant `"ghost"`) that opens the `ApiPayloadPreviewModal`.
-  - **Sizing**: Fixed height (e.g., `56px`), sticky at top, with `z-index: 10`.
+  - **Sizing**: Fixed height of `56px`, sticky at top, with `z-index: 10`.
 
 - **`MessageBubble`**:
   - **Structure**: A `Card` (variant `"standard"`) representing a single message.
