@@ -31,6 +31,7 @@
       - [API Request/Response Sequences (LLM Providers)](#api-requestresponse-sequences-llm-providers)
       - [Database Read/Write Sequences (IndexedDB `idb`)](#database-readwrite-sequences-indexeddb-idb)
   - [Integration Test Plan (Happy Path)](#integration-test-plan-happy-path)
+    - [0. UI Navigation and Onboarding Happy Path](#0-ui-navigation-and-onboarding-happy-path)
     - [1. Basic Chat Flow](#1-basic-chat-flow)
     - [2. Multi-Agent Debate Flow](#2-multi-agent-debate-flow)
     - [3. `ask_questions` Tool Flow](#3-ask_questions-tool-flow)
@@ -38,10 +39,15 @@
     - [5. Thread Branching Flow](#5-thread-branching-flow)
     - [6. Message Edit & Rollback Flow](#6-message-edit--rollback-flow)
     - [7. System Message Injection Flow](#7-system-message-injection-flow)
-    - [8. Workflow Customization Flow](#8-workflow-customization-flow)
-    - [9. Cascading Deletion Flow](#9-cascading-deletion-flow)
-    - [10. Preset Management Happy Path](#10-preset-management-happy-path)
-    - [11. Workflow Management Happy Path](#11-workflow-management-happy-path)
+    - [8. Workflow Sync (Soft vs Hard Sync) Happy Path](#8-workflow-sync-soft-vs-hard-sync-happy-path)
+    - [9. Workflow Customization Flow](#9-workflow-customization-flow)
+    - [10. Cascading Deletion Flow](#10-cascading-deletion-flow)
+    - [11. Preset Management Happy Path](#11-preset-management-happy-path)
+    - [12. Workflow Management Happy Path](#12-workflow-management-happy-path)
+    - [13. LLM Database Modification Approval Flow](#13-llm-database-modification-approval-flow)
+    - [14. Error Recovery Flow](#14-error-recovery-flow)
+    - [15. Lifecycle and Recovery Flow](#15-lifecycle-and-recovery-flow)
+    - [15. Lifecycle and Recovery Flow](#15-lifecycle-and-recovery-flow)
   - [User Interface (UI) Specification](#user-interface-ui-specification)
     - [1. Global Navigation and Layout](#1-global-navigation-and-layout)
     - [2. Main Chat Interface](#2-main-chat-interface)
@@ -91,15 +97,6 @@
     - [Phase 9: Storage Maintenance](#phase-9-storage-maintenance)
   - [Testing Guidelines](#testing-guidelines)
     - [Examples](#examples)
-  - [Integration User Flow Test Plan](#integration-user-flow-test-plan)
-    - [Phase 1: First Launch & Onboarding](#phase-1-first-launch--onboarding)
-    - [Phase 2: Basic Chatting (Single Agent)](#phase-2-basic-chatting-single-agent)
-    - [Phase 3: Advanced Chatting (Multi-Agent / Debate)](#phase-3-advanced-chatting-multi-agent--debate)
-    - [Phase 4: Interactive Tools (`ask_questions`)](#phase-4-interactive-tools-ask_questions)
-    - [Phase 5: Workflow & Preset Management](#phase-5-workflow--preset-management)
-    - [Phase 6: Thread Life-cycle & History Manipulation](#phase-6-thread-life-cycle--history-manipulation)
-    - [Phase 7: Global Configs & Budgeting](#phase-7-global-configs--budgeting)
-    - [Phase 8: Error Recovery](#phase-8-error-recovery)
 
 <!-- ENDTOC -->
 
@@ -833,103 +830,180 @@ All API calls are executed directly from the browser using `@openrouter/sdk` or 
 
 To ensure the application is implemented correctly and can be verified in a test-driven manner, the following integration test scenarios must be implemented using Vitest and MSW. Each scenario should verify both the UI state and the underlying IndexedDB state.
 
+### 0. UI Navigation and Onboarding Happy Path
+
+- **Prerequisites**:
+  - IndexedDB `settings` store is empty (no API keys).
+  - IndexedDB `presets` store is empty.
+  - Ensure a "clean slate" by clearing all IndexedDB stores before starting this test case.
+- **Given**: App is launched for the first time.
+- **When**:
+  1. User lands on the homepage.
+  2. User clicks the onboarding warning banner $\rightarrow$ dispatches `OPEN_SETTINGS`.
+  3. User enters API keys (e.g., Gemini API key) and clicks Save $\rightarrow$ dispatches `SAVE` to `GlobalSettingsForm` machine.
+  4. User navigates via Left Sidebar $\rightarrow$ Global Settings $\rightarrow$ select "Dark" from the theme override dropdown selector $\rightarrow$ click the "Save Settings" button.
+  5. User navigates back to the chat interface $\rightarrow$ dispatches `CLOSE_SETTINGS`.
+- **Then**:
+  - **State Transitions**: Assert `ViewState` transitions `initializing` $\rightarrow$ `onboarding` $\rightarrow$ `globalSettings` $\rightarrow$ `idle`.
+  - **Initial Load Checks**:
+    - Assert IndexedDB database `in-browser-llm-chat-db` is initialized and all required stores (`settings`, `presets`, `workflows`, `threads`, `messages`, `checkpoints`, `checkpoint_writes`) are created.
+    - Assert built-in workflows ("Standard 1-agent", "Debate") are visible in the "New Chat" workflow selection dropdown.
+  - **Database Writes**:
+    - Assert the `settings` store contains a record with `key: "api_keys"` and the provided keys.
+    - Assert the `presets` store is automatically seeded with default presets ("Default Gemini Flash" using `gemini-2.5-flash` and "Default OpenRouter Flash" using `google/gemini-2.5-flash`).
+    - Assert that the `settings` store contains a record `{ key: "default_preset_id", value: [UUID] }` where `[UUID]` matches one of the seeded presets.
+    - Assert theme preference is saved in `settings` as `{ key: "ui_config", value: { theme: "dark" } }`.
+  - **UI Feedback**:
+    - Assert the onboarding warning banner is removed and the `ChatInputArea` input field is enabled.
+    - Assert the `<html>` or `<body>` element has the Carbon dark theme class `cds--theme--g100` (or `cds--theme--g90`).
+- **Exercised Components**: `GlobalSettingsForm`, `SideNav`, `ChatInputArea`, `ApplicationLayout`.
+- **Exercised State Machines**: `ViewState`, `ApplicationLayout`.
+- **Exercised Systems**: `IndexedDB`.
+
 ### 1. Basic Chat Flow
 
-- **Given**: App is initialized with valid API keys and a default preset.
-- **When**: User starts a new chat with the default workflow, enters "Hello" in the input, and clicks Send.
+- **Prerequisites**:
+  - `settings` store contains valid `api_keys` and a valid `default_preset_id`.
+  - `presets` store contains the preset matching `default_preset_id`.
+- **Given**: App is initialized with valid API keys and a default preset, and the "Standard 1-agent" built-in workflow is selected.
+- **When**: User starts a new chat with the default workflow, enters "Hello" in the `ChatInputArea` input, and clicks Send $\rightarrow$ dispatches `SUBMIT_MESSAGE` { content: "Hello" } to the Parent Coordinator.
 - **Then**:
-  - A new thread record is created in the `threads` store with `status: "executing"`. Verify that `workflowId` and `activePresetId` are correctly set based on the selection.
-  - A user message "Hello" is created in the `messages` store with `sequence: 0`.
-  - An API request is dispatched to the LLM provider. Use MSW to intercept the request and verify the `POST` body:
-    - If using Gemini/OpenRouter, verify the roles and content are correctly mapped (e.g., the "Hello" message has `role: "user"`).
-    - Verify that the final payload includes the system prompt for the agent, merged according to the "Message Compilation" rules (Section 1 of DB Schema).
-  - Mock the API response with content "Hello! How can I help you today?" and usage `{ prompt_tokens: 10, completion_tokens: 15 }`.
-  - **Order of DB Writes**: Verify that the assistant message is created in the `messages` store first (with `sequence: 1`, content "Hello! How can I help you today?", and usage metadata), followed by the creation of a checkpoint record in the `checkpoints` store, and finally the update of the thread record's `latestCheckpointId` and `tokenStats`. To verify this sequence, the test should use a mock for the IndexedDB adapter that records the chronological order of `put` calls.
-  - **API Payload Verification**: Use MSW to verify the request body:
-    - **For Gemini**: Assert that the `systemInstruction` string contains both the agent's system prompt and any injected system messages (merged with `\n\n`), and the user message "Hello" is sent as a `user` role part in the `contents` array.
-    - **For OpenRouter**: Assert that the `messages` array starts with a `role: "system"` message containing the merged system prompts, followed by the user message "Hello" as `role: "user"`.
-  - Verify `tokenStats` are updated to `{ promptTokens: 10, completionTokens: 15, totalTokens: 25 }` in the `threads` store.
-  - UI displays both messages in the chat feed, and the input field is re-enabled once execution returns to `inactive`.
+  - **State Transitions**: Assert `ViewState` transitions `initializing` $\rightarrow$ `idle` $\rightarrow$ `chatting` and the `ExecutionState` transitions `inactive` $\rightarrow$ `executing` $\rightarrow$ `inactive`.
+  - **Database Sequence**:
+    - Assert the `threads` store contains a new record with `status: "executing"`, `workflowId` and `activePresetId` matching selection. Assert the thread's title is initialized as "Hello".
+    - Assert a user message "Hello" is created in the `messages` store with `threadId: [ID]` and `sequence: 0`.
+    - Mock the API response using MSW with content "Hello! How can I help you today?" and usage metadata `{ promptTokens: 10, completionTokens: 15 }`.
+    - Assert an assistant message is created in the `messages` store with `threadId: [ID]`, `sequence: 1`, `role: "assistant"`, `content: "Hello! How can I help you today?"`, and usage metadata `{ promptTokens: 10, completionTokens: 15 }`.
+    - Assert a checkpoint record is created in the `checkpoints` store with a unique `checkpointId`.
+    - Assert the thread record's `latestCheckpointId` is updated to match this new checkpoint.
+    - Use a spy on the `idb` store's `put`/`add` methods to assert that the writes to `messages`, `checkpoints`, and `threads` occur in this chronological order: (1) User Message $\rightarrow$ (2) Assistant Message $\rightarrow$ (3) Checkpoint $\rightarrow$ (4) Thread Metadata Update.
+  - **API Payload Verification**: Use MSW to intercept the request (e.g., `POST https://generativelanguage.googleapis.com/v1beta/models/...:generateContent` for Gemini or `POST https://openrouter.ai/api/v1/chat/completions` for OpenRouter) and assert:
+    - **For Gemini**: The `systemInstruction` string contains both the agent's system prompt and any injected system messages (merged with `\n\n`), and the user message "Hello" is sent as a `user` role part in the `contents` array.
+    - **For OpenRouter**: The `messages` array starts with a `role: "system"` message containing the merged system prompts, followed by the user message "Hello" as `role: "user"`.
+  - Assert `tokenStats` in the `threads` store are updated to `{ promptTokens: 10, completionTokens: 15, totalTokens: 25 }`.
+  - UI displays both messages in the `ChatFeed` using `MessageBubble` components, and the `ChatInputArea` input field is enabled once `ExecutionState` returns to `inactive`.
+- **Exercised Components**: `ChatInputArea`, `ChatFeed`, `MessageBubble`, `LeftSidebar`.
+- **Exercised State Machines**: `ViewState`, `ExecutionState`, `GraphRunnerActor`.
+- **Exercised Systems**: `IndexedDB`, `MSW`, `LangGraph`, `@google/genai`/`@openrouter/sdk`.
 
 ### 2. Multi-Agent Debate Flow
 
-- **Given**: App is initialized with valid API keys.
-- **When**: User starts a new chat with the "Debate" workflow, seeds it by sending a user message with a topic (e.g., "AI safety").
+- **Prerequisites**:
+  - `settings` store contains valid `api_keys`.
+  - `presets` store contains necessary presets.
+- **Given**: App is initialized with valid API keys, and the built-in "Debate" workflow is loaded. The workflow consists of:
+  - `Initiator` (agent) $\rightarrow$ `Debater_A` (agent)
+  - `Debater_A` (agent) $\rightarrow$ `Consensus_Evaluator_A` (consensus_check)
+  - `Consensus_Evaluator_A` (consensus_check) $\rightarrow$ `Debater_B` (agent) [on_no_consensus]
+  - `Consensus_Evaluator_A` (consensus_check) $\rightarrow$ `Summarizer` (summary) [on_consensus]
+  - `Debater_B` (agent) $\rightarrow$ `Consensus_Evaluator_B` (consensus_check)
+  - `Consensus_Evaluator_B` (consensus_check) $\rightarrow$ `Debater_A` (agent) [on_no_consensus]
+  - `Consensus_Evaluator_B` (consensus_check) $\rightarrow$ `Summarizer` (summary) [on_consensus]
+- **When**: User starts a new chat with the "Debate" workflow, seeds it by sending a user message with a topic (e.g., "AI safety") $\rightarrow$ dispatches `SUBMIT_MESSAGE` { content: "AI safety" }.
 - **Then**:
+  - **State Transitions**: Assert the `ExecutionState` remains in `executing` throughout the autonomous run until termination.
   - **Phase 1 (Seeding)**:
-    - Mock `Initiator` response: "Let's debate AI safety. The core question is..."
-    - `Initiator` node executes $\rightarrow$ a message with `role: "assistant"` and `name: "Initiator"` is created in the `messages` store $\rightarrow$ verify `lastAgentId` in graph state is updated to `"Initiator"` $\rightarrow$ verify that the next node scheduled for execution is `Debater_A`.
+    - Mock `Initiator` response: "Let's debate AI safety. The core question is whether superintelligence is controllable."
+    - Assert `Initiator` node executes $\rightarrow$ a message with `role: "assistant"`, `name: "Initiator"`, and the above content is created in the `messages` store $\rightarrow$ assert `lastAgentId` in the graph state (within the checkpoint record) and XState context is updated to `"Initiator"` $\rightarrow$ assert that the next node scheduled for execution is `Debater_A`.
   - **Phase 2 (Looping)**:
     - **Round 1**:
-      - Mock `Debater_A` response: "I argue that AI safety is the priority..."
-      - `Debater_A` executes $\rightarrow$ verify the API request for `Debater_A` uses its specific system prompt $\rightarrow$ a message with `role: "assistant"` and `name: "Debater_A"` is created in the `messages` store $\rightarrow$ verify `lastAgentId` in the `GraphState` (stored within the checkpoint record) is updated to `"Debater_A"` $\rightarrow$ `Consensus_Evaluator_A` executes.
+      - Mock `Debater_A` response: "I argue that AI safety is the priority because a single failure is catastrophic."
+      - Assert `Debater_A` executes $\rightarrow$ API request uses the `Debater_A` specific system prompt $\rightarrow$ a message with `role: "assistant"`, `name: "Debater_A"`, and the above content is created in the `messages` store $\rightarrow$ assert `lastAgentId` in the graph state and XState context is updated to `"Debater_A"` $\rightarrow$ `Consensus_Evaluator_A` executes.
       - Mock `Consensus_Evaluator_A` response: `{"consensusReached": false, "reasoning": "Arguments are still diverging"}`.
-      - Verify routing to `Debater_B`.
-      - Mock `Debater_B` response: "I disagree, efficiency is more important..."
-      - `Debater_B` executes $\rightarrow$ verify the API request for `Debater_B` uses its specific system prompt $\rightarrow$ a message with `role: "assistant"` and `name: "Debater_B"` is created in the `messages` store $\rightarrow$ verify `lastAgentId` in the `GraphState` is updated to `"Debater_B"` $\rightarrow$ `Consensus_Evaluator_B` executes.
+      - Assert routing to `Debater_B`.
+      - Mock `Debater_B` response: "I disagree, efficiency and development speed are more important to solve current problems."
+      - `Debater_B` executes $\rightarrow$ API request uses the `Debater_B` specific system prompt $\rightarrow$ a message with `role: "assistant"`, `name: "Debater_B"`, and the above content is created in the `messages` store $\rightarrow$ assert `lastAgentId` in the graph state and XState context is updated to `"Debater_B"` $\rightarrow$ assert that the next node scheduled for execution is `Consensus_Evaluator_B`.
       - Mock `Consensus_Evaluator_B` response: `{"consensusReached": false, "reasoning": "No agreement yet"}`.
-      - Verify routing back to `Debater_A`.
-      - Verify `currentRound` in the graph state increments to `2` upon entering `Debater_A` again. This is verified by inspecting the `checkpoint` record created immediately after `Consensus_Evaluator_B` executes and routes to `Debater_A`, ensuring the updated round count is persisted in the graph state.
+      - Assert routing back to `Debater_A`.
+      - Assert `currentRound` in the graph state increments to `2` upon entering `Debater_A` again. This is verified by inspecting the `checkpoint` record created immediately after `Consensus_Evaluator_B` executes and routes to `Debater_A`, ensuring the updated round count is persisted.
     - **Round 2**:
       - Mock `Debater_A` response: calls `declare_consensus` tool with `reasoning: "We agree on the basics"` and `agreedPoints: ["Point A", "Point B"]`.
-      - `Debater_A` executes $\rightarrow$ a tool call message is created in the `messages` store $\rightarrow$ verify `lastAgentId` updated to `"Debater_A"`.
+      - `Debater_A` executes $\rightarrow$ a tool call message is created in the `messages` store $\rightarrow$ assert `lastAgentId` updated to `"Debater_A"`.
   - **Phase 3 (Consensus)**:
-    - The `tool` node executes $\rightarrow$ a tool result message for `declare_consensus` is created in the `messages` store $\rightarrow$ verify `consensusReached` is set to `true` in the graph state.
+    - The `tool` node executes $\rightarrow$ a tool result message for `declare_consensus` is created in the `messages` store $\rightarrow$ assert `consensusReached` is set to `true` in the graph state (checkpoint record).
     - `Consensus_Evaluator_A` detects `consensusReached: true` in graph state $\rightarrow$ routes to `Summarizer` along the `on_consensus` edge.
   - **Phase 4 (Termination)**:
     - Mock `Summarizer` response: "In summary, both agents agreed on Point A and B. The debate concluded that AI safety is essential but should be balanced with efficiency."
-    - `Summarizer` executes $\rightarrow$ a final summary message with `name: "Summarizer"` is created in the `messages` store $\rightarrow$ verify `lastAgentId` updated to `"Summarizer"` $\rightarrow$ execution transitions to `inactive`.
-    - UI displays the full sequence of agents and the final summary. Verify that each assistant message bubble displays the correct agent name (e.g. "Debater A") in the header.
+    - `Summarizer` executes $\rightarrow$ a final summary message with `name: "Summarizer"` is created in the `messages` store $\rightarrow$ assert `lastAgentId` updated to `"Summarizer"` $\rightarrow$ execution transitions to `inactive`.
+    - UI displays the full sequence of agents in the `ChatFeed` using `MessageBubble` components, and each assistant message bubble displays the correct agent name (e.g. "Debater A") in the header.
+- **Exercised Components**: `ChatFeed`, `MessageBubble`, `ExecutionControlPanel`.
+- **Exercised State Machines**: `ExecutionState`, `GraphRunnerActor`, `ExecutionControlPanel`.
+- **Exercised Systems**: `IndexedDB`, `MSW`, `LangGraph`.
 
 ### 3. `ask_questions` Tool Flow
 
+- **Prerequisites**:
+  - A workflow is defined that contains an agent capable of calling the `ask_questions` tool.
 - **Given**: A workflow where an agent can call the `ask_questions` tool.
 - **When**: The active agent invokes `ask_questions` with a set of questions:
   - Q1: "What is your favorite color?" (type: `single-select`, options: `["Red", "Blue", "Green"]`, required: `true`)
   - Q2: "Which of these features do you like?" (type: `multi-select`, options: `["Speed", "Accuracy", "Safety"]`, required: `true`)
   - Q3: "Additional comments" (type: `free-text`, required: `false`)
 - **Then**:
-  - Execution pauses; the thread record's `activeInterrupt` is set to `{ type: "ask_questions", ... }`. Verify it contains the correct `toolCallId` and the `questions` array exactly as defined above.
-  - UI renders an inline form card. Verify:
+  - Assert execution pauses; verify the thread record's `activeInterrupt` is set to `{ type: "ask_questions", ... }`. Verify it contains the correct `toolCallId` and the `questions` array exactly as defined above.
+  - UI renders an inline form card. Assert:
     - Q1 is rendered as a radio button group.
     - Q2 is rendered as a checkbox group.
     - Q3 is rendered as a text area.
     - The Submit button is disabled until Q1 and Q2 are answered.
-  - User selects "Blue" for Q1, "Speed" and "Safety" for Q2, and enters "Great tool!" for Q3.
-  - User clicks Submit.
-  - A `tool` result message containing the answers is written to the `messages` store. Assert it follows the `AskQuestionsResponse` schema: `{ answers: { Q1: { selected: ["Blue"] }, Q2: { selected: ["Speed", "Safety"] }, Q3: { text: "Great tool!" } } }`.
-  - `threads.activeInterrupt` is cleared and `draftAnswers` for this `toolCallId` are deleted from the thread record.
+  - User selects "Blue" for Q1, "Speed" and "Safety" for Q2, and enters "Great tool!" for Q3 $\rightarrow$ dispatches `SUBMIT` to `AskQuestionsToolForm` machine.
+  - Assert a `tool` result message containing the answers is written to the `messages` store. Assert it is a JSON object that validates successfully against the `AskQuestionsResponse` schema, e.g.:
+    ```json
+    {
+      "answers": {
+        "q1": { "selected": ["Blue"] },
+        "q2": { "selected": ["Speed", "Safety"] },
+        "q3": { "text": "Great tool!" }
+      }
+    }
+    ```
+  - Assert `threads.activeInterrupt` is cleared and `draftAnswers` for this `toolCallId` are deleted from the thread record.
   - Execution resumes and continues to the next node in the graph.
-  - **Page reload restoration**: Simulate a page reload by unmounting and re-mounting the chat component while the form is active (providing the same `currentThreadId`). Verify the form restores the user's current selections from `draftAnswers` in IndexedDB. Additionally, verify that `draftAnswers` are written to the `threads` store in real-time on every change to a form field (on-change) to ensure no loss of data if the page is closed.
+  - **Page reload restoration**: Simulate a page reload by unmounting the current chat component (using `cleanup()` from `@testing-library/react`) and re-mounting it with the same `currentThreadId`. Assert the form restores the user's current selections from `draftAnswers` in IndexedDB. Additionally, assert that `draftAnswers` are written to the `threads` store in real-time on every `UPDATE_ANSWER` event (verifying that the DB record for the active thread is updated immediately after each field change to ensure no loss of data if the page is closed).
+- **Exercised Components**: `ChatFeed`, `AskQuestionsToolForm`.
+- **Exercised State Machines**: `ExecutionState`, `AskQuestionsToolForm`.
+- **Exercised Systems**: `IndexedDB`.
 
 ### 4. Budget Enforcement Flow
 
-- **Given**: A preset configured in the `presets` store with `maxStepsWithoutUser: 2` and `maxTokensPerRun: null`.
-- **When**: A workflow is executed that requires 3 consecutive agent steps without user input.
+- **Prerequisites**:
+  - A preset is configured in the `presets` store with `maxStepsWithoutUser: 2` and `maxTokensPerRun: 1000`.
+- **Given**: A preset configured in the `presets` store with `maxStepsWithoutUser: 2` and `maxTokensPerRun: 1000`.
+- **When**: A workflow is executed that requires 3 consecutive agent steps without user input, or where the total tokens consumed in a run exceed 1000.
 - **Then**:
-  - Mock API responses for the first 2 steps.
-  - After the 2nd step is completed, the runner halts execution.
-  - The thread record's `activeInterrupt` is set to `{ type: "budget_exceeded", budgetDetails: { stepCount: 2, ... } }`.
-  - UI renders the "Budget Exceeded Card". Verify it correctly displays the current step count (2) and the limit (2).
-  - User clicks "Increase Budget & Resume".
-  - Verify that the runner's local `budgetOverride` context is updated to `maxStepsWithoutUser: 4` (current 2 + original 2).
-  - Verify that the 3rd step now executes successfully.
-  - After the 3rd step, the budget counters are reset to 0.
+  - **Step Limit Trigger**: Mock API responses for the first 2 steps, ensuring the 2nd step completes normally. After the 2nd step, the runner halts execution.
+  - **Token Limit Trigger**: Mock an API response for a single step that returns `completionTokens: 1100`. The runner halts execution immediately after this step.
+  - Assert the thread record's `activeInterrupt` is set to `{ type: "budget_exceeded", budgetDetails: { stepCount: ..., currentTokens: ..., maxTokens: ... } }`.
+  - UI renders the "Budget Exceeded Card". Assert it correctly displays the current value (steps or tokens) and the limit.
+  - User clicks "Increase Budget & Resume" $\rightarrow$ dispatches `INCREASE_BUDGET` to `BudgetExceededCard` machine.
+  - Assert the runner's local `budgetOverride` context is updated to extend the limits (e.g., `stepsOverride = currentSteps + originalMaxSteps`).
+  - Assert that the next step(s) execute successfully until the new override limit is hit or the workflow terminates.
+  - **Run Reset Verification**: Assert that once the run concludes (transitions to `inactive`) or is interrupted by a new user message, the runner's local `stepsInCurrentRun` and `tokensInCurrentRun` are reset to 0, and `budgetOverride` is reset to `null`.
+- **Exercised Components**: `ChatFeed`, `BudgetExceededCard`.
+- **Exercised State Machines**: `ExecutionState`, `BudgetExceededCard`, `GraphRunnerActor`.
+- **Exercised Systems**: `IndexedDB`.
 
 ### 5. Thread Branching Flow
 
-- **Given**: A parent thread with 5 messages (sequences 0 to 4), each associated with a unique non-null checkpoint in the `checkpoints` store.
-- **When**: User selects "Branch Thread" from the overflow menu of message 3 (sequence 2).
+- **Prerequisites**:
+  - A parent thread exists with 5 messages (sequences 0 to 4), each associated with a unique non-null checkpoint in the `checkpoints` store.
+- **Given**: A parent thread with 5 messages (sequences 0 to 4), where each message $M_i$ is associated with a unique non-null checkpoint $CP_i$ in the `checkpoints` store (e.g., $M_0 \rightarrow CP_0, M_1 \rightarrow CP_1, \dots, M_4 \rightarrow CP_4$).
+- **When**: User selects "Branch Thread" from the overflow menu of message 3 (sequence 2) $\rightarrow$ dispatches `TRIGGER_BRANCH` followed by `CONFIRM_BRANCH`.
 - **Then**:
-  - A new thread record is created in the `threads` store. Verify `parentThreadId` and `parentMessageId` (sequence 2's UUID) are correctly set.
-  - Messages with `sequence <= 2` are cloned from the parent thread to the new thread in the `messages` store. Verify exactly 3 messages are cloned, each with newly generated UUIDs but preserving their `sequence` and `content`.
-  - All checkpoints and `checkpoint_writes` associated with these cloned messages (identified by their `[checkpointNs, checkpointId]` pairs) are cloned to the new thread's records in IndexedDB. Verify the cloned checkpoints and writes have keys matching the new `threadId` (i.e., compound keys `[newThreadId, checkpointNs, checkpointId]` and `[newThreadId, checkpointNs, checkpointId, taskId, idx]`) but preserve their internal `checkpoint` and `value` state.
-  - The new thread's `latestCheckpointId` and `latestCheckpointNs` are set to the checkpoint of the branched message (sequence 2).
-  - URL route changes to the new thread ID, and UI displays the cloned history.
+  - **State Transitions**: Assert `ViewState` transitions `chatting` (via `MessageOptionsMenu`) $\rightarrow$ `chatting` (new thread).
+  - **Database Writes**:
+    - Assert a new thread record is created in the `threads` store with a newly generated UUID `newThreadId`, cloning the parent's `workflowSnapshot`, `activePresetId`, and settings, and setting `parentThreadId = parentThreadId`, `parentMessageId = parentMessageId`, and `status = "inactive"`.
+    - Assert messages with `sequence <= 2` are cloned from the parent thread to the new thread in the `messages` store. Assert exactly 3 messages are cloned, each with newly generated UUIDs but preserving their `sequence` and `content`.
+    - Assert all checkpoints and `checkpoint_writes` associated with these cloned messages (identified by their `[checkpointNs, checkpointId]` pairs) are cloned to the new thread's records in IndexedDB. Specifically, assert that for every `checkpoint_write` in the parent thread matching the filtered `checkpointId`s, a corresponding record with the new `threadId` exists in the `checkpoint_writes` store.
+    - Assert the new thread's `latestCheckpointId` and `latestCheckpointNs` are set to the checkpoint of the branched message (sequence 2).
+  - UI navigates to the new thread ID using `MessageOptionsMenu` and `Toggled Sidebar` context, and displays the cloned history in the `ChatFeed`.
+- **Exercised Components**: `MessageBubble`, `OverflowMenu`, `MessageOptionsMenu`, `LeftSidebar`.
+- **Exercised State Machines**: `ViewState`, `InlineMessageEditorAction`.
+- **Exercised Systems**: `IndexedDB`.
 
 ### 6. Message Edit & Rollback Flow
 
-- **Given**: A thread with a sequence of messages: User(0, CP:null) $\rightarrow$ Agent(1, CP:CP1) $\rightarrow$ User(2, CP:CP2) $\rightarrow$ Agent(3, CP:CP3).
+- **Given**: A thread with a sequence of messages: User(0, $CP:null$) $\rightarrow$ Agent(1, $CP:CP1$) $\rightarrow$ User(2, $CP:CP2$) $\rightarrow$ Agent(3, $CP:CP3$). Each $CP_i$ corresponds to a distinct record in the `checkpoints` store.
 - **When**: User edits the content of message 2 (sequence 2).
 - **Then**:
   - **Rollback Target**:
@@ -940,86 +1014,264 @@ To ensure the application is implemented correctly and can be verified in a test
   - All checkpoints created after `CP1` (specifically `CP2` and `CP3`) are purged from the `checkpoints` store.
   - The thread's `latestCheckpointId` and `latestCheckpointNs` are updated to match `CP1`.
   - Message 2 is updated with new content in the `messages` store. Assert that the DB record for message 2 now contains the updated text.
-  - Verify `tokenStats` are accurately recalculated by summing usage of messages 0, 1, and the edited message 2.
-  - **Execution Resume**: Upon clicking Resume, verify that `graph.updateState` is called with the edited message 2's content to synchronize it into the LangGraph state. Verify that a new synchronized checkpoint $C_{new}$ is created and written to the `checkpoints` store before the runner calls `graph.stream`.
+  - Verify `tokenStats` are accurately recalculated by summing the `promptTokens` and `completionTokens` usage metadata of all remaining messages (sequence $\le$ 2) and updating the thread record.
+  - **Execution Resume**: Upon clicking Resume, verify that `graph.updateState` is called with the edited message 2's content AND its original message ID to synchronize it as a replacement into the LangGraph state. Verify that a new synchronized checkpoint $C_{new}$ is created and written to the `checkpoints` store before the runner calls `graph.stream`.
+- **Exercised Components**: `MessageBubble`, `OverflowMenu`, `MessageOptionsMenu`, `InlineMessageEditor`.
+- **Exercised State Machines**: `InlineMessageEditorAction`, `ExecutionState`, `GraphRunnerActor`.
+- **Exercised Systems**: `IndexedDB`, `LangGraph`.
 
 ### 7. System Message Injection Flow
 
-- **Given**:
-  - A global system message "Use professional tone" configured at depth 0.
-  - A workflow-specific system message "Be extremely concise" configured at depth 0.
-  - A global system message "Use professional tone" (duplicate) configured at depth 1.
-  - A workflow-specific system message "Always start with 'Hello!'" configured at depth 1.
-- **When**: User starts a chat and sends a message.
+- **Prerequisites**:
+  - A global system message "Use professional tone" configured at depth 0 in `settings`.
+  - A workflow-specific system message "Be extremely concise" configured at depth 0 in a custom workflow.
+  - A global system message "Use professional tone" (duplicate) configured at depth 1 in `settings`.
+  - A workflow-specific system message "Always start with 'Hello!'" configured at depth 1 in a custom workflow.
+- **Given**: The configuration described above.
+- **When**: User starts a chat with the custom workflow and sends a message, then opens the `ApiPayloadPreviewModal` $\rightarrow$ dispatches `OPEN` to `ApiPayloadPreviewModal` machine.
 - **Then**:
-  - **Index 0 Merging & Precedence**: The "Preview API Payload" modal shows a `system` role message "Be extremely concise\n\nUse professional tone" at the very beginning (index 0) of the messages array. Verify that the workflow-specific message ("Be extremely concise") appears before the global message ("Use professional tone").
+  - **State Transitions**: Assert `ApiPayloadPreviewModal` machine transitions `closed` $\rightarrow$ `opened.loading` $\rightarrow$ `opened.displaying`.
+  - **Event Dispatch**: Assert `OPEN` and `CHANGE_AGENT` (if selecting a specific agent) events are dispatched.
+  - **Index 0 Merging & Precedence**: Assert the "Preview API Payload" modal shows a `system` role message "Be extremely concise\n\nUse professional tone" at the very beginning (index 0) of the messages array. Assert that the workflow-specific message ("Be extremely concise") appears before the global message ("Use professional tone").
   - **Deduplication**:
-    - Verify that the duplicate global system message "Use professional tone" at depth 1 is discarded and not included in the payload.
-    - Verify precedence: if both a global and a workflow-specific system message have the same content, only the workflow-specific one is kept.
-    - Verify that if multiple distinct system messages are mapped to the `user` role (for Gemini), they are correctly merged with consecutive actual `user` messages into a single logical `user` message, concatenating their content with double newlines.
-  - **Positive Depth Injection**: Verify that the system message "Always start with 'Hello!'" is injected at index 1. For APIs that do not support arbitrary system roles (like Gemini), verify it is mapped to a `user` role message with the content prefixed as `[System Notification]: Always start with 'Hello!'`.
-  - **Non-Entry Agent Verification**: Change the agent selector in the "Preview API Payload" modal to a non-entry agent (e.g., `Debater_B` in a debate workflow). Verify that this agent's specific system prompt is also correctly merged with the global system messages at the specified depths.
-  - **Persistence**: Verify that none of these injected or merged system messages are stored in the `messages` store or checkpoints.
-  - Verify that if only one system message is configured at depth 0, it is correctly placed at the start of the payload.
+    - Assert that the duplicate global system message "Use professional tone" at depth 1 is discarded and not included in the payload.
+    - Assert precedence: if both a global and a workflow-specific system message have the same content, only the workflow-specific one is kept.
+    - Assert that if multiple distinct system messages are mapped to the `user` role (for Gemini), they are correctly merged with consecutive actual `user` messages into a single logical `user` message, concatenating their content with double newlines.
+  - **Positive Depth Injection**: Assert that the system message "Always start with 'Hello!'" is injected at index 1. For APIs that do not support arbitrary system roles (like Gemini), assert it is mapped to a `user` role message with the content prefixed as `[System Notification]: Always start with 'Hello!'`.
+  - **Exact Payload Verification (Gemini)**: For the Gemini mock, assert the final `contents` array has exactly two entries:
+    1. A `user` role entry containing the merged content of any messages at index 1 (including the `[System Notification]: ...` prefixed injected message) and the actual user message.
+    2. The `systemInstruction` property of the API call contains the merged text from index 0.
+  - **Non-Entry Agent Verification**: Change the agent selector in the modal to a non-entry agent (e.g., `Debater_B`). Assert that this agent's specific system prompt is also correctly merged with the global system messages at the specified depths.
+  - **Persistence**: Assert that none of these injected or merged system messages are stored in the `messages` store or checkpoints.
+  - Assert that if only one system message is configured at depth 0, it is correctly placed at the start of the payload.
+- **Exercised Components**: `ApiPayloadPreviewModal`, `ChatHeader`.
+- **Exercised State Machines**: `ApiPayloadPreviewModal`.
+- **Exercised Systems**: `IndexedDB`.
 
-### 8. Workflow Customization Flow
+### 8. Workflow Sync (Soft vs Hard Sync) Happy Path
 
+- **Prerequisites**:
+  - A thread exists using a custom workflow "Test-Workflow" (Initial state S1).
+- **Given**: A thread using a custom workflow "Test-Workflow" (Initial state S1).
+- **When (Soft Sync)**:
+  1. User modifies "Test-Workflow" in the Workflow Manager (only updating a system prompt) to S2.
+  2. User opens the active thread and selects "Sync to Latest Workflow" $\rightarrow$ dispatches `START_SYNC` to `WorkflowSyncing` machine.
+- **Then**:
+  - **State Transitions**: Assert `WorkflowSyncing` machine transitions `idle` $\rightarrow$ `analyzing` $\rightarrow$ `promptingSoftSync` $\rightarrow$ `syncing` $\rightarrow$ `success`.
+  - **Logic**: Assert `isDestructive` is `false`.
+  - **Database Writes**: Assert `workflowSnapshot` in the thread record is updated to S2.
+  - **Persistence**: Assert message history and checkpoints are preserved in `messages` and `checkpoints` stores.
+- **When (Hard Sync)**:
+  1. User modifies "Test-Workflow" in the Workflow Manager (adding a new node) to S3.
+  2. User opens the active thread and selects "Sync to Latest Workflow" $\rightarrow$ dispatches `START_SYNC` to `WorkflowSyncing` machine.
+- **Then**:
+  - **State Transitions**: Assert `WorkflowSyncing` machine transitions `idle` $\rightarrow$ `analyzing` $\rightarrow$ `promptingHardSync` $\rightarrow$ `syncing` $\rightarrow$ `success`.
+  - **Logic**: Assert `isDestructive` is `true`.
+  - **Database Writes**:
+    - Assert `workflowSnapshot` in the thread record is updated to S3.
+    - Assert that all message history and checkpoints for the thread are purged from the `messages` and `checkpoints` stores.
+    - Assert the thread's `latestCheckpointId` and `latestCheckpointNs` are reset to `null`.
+- **Exercised Components**: `ThreadSettingsModal`, `WorkflowJsonEditor`.
+- **Exercised State Machines**: `WorkflowSyncing`.
+- **Exercised Systems**: `IndexedDB`.
+
+### 9. Workflow Customization Flow
+
+- **Prerequisites**:
+  - A custom workflow JSON is defined (see below).
 - **Given**: A custom workflow JSON is saved in the `workflows` store:
   ```json
   {
-    "name": "Loop Test",
+    "name": "Test-Workflow",
+    "description": "A simple test workflow",
     "nodes": [
-      { "id": "nodeA", "type": "agent", "name": "Agent A" },
-      { "id": "nodeB", "type": "agent", "name": "Agent B" }
+      {
+        "id": "n1",
+        "type": "agent",
+        "name": "Agent A",
+        "systemPrompt": "You are a helpful assistant"
+      },
+      {
+        "id": "n2",
+        "type": "agent",
+        "name": "Agent B",
+        "systemPrompt": "You are a critical reviewer"
+      }
     ],
-    "edges": [
-      { "from": "nodeA", "to": "nodeB" },
-      { "from": "nodeB", "to": "nodeA" }
-    ]
+    "edges": [{ "from": "n1", "to": "n2" }]
   }
   ```
-- **When**: User starts a new chat selecting this custom workflow.
+- **When**: User starts a new chat selecting this custom workflow, enters "Hello" in the `ChatInputArea`, and clicks Send $\rightarrow$ dispatches `SUBMIT_MESSAGE` { content: "Hello" }.
 - **Then**:
-  - The `workflowSnapshot` in the `threads` record matches this JSON.
-  - Verify that the graph executes the nodes in the specified loop: `nodeA` $\rightarrow$ `nodeB` $\rightarrow$ `nodeA`.
-  - Each node's execution results in a corresponding message in the `messages` store with the correct `name` ("Agent A" or "Agent B").
-  - **Loop Termination**: Verify that if no consensus is reached and no tools are called, the execution terminates automatically after exactly 10 agent turns (5 rounds \* 2 agents), as per the default `maxLoopLimit: 5`. To verify this, mock the LLM responses to always return `{"consensusReached": false}` and assert that the execution transitions to `inactive` after the 10th turn, and that a final summary is produced.
+  - **State Transitions**: Assert the `ExecutionState` transitions `inactive` $\rightarrow$ `executing` $\rightarrow$ `inactive`.
+  - Assert the `workflowSnapshot` in the `threads` record matches this JSON.
+  - **Execution Sequence**:
+    - `Agent A` executes $\rightarrow$ mock response "I think AI is great!" $\rightarrow$ a message with `role: "assistant"`, `name: "Agent A"`, and the above content is created in the `messages` store at `sequence: 1` $\rightarrow$ assert `lastAgentId` updated to `"n1"`.
+    - `Agent B` executes $\rightarrow$ mock response "I disagree, it's risky!" $\rightarrow$ a message with `role: "assistant"`, `name: "Agent B"`, and the above content is created in the `messages` store at `sequence: 2` $\rightarrow$ assert `lastAgentId` updated to `"n2"`.
+  - Assert that the graph executes the nodes in the specified sequence and creates corresponding messages in the `messages` store with the correct `sequence` (User:0, Agent A:1, Agent B:2) and `name` from the `WorkflowNode` definitions.
+  - Assert the execution terminates as there are no further outgoing edges from `n2`.
+  - UI displays the sequence of responses in the `ChatFeed` using `MessageBubble` components.
+- **Exercised Components**: `NewChatForm`, `ChatFeed`, `MessageBubble`.
+- **Exercised State Machines**: `ViewState`, `ExecutionState`, `GraphRunnerActor`.
+- **Exercised Systems**: `IndexedDB`, `LangGraph`.
 
-### 9. Cascading Deletion Flow
+### 10. Cascading Deletion Flow
 
+- **Prerequisites**:
+  - A thread exists with 100 messages and 100 checkpoints.
 - **Given**: A thread with 100 messages and 100 checkpoints.
-- **When**: User deletes the thread.
+- **When**: User deletes the thread $\rightarrow$ dispatches `TRIGGER_DELETE` followed by `CONFIRM_DELETE` in `LeftSidebar` machine.
 - **Then**:
-  - The thread record's status is immediately updated to `"deleting"`. Verify the thread is removed from the sidebar list instantly.
-  - Mock `requestIdleCallback` to execute synchronously/immediately for test efficiency.
-  - Verify that messages, checkpoints, and checkpoint writes are deleted in batches (e.g. verify the `messages` store is checked in chunks of 500).
-  - Once all children are deleted, the thread record itself is removed from the `threads` store.
-  - Verify that after the process completes, no records with the deleted `threadId` remain in `messages`, `checkpoints`, or `checkpoint_writes` stores.
+  - **State Transitions**: Assert the `LeftSidebar` machine transitions `idle` $\rightarrow$ `confirmingDelete` $\rightarrow$ `deleting` $\rightarrow$ `idle`.
+  - **Event Dispatch**: Assert the `TRIGGER_DELETE` and `CONFIRM_DELETE` events are dispatched.
+  - Assert the thread record's status is immediately updated to `"deleting"` in the `threads` store. Assert the thread is removed from the `SideNav` list instantly.
+  - Mock `requestIdleCallback` using `vi.stubGlobal('requestIdleCallback', (cb) => cb({ didTimeout: false, timeRemaining: () => 50 }))` to execute synchronously for test efficiency.
+  - Assert that messages, checkpoints, and checkpoint writes are deleted in batches (e.g. verify the `messages` store is checked in chunks of 500) using a `ConfirmationModal` for the confirmation step.
+  - Once all children are deleted, assert the thread record itself is removed from the `threads` store.
+  - Assert that after the process completes, no records with the deleted `threadId` remain in `messages`, `checkpoints`, or `checkpoint_writes` stores.
+- **Exercised Components**: `LeftSidebar`, `ConfirmationModal`.
+- **Exercised State Machines**: `LeftSidebar`.
+- **Exercised Systems**: `IndexedDB`.
 
-### 10. Preset Management Happy Path
+### 11. Preset Management Happy Path
 
+- **Prerequisites**:
+  - App is initialized with valid API keys and presets in IndexedDB.
 - **Given**: App is initialized.
-- **When**: User opens the Preset Settings view, creates a new custom preset (e.g., "Fast Gemini" with model `gemini-2.5-flash` and `temperature: 0.1`), and clicks Save.
+- **When**: User opens the Preset Settings view, creates a new custom preset (e.g., "Fast Gemini" with model `gemini-2.5-flash` and `temperature: 0.1`), and clicks Save $\rightarrow$ dispatches `SAVE` in `PresetEditor` machine.
 - **Then**:
-  - Verify that a new record is created in the `presets` store with the specified configuration and a generated UUID.
-  - User starts a new chat and selects the "Fast Gemini" preset from the dropdown.
-  - Verify the thread record in the `threads` store is created with `activePresetId` matching the new preset's UUID.
-  - When the first message is sent, verify the API request uses the `temperature: 0.1` and model `gemini-2.5-flash` as configured in the preset.
-  - User edits the "Fast Gemini" preset to `temperature: 0.7` and saves.
-  - Verify the record in the `presets` store is updated.
-  - User starts a _new_ chat with the same preset, and verify the API request now uses `temperature: 0.7`.
+  - **State Transitions**: Assert the `ViewState` transitions `idle` $\rightarrow$ `presetConfig` $\rightarrow$ `idle`.
+  - **Event Dispatch**: Assert the `LOAD_PRESET` and `SAVE` events are dispatched.
+  - Assert a new record is created in the `presets` store using the `PresetEditor` component, with the specified configuration and a generated UUID.
+  - User starts a new chat and selects the "Fast Gemini" preset from the dropdown $\rightarrow$ dispatches `SUBMIT` in `NewChatForm`.
+  - Assert the thread record in the `threads` store is created with `activePresetId` matching the new preset's UUID.
+  - When the first message is sent, assert the API request uses the `temperature: 0.1` and model `gemini-2.5-flash` as configured in the preset.
+  - User edits a built-in preset (e.g. "Default Gemini Flash") and clicks Save $\rightarrow$ dispatches `SAVE` in `PresetEditor`.
+  - Assert the UI prompts the user to "Clone and Customize" via a confirmation dialog.
+  - User clicks "Clone and Customize" $\rightarrow$ a new custom preset record is created in the `presets` store with the updated configuration, while the original built-in preset remains unchanged.
+  - Assert the `PresetEditor` now displays the newly created custom preset.
+  - User starts a new chat and selects this newly cloned preset.
+  - Assert the API request uses the updated configuration.
+- **Exercised Components**: `PresetEditor`, `PresetListView`.
+- **Exercised State Machines**: `ViewState`, `PresetEditor`.
+- **Exercised Systems**: `IndexedDB`.
 
-### 11. Workflow Management Happy Path
+### 12. Workflow Management Happy Path
 
 - **Given**: App is initialized.
 - **When**: User opens the Workflow Management view, creates a new custom workflow via the JSON editor (e.g., a simple 2-agent sequential chain), and clicks Save.
 - **Then**:
-  - Verify a new record is created in the `workflows` store with the serialized graph definition.
+  - **State Transitions**: Verify the `ViewState` transitions `idle` $\rightarrow$ `workflowConfig` $\rightarrow$ `idle`.
+  - **Event Dispatch**: Verify the `LOAD_WORKFLOW` and `SAVE` events are dispatched.
+  - Verify a new record is created in the `workflows` store using the `WorkflowJsonEditor` component, with the serialized graph definition.
   - User starts a new chat, selects this custom workflow from the "New Chat" panel, and sends a message.
   - Verify the thread record's `workflowSnapshot` is an exact copy of the workflow JSON.
   - User deletes the custom workflow from the Workflow Management view. Verify the record is removed from the `workflows` store.
-  - Verify that the thread still functions correctly and can be resumed or continued, as it uses the `workflowSnapshot` stored in the `threads` record rather than querying the `workflows` store.
+  - Verify that the thread still functions correctly and can be resumed or continued, as it uses the `workflowSnapshot` stored in the `threads` record rather than querying the `workflows` store. Specifically, mock a scenario where the workflow is deleted from the database and verify that the thread still executes using its snapshot.
   - Verify the graph execution follows the defined sequence (Node A $\rightarrow$ Node B) and creates corresponding messages in the `messages` store. Verify that the messages are created in the correct `sequence` order and that the `name` field of each message matches the `name` defined in the `WorkflowNode` (e.g. "Agent A", then "Agent B").
+- **Exercised Components**: `WorkflowJsonEditor`, `WorkflowListView`, `NewChatForm`.
+- **Exercised State Machines**: `ViewState`, `WorkflowJsonEditor`.
+- **Exercised Systems**: `IndexedDB`, `LangGraph`.
+
+### 13. LLM Database Modification Approval Flow
+
+- **Prerequisites**:
+  - A workflow is defined that contains an agent capable of calling database-modifying tools (e.g. `create_workflow`).
+- **Given**: An active thread chatting with an agent that has access to workflow modification tools.
+- **When**: The agent invokes `create_workflow` with a valid configuration.
+- **Then**:
+  - **State Transitions**: Assert execution pauses; verify the thread record's `activeInterrupt` is set to `{ type: "approval", toolCallId: ... }`.
+  - **UI Feedback**: UI renders the "Proposed Action Card" inline in the chat feed, showing a structured list of the proposed workflow changes (nodes, edges, name).
+  - **Approval Path**:
+    - User clicks "Approve" $\rightarrow$ dispatches `APPROVE` to `ProposedActionCard` machine.
+    - Assert a `tool` result message "Success" is written to the `messages` store.
+    - Assert a new workflow record is created in the `workflows` store that exactly matches the `create_workflow` input parameters (e.g. name, nodes, edges).
+    - Execution resumes and continues to the next node in the graph.
+  - **Denial Path**:
+    - User clicks "Deny" $\rightarrow$ dispatches `DENY` to `ProposedActionCard` machine.
+    - Assert a `tool` result message "Operation denied by user" is written to the `messages` store.
+    - Execution resumes and continues to the next node in the graph.
+- **Exercised Components**: `ChatFeed`, `ProposedActionCard`.
+- **Exercised State Machines**: `ExecutionState`, `ProposedActionCard`.
+- **Exercised Systems**: `IndexedDB`.
+
+### 14. Error Recovery Flow
+
+... (Existing Error Recovery Flow Content) ...
+
+### 15. Lifecycle and Recovery Flow
+
+- **Case 1: Startup Sweep (Interrupted Deletion)**:
+  - **Prerequisites**: Thread `T1` exists with `status: "deleting"` and 10 messages remaining in the `messages` store.
+  - **Given**: App is launched.
+  - **When**: `ViewState.initializing` executes.
+  - **Then**: Verify the `threads` store is queried for `"deleting"` status, and the asynchronous batched deletion process for `T1` is restarted and completed (messages and checkpoints purged, then thread record deleted).
+- **Case 2: Startup Sweep (Crashed Execution)**:
+  - **Prerequisites**: Thread `T2` exists with `status: "executing"`.
+  - **Given**: App is launched.
+  - **When**: `ViewState.initializing` executes.
+  - **Then**: Verify Thread `T2`'s status is updated to `"inactive"` in the `threads` store.
+- **Case 3: Thread Switching during Execution**:
+  - **Given**: Thread `T3` is currently in `executing` state (runner actor is active, streaming a response).
+  - **When**: User selects Thread `T4` from the Left Sidebar.
+  - **Then**:
+    - Verify the `graphRunnerActor` for `T3` is stopped and its internal `AbortController` is triggered to cancel the active API request.
+    - Verify `ExecutionState` transitions `executing` $\rightarrow$ `checkingStatus` $\rightarrow$ `inactive` (or `awaitingHumanInput` if `T4` was interrupted).
+    - Verify that returning to `T3` later starts execution from the last successfully persisted checkpoint.
+- **Exercised Components**: `ApplicationLayout`, `LeftSidebar`.
+- **Exercised State Machines**: `ViewState`, `ExecutionState`, `GraphRunnerActor`.
+- **Exercised Systems**: `IndexedDB`.
+
+- **Prerequisites**:
+  - `settings` store contains valid `api_keys`.
+- **Given**: App is initialized with valid API keys.
+- **When (Transient API Error)**:
+  1. Trigger a workflow run and simulate a transient API error (e.g. mock a 500 Internal Server Error from the LLM provider using MSW by intercepting the generate content endpoint) using MSW.
+- **Then**:
+  - **Automatic Retry**: Assert that the `graphRunnerActor` performs automatic retries with exponential backoff. Verify by asserting that the API endpoint is called exactly 4 times (initial call + 3 retries) before the actor transitions to the error state, each time receiving a 500 response from the MSW mock.
+  - **State Transitions**: If retries fail, assert that `ExecutionState` transitions to `error`.
+  - **UI Feedback**: Assert an Error Bubble is rendered inline at the end of the chat feed, showing the error code (e.g. "API Error 500") and a "Retry" button.
+  - **Input Blocking**: Assert the main chat input field is disabled.
+  - **Recovery**: Click the "Retry" button $\rightarrow$ dispatches `RETRY_STEP`. Assert that `ExecutionState` transitions back to `executing` and the runner restarts from the last persisted checkpoint.
+- **When (Rate Limit Recovery)**:
+  1. Simulate a `429 Too Many Requests` error from the LLM API.
+- **Then**:
+  - **UI Feedback**: Assert an Error Bubble is rendered showing the rate limit error.
+  - **Preset Switch**: Click the "Change Preset" dropdown in the Error Bubble and select an alternative preset $\rightarrow$ dispatches `CHANGE_PRESET_AND_RESUME`.
+  - **Database Update**: Assert the thread's `activePresetId` is updated in the `threads` store.
+  - **Recovery**: Assert the runner re-compiles the graph using the new preset and restarts execution from the last persisted checkpoint.
+- **When (Manual Intervention)**:
+  1. While in an error state, click the "Edit Last Message" shortcut in the Error Bubble.
+- **Then**:
+  - **UI Interaction**: Assert the UI scrolls to and focuses the inline editor for the user's preceding message.
+  - **Rollback**: User edits and saves the message $\rightarrow$ dispatches `SAVE` to `InlineMessageEditorAction`.
+  - **Recovery**: Assert the thread is rolled back to the preceding checkpoint (as described in `6. Message Edit & Rollback Flow`), and execution is automatically re-triggered from the new state.
+- **Exercised Components**: `ChatFeed`, `ErrorBubble`, `InlineMessageEditor`.
+- **Exercised State Machines**: `ExecutionState`, `GraphRunnerActor`.
+- **Exercised Systems**: `IndexedDB`, `MSW`, `LangGraph`.
+
+### 15. Lifecycle and Recovery Flow
+
+- **Case 1: Startup Sweep (Interrupted Deletion)**:
+  - **Prerequisites**: Thread `T1` exists with `status: "deleting"` and 10 messages remaining in the `messages` store.
+  - **Given**: App is launched.
+  - **When**: `ViewState.initializing` executes.
+  - **Then**: Verify the `threads` store is queried for `"deleting"` status, and the asynchronous batched deletion process for `T1` is restarted and completed (messages and checkpoints purged, then thread record deleted).
+- **Case 2: Startup Sweep (Crashed Execution)**:
+  - **Prerequisites**: Thread `T2` exists with `status: "executing"`.
+  - **Given**: App is launched.
+  - **When**: `ViewState.initializing` executes.
+  - **Then**: Verify Thread `T2`'s status is updated to `"inactive"` in the `threads` store.
+- **Case 3: Thread Switching during Execution**:
+  - **Given**: Thread `T3` is currently in `executing` state (runner actor is active, streaming a response).
+  - **When**: User selects Thread `T4` from the Left Sidebar.
+  - **Then**:
+    - Verify the `graphRunnerActor` for `T3` is stopped and its internal `AbortController` is triggered to cancel the active API request.
+    - Verify `ExecutionState` transitions `executing` $\rightarrow$ `checkingStatus` $\rightarrow$ `inactive` (or `awaitingHumanInput` if `T4` was interrupted).
+    - Verify that returning to `T3` later starts execution from the last successfully persisted checkpoint.
+- **Exercised Components**: `ApplicationLayout`, `LeftSidebar`.
+- **Exercised State Machines**: `ViewState`, `ExecutionState`, `GraphRunnerActor`.
+- **Exercised Systems**: `IndexedDB`.
 
 ## User Interface (UI) Specification
 
@@ -2732,320 +2984,3 @@ test('full chat flow', async () => {
   expect(await screen.findByText('mocked response')).toBeInTheDocument();
 });
 ```
-
-## Integration User Flow Test Plan
-
-### Phase 1: First Launch & Onboarding
-
-1. **Initial Load**:
-   - **User Action**: Open the application URL in a clean browser session.
-   - **Expected Outcome**:
-     - IndexedDB database `in-browser-chat-db` is initialized (all required stores: `settings`, `presets`, `workflows`, `threads`, `messages`, `checkpoints`, `checkpoint_writes` are created).
-     - Built-in workflows (Standard 1-agent, Debate) are provided by the code (with stable IDs `workflow-standard` and `workflow-debate`) and are visible in the "New Chat" workflow selection dropdown.
-     - `ViewState` transitions to `onboarding` because no API keys are found in the `settings` store.
-     - A global warning banner is visible at the top with the exact text: "No API keys configured. Click here to configure settings."
-     - The main chat input field in the chat area is disabled (`disabled` attribute present).
-   - **Implementation Requirements**: `ViewState` state machine, `initializing` state, `threads` store query for `status == "deleting"` for startup sweep, `onboarding` state logic.
-
-2. **Configuration**:
-   - **User Action**: Click the global warning banner (or navigate via Left Sidebar $\rightarrow$ Global Settings) $\rightarrow$ fill the "OpenRouter API Key" input field with a valid key (e.g. "sk-...") $\rightarrow$ fill the "Gemini API Key" input field with a valid key (e.g. "AIza...") $\rightarrow$ click the "Save Settings" button.
-   - **Expected Outcome**:
-     - API keys are persisted in the `settings` store as: `{ key: "api_keys", value: { openRouter: "sk-...", gemini: "AIza..." } }`.
-     - Default presets are automatically seeded into the `presets` store upon the first successful save of API keys:
-       - "Default Gemini Flash" (`id: "preset-gemini-flash"`, model: `gemini-2.5-flash`, provider: `gemini`)
-       - "Default OpenRouter Flash" (`id: "preset-openrouter-flash"`, model: `google/gemini-2.5-flash`, provider: `openrouter`)
-     - `default_preset_id` is set in the `settings` store as: `{ key: "default_preset_id", value: "preset-gemini-flash" }`.
-     - The global warning banner disappears from the DOM.
-     - `ViewState` transitions to `idle`.
-   - **Implementation Requirements**: `GlobalSettingsForm` state machine, `settings` store read-write transactions, `presets` store seeding logic, `ViewState` transition logic.
-
-3. **Theme Selection**:
-   - **User Action**: Navigate via Left Sidebar $\rightarrow$ Global Settings $\rightarrow$ select "Dark" from the theme override dropdown selector $\rightarrow$ click the "Save Settings" button.
-   - **Expected Outcome**:
-     - UI theme updates immediately; the `<html>` or `<body>` element has the Carbon dark theme class `cds--theme--g100` (or `cds--theme--g90`).
-     - Theme preference is saved in the `settings` store as: `{ key: "ui_config", value: { theme: "dark" } }` and persists after a page refresh.
-   - **Implementation Requirements**: `GlobalSettingsForm` state machine, `settings` store write, `ApplicationLayout` state machine `SET_THEME` transition, dynamic CSS class application to the root element.
-
-### Phase 2: Basic Chatting (Single Agent)
-
-1. **New Chat Creation**:
-   - **User Action**: From the "New Chat" panel: select "Standard 1-agent" from the Workflow dropdown selector, select the default preset from the Preset dropdown selector, enter "Hello" in the initial message/topic input field $\rightarrow$ click the "Submit" button.
-   - **Expected Outcome**:
-     - `ViewState` transitions to `chatting`.
-     - A new thread is created in the `threads` store with a generated UUID, utilizing the "Standard 1-agent" workflow (captured as a `workflowSnapshot` matching the `workflow-standard` definition), and the global default preset ID.
-     - The thread's title is initialized as "Hello".
-     - The user's initial message "Hello" is saved to the `messages` store with `sequence: 0`, `role: "user"`, and `threadId` matching the new thread.
-     - The URL updates to include the new thread UUID (e.g. `/chat/[uuid]`).
-   - **Implementation Requirements**: `NewChatForm` state machine, `threads` store write (UUID, title, workflow snapshot, preset ID), `messages` store write, React Router navigation.
-
-2. **First Interaction**:
-   - **User Action**: In the chat interface, type "Hello, who are you?" into the main chat input area $\rightarrow$ click the "Send" button (or press Enter on desktop).
-   - **Expected Outcome**:
-     - `ExecutionState` transitions to `executing`.
-     - Mock the LLM using `msw` to return a response: `{ choices: [{ message: { content: "I am a helpful assistant" } }] }`.
-     - LLM response is streamed and rendered as a message bubble containing the mocked text.
-     - Reasoning tokens (if present) are rendered in a collapsed "Reasoning Process" accordion within the bubble.
-     - The response is saved to the `messages` store with `sequence: 1`, `role: "assistant"`, `content: "I am a helpful assistant"`, and includes non-null `checkpointId` and `checkpointNs`.
-   - **Implementation Requirements**: `ChatInputArea` state machine, `ExecutionState` transition to `executing`, `graphRunnerActor` spawning, `graph.stream()` implementation, `messages` store write, `MessageAccordion` state machine for reasoning.
-
-3. **Conversation Continuity**:
-   - **User Action**: Type "What can you do?" into the main chat input area $\rightarrow$ click the "Send" button.
-   - **Expected Outcome**:
-     - Mock the LLM using `msw` to return: `{ choices: [{ message: { content: "As mentioned, I can help you with coding and debugging tasks." } }] }`.
-     - LLM responds and the response is rendered in the chat feed.
-     - Messages are displayed in correct sequential order (User -> Assistant -> User -> Assistant) with `sequence` 0, 1, 2, 3.
-   - **Implementation Requirements**: `graphRunnerActor` loading latest checkpoint, `messages` store query for historical context, LLM API call with compiled context.
-
-4. **Payload Inspection**:
-   - **User Action**: In the Chat Header, click the "Preview API Payload" button $\rightarrow$ Modal opens $\rightarrow$ Use the agent selection dropdown inside the modal to select "Standard Agent".
-   - **Expected Outcome**:
-     - A modal displays the exact JSON structure of messages that would be sent to the LLM API.
-     - The payload includes the workflow's system prompt and any injected system messages.
-     - Injected messages are clearly highlighted with an `[INJECTED]` badge.
-   - **Implementation Requirements**: `ApiPayloadPreviewModal` state machine, `messages` store read, system prompt retrieval, injected system messages compilation logic.
-
-### Phase 3: Advanced Chatting (Multi-Agent / Debate)
-
-1. **Debate Start**:
-   - **User Action**: Create a new chat and select the "Debate" workflow from the dropdown $\rightarrow$ Seed the debate by entering "Is Pluto a planet?" in the initial message input field $\rightarrow$ click the "Submit" button.
-   - **Expected Outcome**:
-     - Mock the LLM to simulate this exact sequence of responses:
-       1. `Initiator` $\rightarrow$ "Welcome to the debate on Pluto. Let's begin. Debater A, what is your opening statement?"
-       2. `Debater A` $\rightarrow$ "Pluto is a planet because it has a complex atmosphere and geological activity."
-       3. `Consensus Evaluator A` $\rightarrow$ `{"consensusReached": false, "reasoning": "Debater B has not yet responded."}`
-       4. `Debater B` $\rightarrow$ "I disagree. Pluto is a dwarf planet because it has not cleared its neighborhood of other debris."
-     - Each agent's message is rendered in the chat feed with its respective name header (e.g. "Initiator", "Debater A", "Debater B").
-     - The `messages` store contains 4 messages (sequences 0-3) with corresponding roles and names.
-   - **Implementation Requirements**: `Debate` workflow JSON compilation, `Initiator` node execution, `Debater A` / `Debater B` node execution, `Consensus Evaluator` routing logic.
-
-2. **UI Verification**:
-   - **User Action**: Scroll through the chat feed and review the Execution Control Panel.
-   - **Expected Outcome**:
-     - Each agent's message clearly displays their name (e.g., "Debater A") in a header above the bubble.
-     - Different agents have distinct visual indicators (e.g., different left-border colors mapped from a name hash).
-     - Loop control panel is visible and displays the correct `currentRound` (1) and `turnCount` (4) derived from the `GraphState` in the current execution run.
-   - **Implementation Requirements**: Multi-agent bubble rendering logic, `Execution & Loop Control Panel` state machine (round counter, turn counter updating via `UPDATE_STATS`).
-
-3. **Termination by Consensus**:
-   - **User Action**: Continue the debate (by providing input if interrupted or waiting for autonomous run) until an agent calls the `declare_consensus` tool.
-   - **Expected Outcome**:
-     - Mock the LLM for `Debater A` to return a `declare_consensus` tool call with: `{ reasoning: "We both agree Pluto is unique", agreedPoints: ["Pluto has a heart-shaped glacier"] }`.
-     - `Consensus Evaluator` detects `consensusReached: true` in the graph state.
-     - `Summarizer` node runs and produces a final synthesis, e.g.: "The debate concluded that while Pluto's status is debated, its geological features are undisputed."
-     - `ExecutionState` transitions to `inactive` and the thread `status` in IndexedDB is updated to `"inactive"`.
-     - The `messages` store contains the tool call, the tool result (generated by the `declare_consensus` tool node), and the final summary message.
-   - **Implementation Requirements**: `declare_consensus` tool implementation, `Consensus Evaluator` node routing logic (`on_consensus` edge), `Summarizer` node implementation, `ExecutionState` transition to `inactive`.
-
-### Phase 4: Interactive Tools (`ask_questions`)
-
-1. **Tool Trigger**:
-   - **User Action**: In a chat, send a message that triggers an agent to invoke the `ask_questions` tool (e.g. "Ask me some questions to understand my project").
-   - **Expected Outcome**:
-     - Mock the LLM using `msw` to return an `ask_questions` tool call containing:
-       ```json
-       {
-         "questions": [
-           {
-             "id": "q1",
-             "text": "What is your primary goal?",
-             "type": "free-text",
-             "required": true
-           },
-           {
-             "id": "q2",
-             "text": "Which framework do you prefer?",
-             "type": "single-select",
-             "options": ["React", "Vue", "Angular"],
-             "required": true
-           }
-         ]
-       }
-       ```
-     - `ExecutionState` transitions to `awaitingHumanInput.idle`.
-     - An interactive form card (using Carbon `Tile`) is rendered inline in the chat feed at the end of the history, displaying these two questions.
-     - Main chat input field is disabled (`disabled` attribute present).
-   - **Implementation Requirements**: `ask_questions` tool definition (Zod schema), `graphRunnerActor` interrupt handling, `ExecutionState` transition logic, `ask_questions` tool card rendering.
-
-2. **Form Interaction**:
-   - **User Action**: Fill out the form card: enter "Build a chat app" for `q1` and select "React" for `q2` $\rightarrow$ click the "Submit" button.
-   - **Expected Outcome**:
-     - User answers are saved as a `tool` role message in the `messages` store with a content matching the `AskQuestionsResponse` schema:
-       ```json
-       {
-         "answers": {
-           "q1": { "text": "Build a chat app" },
-           "q2": { "selected": ["React"] }
-         }
-       }
-       ```
-     - `ExecutionState` transitions back to `executing`.
-     - Mock the LLM using `msw` to return exactly: "Got it, you want to build a chat app with React. I can help you with that!"
-     - The agent's final response is rendered in the chat feed.
-   - **Implementation Requirements**: `AskQuestionsForm` state machine, `threads` store `draftAnswers` write, `messages` store write (tool result), `ExecutionState` transition to `executing`.
-
-3. **Persistence**:
-   - **User Action**: Refresh the page (browser reload) while the `ask_questions` form is active.
-   - **Expected Outcome**:
-     - The form is re-rendered in its active state.
-     - Draft answers are restored from the `draftAnswers` dictionary in the `threads` store (e.g. `draftAnswers: { "[toolCallId]": { "q1": { "text": "Build a chat app" }, ... } }`) and are visible in the form inputs.
-   - **Implementation Requirements**: `ExecutionState` transition to `checkingStatus`, `threads` store read (`activeInterrupt` and `draftAnswers`), `AskQuestionsForm` restoration logic.
-
-### Phase 5: Workflow & Preset Management
-
-1. **Custom Workflow Creation**:
-   - **User Action**: Navigate via Left Sidebar $\rightarrow$ Workflow Management $\rightarrow$ click the "Create Workflow" button $\rightarrow$ enter the following JSON definition in the `TextArea` editor $\rightarrow$ click the "Save" button:
-     ```json
-     {
-       "name": "Test Workflow",
-       "description": "A simple test workflow",
-       "nodes": [
-         {
-           "id": "n1",
-           "type": "agent",
-           "name": "Test Agent",
-           "systemPrompt": "You are a test assistant"
-         }
-       ],
-       "edges": []
-     }
-     ```
-   - **Expected Outcome**:
-     - JSON is validated for connectivity and entry points.
-     - Workflow is saved to the `workflows` store with a generated UUID and `isBuiltIn: false`.
-     - The new workflow "Test Workflow" is visible in the Workflow list view.
-   - **Implementation Requirements**: `WorkflowJsonEditor` state machine, structural validation logic, `workflows` store write.
-
-2. **Workflow Deployment**:
-   - **User Action**: From the "New Chat" panel: select the newly created "Test Workflow" from the Workflow dropdown selector, select a preset $\rightarrow$ click the "Submit" button.
-   - **Expected Outcome**:
-     - Graph is compiled at runtime based on the custom JSON.
-     - Execution follows the defined custom topology:
-       1. User sends "Hi".
-       2. Mock the LLM using `msw` for "Test Agent" to return: `{ content: "Hello from the test agent!" }`.
-       3. Verify "Hello from the test agent!" is rendered in the chat feed with the name "Test Agent" in the header.
-   - **Implementation Requirements**: `StateGraph` factory (JSON to graph compilation), custom node execution logic.
-
-3. **Workflow Syncing**:
-   - **User Action (Soft Sync)**: Navigate via Left Sidebar $\rightarrow$ Workflow Management $\rightarrow$ edit the "Test Workflow" system prompt from "You are a test assistant" to "You are a pirate test assistant" in the `TextArea` editor $\rightarrow$ click "Save" $\rightarrow$ In an active thread using that workflow, open Thread Settings $\rightarrow$ click the "Sync to Latest Workflow" button.
-   - **Expected Outcome (Soft Sync)**:
-     - A "Soft Sync" is performed (detects only prompt/preset changes).
-     - `workflowSnapshot` in the thread record is updated in the `threads` store to match the new definition.
-     - History and checkpoints are preserved (verify that `messages` store size for the thread remains unchanged).
-   - **Implementation Requirements**: `WorkflowSyncing` state machine, `threads` store `workflowSnapshot` update.
-   - **User Action (Hard Sync)**: Navigate via Left Sidebar $\rightarrow$ Workflow Management $\rightarrow$ edit the "Test Workflow" topology by adding a second agent node:
-     ```json
-     {
-       "name": "Test Workflow",
-       "description": "A simple test workflow",
-       "nodes": [
-         {
-           "id": "n1",
-           "type": "agent",
-           "name": "Test Agent 1",
-           "systemPrompt": "You are a test assistant"
-         },
-         {
-           "id": "n2",
-           "type": "agent",
-           "name": "Test Agent 2",
-           "systemPrompt": "You are another test assistant"
-         }
-       ],
-       "edges": [{ "from": "n1", "to": "n2" }]
-     }
-     ```
-     $\rightarrow$ click "Save" $\rightarrow$ In an active thread using that workflow, open Thread Settings $\rightarrow$ click the "Sync to Latest Workflow" button $\rightarrow$ click the "Confirm Sync" button in the warning modal.
-   - **Expected Outcome (Hard Sync)**:
-     - A "Hard Sync" is detected.
-     - A confirmation modal is displayed warning that history will be purged.
-     - After clicking "Confirm Sync": `workflowSnapshot` is updated, and all checkpoints and messages for the thread are purged from the `messages`, `checkpoints`, and `checkpoint_writes` stores.
-     - Chat feed is reset to an empty state.
-   - **Implementation Requirements**: `WorkflowSyncing` state machine, hard sync logic (purging `messages`, `checkpoints`, `checkpoint_writes` stores), `threads` store update.
-
-4. **Preset Customization**:
-   - **User Action**: Navigate via Left Sidebar $\rightarrow$ LLM Preset Settings $\rightarrow$ click the "Edit" button for a built-in preset $\rightarrow$ click the "Clone and Customize" button in the confirmation modal $\rightarrow$ change the "Model" input field to "gemini-1.5-pro" $\rightarrow$ click the "Save" button.
-   - **Expected Outcome**:
-     - New custom preset is created in the `presets` store with the modified model.
-     - Active thread is updated to use the new preset.
-   - **Implementation Requirements**: `PresetEditor` state machine, `presets` store write (new UUID), `threads` store update.
-
-### Phase 6: Thread Life-cycle & History Manipulation
-
-1. **Branching**:
-   - **User Action**: In an active thread, click the overflow menu (three-dots icon) of a message at sequence `idx` $\rightarrow$ click "Edit" $\rightarrow$ modify content in the text area $\rightarrow$ click "Save" $\rightarrow$ click the overflow menu of the edited message $\rightarrow$ click "Branch Thread" $\rightarrow$ enter "Branch 1" in the "Branch Name" input field $\rightarrow$ click the "Confirm Branch" button.
-   - **Expected Outcome**:
-     - A new thread record is created in the `threads` store with title "Branch 1" and `parentThreadId` set to the original thread's UUID.
-     - Messages from the parent thread up to and including sequence `idx` are cloned into the `messages` store under the new thread's ID.
-     - The set of all unique `[checkpointNs, checkpointId]` pairs from the cloned messages are gathered, and corresponding records are cloned from `checkpoints` and `checkpoint_writes` stores to the new thread's ID.
-     - The new thread's `latestCheckpointId` and `latestCheckpointNs` are set to the highest-sequence cloned message's checkpoint references.
-     - UI navigates to the newly branched thread.
-   - **Implementation Requirements**: `InlineMessageEditor` state machine, rollback logic (lineage traversal, purging descendants), `threads` store write (cloning messages and checkpoints), React Router navigation.
-
-2. **Thread Deletion**:
-   - **User Action**: In the Left Sidebar thread list, click the "Delete" icon for a thread $\rightarrow$ click the "Confirm Delete" button in the confirmation modal.
-   - **Expected Outcome**:
-     - Thread status is set to `"deleting"` in the `threads` store.
-     - Thread disappears from the sidebar immediately.
-     - Using `vi.runAllTimers()` or a short polling interval, verify that the messages, checkpoints, and checkpoint_writes stores for the deleted thread are empty, and finally, that the thread record itself is removed from the `threads` store.
-   - **Implementation Requirements**: `LeftSidebar` state machine, optimistic status update, asynchronous chunked deletion pipeline (`requestIdleCallback`), `threads`/`messages`/`checkpoints`/`checkpoint_writes` store deletes.
-
-### Phase 7: Global Configs & Budgeting
-
-1. **System Message Injection**:
-   - **User Action**: Navigate via Left Sidebar $\rightarrow$ Global Settings $\rightarrow$ click the "Add Injected Message" button $\rightarrow$ enter "Respond in the style of a pirate" in the content input and "0" in the depth input $\rightarrow$ click the "Save Settings" button $\rightarrow$ create a new chat.
-   - **Expected Outcome**:
-     - Mock the LLM to return exactly: "Ahoy there, matey! I be ready to help ye with yer questions!"
-     - LLM responds as a pirate, and the response is rendered in the chat feed.
-     - API Payload Preview modal shows the injected message at the start (index 0) of the payload.
-   - **Implementation Requirements**: `GlobalSettingsForm` state machine, `settings` store write, LLM compiler system message injection logic.
-
-2. **Budget Enforcement**:
-   - **User Action (Step Limit)**: Navigate via Left Sidebar $\rightarrow$ LLM Preset Settings $\rightarrow$ click "Edit" for the default preset $\rightarrow$ enter "2" in the `maxStepsWithoutUser` budget policy field $\rightarrow$ click "Save" $\rightarrow$ create a new chat using the "Debate" workflow.
-   - **Expected Outcome (Step Limit)**:
-     - Execution stops after exactly 2 autonomous agent steps.
-     - `ExecutionState` transitions to `awaitingHumanInput.budgetExceeded`.
-     - `Budget Exceeded Card` is rendered inline in the chat feed.
-     - Main chat input field is disabled.
-   - **Implementation Requirements**: `graphRunnerActor` step tracking, budget check logic in `STEP_COMPLETE`, `ExecutionState` transition logic, `BudgetExceededCard` rendering.
-   - **User Action (Token Limit)**: Navigate via Left Sidebar $\rightarrow$ LLM Preset Settings $\rightarrow$ click "Edit" for the default preset $\rightarrow$ enter "1000" in the `maxTokensPerRun` budget policy field $\rightarrow$ click "Save" $\rightarrow$ create a new chat with a prompt that generates very long responses.
-   - **Expected Outcome (Token Limit)**:
-     - Mock the LLM usage metadata to exceed 1000 tokens in the current run.
-     - Execution stops once token limit is reached.
-     - `Budget Exceeded Card` is rendered inline in the chat feed.
-     - `ExecutionState` transitions to `awaitingHumanInput.budgetExceeded`.
-   - **Implementation Requirements**: `graphRunnerActor` token tracking (usage metadata), budget check logic in `STEP_COMPLETE`.
-
-3. **Budget Override**:
-   - **User Action**: Click the "Increase Budget & Resume" button on the `Budget Exceeded Card`.
-   - **Expected Outcome**:
-     - Temporary budget override is applied: `stepsOverride = currentSteps + originalMaxSteps` and `tokensOverride = currentTokens + (originalMaxTokens || 100000)`.
-     - Execution resumes from the last persisted checkpoint.
-     - Mock the LLM to return exactly: "Budget increased. I have now completed the task as requested."
-     - `Budget Exceeded Card` transitions to a completed/read-only state.
-   - **Implementation Requirements**: `BudgetExceededCard` state machine, `RESUME_WITH_BUDGET_OVERRIDE` event, `graphRunnerActor` `budgetOverride` context update.
-
-### Phase 8: Error Recovery
-
-1. **Transient API Error**:
-   - **User Action**: Trigger a workflow run and simulate a transient API error (e.g. mock a 500 Internal Server Error from the LLM provider).
-   - **Expected Outcome**:
-     - The graph runner actor performs automatic retries with exponential backoff (verify up to 3 attempts).
-     - If retries fail, `ExecutionState` transitions to `error`.
-     - An Error Bubble is rendered inline at the end of the chat feed, showing the error code (e.g. "API Error 500") and a "Retry" button.
-     - Main chat input field is disabled (`disabled` attribute present).
-   - **Implementation Requirements**: `graphRunnerActor` retry logic, `ExecutionState` error transition, Error Bubble rendering.
-
-2. **Rate Limit Recovery**:
-   - **User Action**: Simulate a `429 Too Many Requests` error from the LLM API.
-   - **Expected Outcome**:
-     - Error Bubble is rendered showing the rate limit error.
-     - The user clicks the "Change Preset" dropdown in the Error Bubble and selects an alternative preset.
-     - Clicking "Resume" updates the thread's `activePresetId` in the `threads` store and restarts execution from the last persisted checkpoint.
-   - **Implementation Requirements**: `ExecutionState.error` controls, `CHANGE_PRESET_AND_RESUME` event, `graphRunnerActor` preset reconfiguration.
-
-3. **Manual Intervention**:
-   - **User Action**: In an error state, the user clicks the "Edit Last Message" shortcut in the Error Bubble.
-   - **Expected Outcome**:
-     - The UI scrolls and focuses the inline editor for the user's last message.
-     - After the user edits and saves the message, the thread is rolled back, and execution is automatically re-triggered from the new state.
-   - **Implementation Requirements**: `InlineMessageEditor` integration with the Error Bubble, rollback sequence, automatic re-execution.
