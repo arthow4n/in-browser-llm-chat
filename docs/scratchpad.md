@@ -1209,14 +1209,14 @@ To ensure the application is implemented correctly and can be verified in a test
   - **State Transitions**: Verify the `ViewState` transitions `idle` $\rightarrow$ `workflowConfig` $\rightarrow$ `idle`.
   - **Event Dispatch**: Verify the `LOAD_WORKFLOW` and `SAVE` events are dispatched.
   - Verify a new record is created in the `workflows` store using the `WorkflowJsonEditor` component, with the serialized graph definition.
-  - Assert the `WorkflowListView` updates to include the new workflow as a `Card` with the 'Custom' badge.
+  - Assert the `CustomWorkflowListView` updates to include the new workflow as a `Card` with the 'Custom' badge.
   - User starts a new chat, selects this custom workflow from the `Dropdown` in the `NewChatForm`, and sends a message.
   - Verify the thread record's `workflowSnapshot` is an exact copy of the workflow JSON.
   - User deletes the custom workflow from the Workflow Management view via the `Button` (Delete). Verify the record is removed from the `workflows` store.
-  - Assert the `WorkflowListView` is updated and the deleted workflow's `Card` is removed.
+  - Assert the `CustomWorkflowListView` is updated and the deleted workflow's `Card` is removed.
   - Verify that the thread still functions correctly and can be resumed or continued, as it uses the `workflowSnapshot` stored in the `threads` record rather than querying the `workflows` store. Specifically, mock a scenario where the workflow is deleted from the database and verify that the thread still executes using its snapshot.
   - Verify the graph execution follows the defined sequence (Node A $\rightarrow$ Node B) and creates corresponding messages in the `messages` store. Verify that the messages are created in the correct `sequence` order and that the `name` field of each message matches the `name` defined in the `WorkflowNode` (e.g. "Agent A", then "Agent B").
-- **Exercised Components**: `WorkflowJsonEditor`, `WorkflowListView`, `NewChatForm`, `TextArea`, `Dropdown`, `Button`.
+- **Exercised Components**: `WorkflowJsonEditor`, `CustomWorkflowListView`, `NewChatForm`, `TextArea`, `Dropdown`, `Button`.
 - **Exercised State Machines**: `ViewState`, `WorkflowJsonEditor`.
 - **Exercised Systems**: `IndexedDB`, `Custom Runner`.
 
@@ -1533,7 +1533,7 @@ To ensure full implementation, the following mapping defines which components ar
 
 - **Global Navigation & Layout**: `SideNav`, `ApplicationLayout`, `Button`, `Dropdown`, `Notification`, `Modal`.
 - **Main Chat Interface**: `ChatHeader`, `ExecutionControlPanel`, `ChatFeed`, `MessageBubble`, `ChatInputArea`, `NewChatForm`, `BudgetExceededCard`, `ProposedActionCard`, `AskQuestionsToolForm`, `ErrorBubble`, `InlineMessageEditor`, `MessageOptionsMenu`, `ApiPayloadPreviewModal`, `CodeBlockControl`, `Avatar`, `Accordion`, `Badge`, `LoadingSpinner`, `CodeView`.
-- **Workflow Management**: `WorkflowListView`, `WorkflowJsonEditor`, `TextArea`, `Button`, `Card`, `Badge`, `RadioGroup`, `CheckboxGroup`, `Notification`.
+- **Workflow Management**: `CustomWorkflowListView`, `WorkflowJsonEditor`, `TextArea`, `Button`, `Card`, `Badge`, `RadioGroup`, `CheckboxGroup`, `Notification`.
 - **LLM Preset CRUD**: `PresetListView`, `PresetEditor`, `TextInput`, `Dropdown`, `Button`, `Card`, `Badge`.
 - **Global Settings**: `GlobalSettingsForm`, `TextInput`, `Dropdown`, `Button`, `Notification`, `CheckpointCompactionDialog`.
 - **Thread Management**: `ThreadSettingsModal`, `ConfirmationModal`, `PromptingBranchModal`.
@@ -1705,7 +1705,7 @@ These components are built using the Core Components above to create complex UI 
     - Includes a `Button` (variant `"ghost"`) for editing (triggers `OPEN_PRESET_EDIT`) and a `Button` (variant `"danger"`) for deleting (triggers `DELETE_PRESET`).
   - **Sizing**: Occupies the main content area, with cards spaced by `16px`.
 
-- **`WorkflowListView`**:
+- **`CustomWorkflowListView`**:
   - **Structure**: A vertical list of agent orchestration workflows.
   - **Components**:
     - Uses `Card` (variant `"standard"`) for each workflow entry.
@@ -1871,7 +1871,7 @@ These components are built using the Core Components above to create complex UI 
     - `Delete`: triggers a safety check (non-default, not active in threads) before deleting.
   - **Sizing**: Centered modal with a single-column form layout and `16px` gap between fields. All interactive elements have `44x44px` touch targets.
 - **`PresetListView`**: List view utilizing `Card`, `Button`, and `Badge`.
-- **`WorkflowListView`**: List view utilizing `Card`, `Button`, and `Badge`.
+- **`CustomWorkflowListView`**: List view utilizing `Card`, `Button`, and `Badge`.
 - **`GlobalSettingsForm`**: Full-page form using `TextInput`, `Dropdown`, `Button`, and `Notification`.
 - **`ThreadSettingsModal`**: Management modal using `TextInput`, `Dropdown`, `Button`, and `Modal`.
 
@@ -1970,7 +1970,7 @@ The application layout is built using a custom design system with Vanilla CSS. T
 
 ### 3. Workflow Management CRUD View
 
-- **Components used**: `WorkflowListView`, `WorkflowJsonEditor`, `TextArea`, `Button`, `Card`, `Badge`.
+- **Components used**: `CustomWorkflowListView`, `WorkflowJsonEditor`, `TextArea`, `Button`, `Card`, `Badge`.
 - **Workflow List**:
   Scrollable list of built-in and user-defined workflows, each with active edit/delete buttons; built-in workflows must be clearly marked as such in the UI.
 - **Workflow JSON Editor Pane**:
