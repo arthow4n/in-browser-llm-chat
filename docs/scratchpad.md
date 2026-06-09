@@ -1649,6 +1649,7 @@ To ensure a predictable TDD implementation, the following mapping defines which 
 
 | Component                       | Governing State Machine          |
 | :------------------------------ | :------------------------------- |
+| `ChatFeed`                      | `ChatFeedAutoScrollStateMachine` |
 | `ApplicationLayout`             | `MainApplicationLayout`          |
 | `SideNav`                       | `SideNav`                        |
 | `ChatHeader`                    | `ChatHeaderQuickPresetSwitcher`  |
@@ -1748,6 +1749,16 @@ These components are built using the Core Components above to create complex UI 
     - Input Field: A `TextArea` that dynamically grows in height as the user types (up to a max constraint).
     - Send Button: A `Button` (variant `"primary"`) with a send icon.
   - **Sizing**: Minimum height of `48px` to ensure all interactive elements meet the `44x44px` touch target requirement. Dynamic height expansion up to a maximum constraint.
+
+- **`APIKeyVisualStatusIndicator`**:
+  - **Structure**: A small visual indicator rendered next to an API key input field.
+  - **Visual Spec**: A small circular indicator (size 16x16px) with a transition animation.
+  - **States**:
+    - `idle`: Grey color.
+    - `validating`: Rotating spinner animation using `LoadingSpinner`.
+    - `valid`: Green checkmark icon.
+    - `invalid`: Red cross icon.
+  - **Sizing**: Minimum touch target not applicable as it is an indicator, but it should not shift the layout when changing states.
 
 - **`ExecutionControlPanel`**:
   - **Desktop**: A sticky horizontal control bar at the top of the chat area.
