@@ -126,7 +126,7 @@ This file will be collaboratively updated by the human user and the coding agent
 
 - Deployed to GitHub Pages as static client side-only application. Build pipeline may use Node scripts/dependencies. Offline support / PWA is out of scope; standard browser caching is sufficient for asset loading, as core LLM integration requires active internet connectivity anyway.
 - Custom agent orchestration in-browser built using XState state machines and a custom execution runner for workflow graph execution, with XState managing all application and UI states.
-- React frontend.
+- React frontend with React Router ^7.16.0 for thread-based routing.
 - XState and `@xstate/react`, all the application and UI states should be fully driven by state machine(s).
 - Custom design system built with Vanilla CSS and React components, prioritizing premium aesthetics (such as sleek dark/light modes, typography from Google Fonts like Inter or Outfit, smooth gradients, and subtle micro-animations/transitions). Support switching between dark and light mode, defaulting to system settings. Provide a selector in the Global Settings to manually override it to "Light" or "Dark", saving this preference as a global setting in IndexedDB. All interactive elements must have a minimum of 44x44px touch targets.
 - TypeScript: Install package `@typescript/native-preview` instead of package `typescript`.
