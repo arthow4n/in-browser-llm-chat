@@ -853,6 +853,8 @@ To ensure the application is implemented correctly and can be verified in a test
 - **Then**:
   - **State Transitions**: Assert `ViewState` transitions `initializing` $\rightarrow$ `onboarding` $\rightarrow$ `globalSettings` $\rightarrow$ `idle`.
   - **Initial Load Checks**:
+    - Assert `ViewState` transitions `initializing` $\rightarrow$ `onboarding`.
+    - Assert `SkeletonLoader` is visible for all main content areas during the `initializing` state.
     - Assert IndexedDB database `in-browser-llm-chat-db` is initialized and all required stores (`settings`, `presets`, `workflows`, `threads`, `messages`, `checkpoints`, `checkpoint_writes`) are created.
     - Assert built-in workflows ("Standard 1-agent", "Debate") are visible in the `Dropdown` selection of the "New Chat" form.
   - **Database Writes**:
@@ -890,8 +892,9 @@ To ensure the application is implemented correctly and can be verified in a test
     - **For OpenRouter**: The request messages array starts with a `role: "system"` message containing the merged system prompts, followed by the user message "Hello" as `role: "user"`.
   - **UI Feedback**:
     - Assert the "Thinking..." skeleton bubble is rendered in the `ChatFeed` while the `ExecutionState` is `executing` and the runner is in `running.requesting`.
+    - Assert a `LoadingSpinner` is visible on the Send button during the transition to `submitting`.
     - Assert `tokenStats` in the `threads` store are updated to `{ promptTokens: 10, completionTokens: 15, totalTokens: 25 }`.
-    - UI displays both messages in the `ChatFeed` using `MessageBubble` components (with an `Avatar` for the assistant), and the `ChatInputArea` `TextInput` field is enabled once `ExecutionState` returns to `inactive`.
+    - UI displays both messages in the `ChatFeed` using `MessageBubble` components (with an `Avatar` and correct `Icon` for the Send button), and the `ChatInputArea` `TextInput` field is enabled once `ExecutionState` returns to `inactive`.
 - **Exercised Components**: `ChatInputArea`, `ChatFeed`, `MessageBubble`, `SideNav`, `TextInput`, `Button`, `Avatar`, `Card`, `LoadingSpinner`.
 - **Exercised State Machines**: `ViewState`, `ExecutionState`, `GraphRunnerActor`.
 - **Exercised Systems**: `IndexedDB`, `MSW`, `Custom Runner`, `Vercel AI SDK`.
@@ -1411,8 +1414,8 @@ To ensure full implementation, the following mapping defines which components ar
   - **Sizing**: The body is capped at `max-height: 250px` with vertical scrolling enabled.
 
 - **`LoadingSpinner` / `SkeletonLoader`**:
-  - `LoadingSpinner`: SVG animation for active processes.
-  - `SkeletonLoader`: Pulsing grey placeholders (opacity transition `0.5` $\to$ `1.0`) used as structural placeholders for text, avatars, and cards during initial data loads.
+  - `LoadingSpinner`: SVG animation for active processes. Must be a continuous 360-degree rotation with a duration of 1s and linear timing function.
+  - `SkeletonLoader`: Pulsing grey placeholders (opacity transition `0.5` $\to$ `1.0` with a duration of 1.5s and `ease-in-out` timing) used as structural placeholders for text, avatars, and cards during initial data loads.
 
 - **`CodeView`**:
   - **Structure**: A read-only, formatted display for JSON or code. Uses a monospaced font (e.g., 'JetBrains Mono' or 'Fira Code').
@@ -1424,7 +1427,7 @@ To ensure full implementation, the following mapping defines which components ar
   - **Logic**: Generates a circular avatar with a deterministic background color and the user's/agent's initials based on a hash of the name.
 
 - **`Icon`**:
-  - A library of consistent SVG icons used across all buttons and menus (e.g., `Send`, `Pause`, `Resume`, `Delete`, `Edit`, `Branch`, `Settings`, `User`, `Bot`, `ChevronDown`, `Check`, `X`).
+  - A library of consistent SVG icons used across all buttons and menus (e.g., `Send`, `Pause`, `Resume`, `Delete`, `Edit`, `Branch`, `Settings`, `User`, `Bot`, `ChevronDown`, `Check`, `X`). All icons must be rendered at a consistent size (typically 20x20px or 24x24px) and use the `currentColor` CSS property to automatically adapt to the active theme.
 
 ### Layout & Composite Components
 
@@ -1443,15 +1446,12 @@ These components are built using the Core Components above to create complex UI 
   - **Components**: Uses `Button`, `Badge`, and `LoadingSpinner`.
 - **`ChatInputArea`**: Complex input section using `TextInput`, `TextArea`, `Dropdown` for role selection, and `Button`.
 - **`NewChatForm`**: Initialization form using `Dropdown` for workflow/preset and `TextArea` for initial message.
-- **`AskQuestionsToolForm`**:
+- **AskQuestionsToolForm**:
   - **Structure**: A specialized tool-driven form rendered as a `Card` (variant `"prompt"`) inline in the chat feed.
   - **Components**:
-    - Displays a sequence of questions.
-    - `single-select` questions use radio button groups.
-    - `multi-select` questions use checkbox groups.
-    - `free-text` questions use `TextInput` or `TextArea`.
+    - Displays a sequence of questions using `RadioGroup` for `single-select` questions, `CheckboxGroup` for `multi-select` questions, and `TextInput`/`TextArea` for `free-text` comments and inputs.
     - Contains "Submit" and "Refuse to Answer" buttons.
-  - **Interactions**: Submit button is disabled until all `required: true` questions are answered.
+  - **Interactions**: Submit button is disabled until all `required: true` questions are answered (note: clicking "Refuse to Answer" for a required question also satisfies the requirement).
   - **Sizing**: All form controls have a minimum touch target of `44x44px`.
 - **`BudgetExceededCard`**: Notification-style `Card` using `Badge` and `Button`.
 - **`ProposedActionCard`**: Approval-style `Card` using `Badge` and `Button`.
