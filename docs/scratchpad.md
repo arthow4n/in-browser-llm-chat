@@ -125,7 +125,7 @@ This file will be collaboratively updated by the human user and the coding agent
 ## Tech stack
 
 - Deployed to GitHub Pages as static client side-only application. Build pipeline may use Node scripts/dependencies. Offline support / PWA is out of scope; standard browser caching is sufficient for asset loading, as core LLM integration requires active internet connectivity anyway.
-- Custom agent orchestration in-browser built using `@langchain/langgraph` (langgraph-js) for workflow graph execution, and XState for application and UI state management.
+- Custom agent orchestration in-browser built using XState state machines and a custom execution runner for workflow graph execution, with XState managing all application and UI states.
 - React frontend.
 - XState and `@xstate/react`, all the application and UI states should be fully driven by state machine(s).
 - Custom design system built with Vanilla CSS and React components, prioritizing premium aesthetics (such as sleek dark/light modes, typography from Google Fonts like Inter or Outfit, smooth gradients, and subtle micro-animations/transitions). Support switching between dark and light mode, defaulting to system settings. Provide a selector in the Global Settings to manually override it to "Light" or "Dark", saving this preference as a global setting in IndexedDB. All interactive elements must have a minimum of 44x44px touch targets.
@@ -318,7 +318,7 @@ interface GraphState {
 }
 ```
 
-During runtime, a compiler function converts this JSON schema into an executable custom state-based workflow graph using the LangGraph `StateGraph` API. The compiler maps each `WorkflowNode` type to a concrete function (node) in the LangGraph instance and connects them using `addEdge` or `addConditionalEdges` based on the `WorkflowEdge` definitions. The state of the graph is managed using the `GraphState` interface described below, and the resulting graph is compiled into a runnable object. The compiler maps each `WorkflowNode` type to its concrete execution behavior:
+During runtime, a compiler function converts this JSON schema into an executable custom state-based workflow graph using a custom orchestration runner. The compiler maps each `WorkflowNode` type to a concrete execution step in the runner and connects them using state transitions based on the `WorkflowEdge` definitions. The state of the graph is managed using the `GraphState` interface described below, and the resulting graph is compiled into a runnable object. The compiler maps each `WorkflowNode` type to its concrete execution behavior:
 
 - **`agent`**: Invokes the LLM specified by `presetId` (or the default preset) using the `systemPrompt`, passing the thread's message history. It binds the tools specified in the `tools` array. During execution, the agent node also updates the `lastAgentId` state property in the `GraphState` to its own node ID, ensuring that subsequent tool nodes can route results back to it. If the `presetId` is missing or has been deleted from the database, compilation and execution will not fail; instead, the compiler automatically falls back to the thread's active preset, and if that is also invalid, it falls back to the global default preset, displaying a non-blocking warning notification in the execution control panel.
 - **`input`**: Execution is interrupted/paused, waiting for a user message.
@@ -2025,7 +2025,7 @@ To ensure the application UI is readable and clearly understandable on both desk
   - **Workflow List**: "No custom workflows created. Design an orchestration graph to automate your agent loops!"
 - **Dynamic Input Resizing**: Chat input textareas should dynamically grow in height as the user types (up to a maximum height constraint) to ensure visibility of long prompts before submitting.
 
-The application state is managed by a central XState machine (the Parent Coordinator Machine) configured with parallel state regions. This design decouples UI view navigation from LangGraph background execution, allowing background workflows to run concurrently (in active-only execution mode) while the user navigates settings or configurations.
+The application state is managed by a central XState machine (the Parent Coordinator Machine) configured with parallel state regions. This design decouples UI view navigation from custom workflow background execution, allowing background workflows to run concurrently (in active-only execution mode) while the user navigates settings or configurations.
 
 ### State Transition Graph
 
@@ -2127,7 +2127,7 @@ The parent coordinator state machine context maintains the following variables:
   - `tokenStats`: `{ promptTokens: number; completionTokens: number; totalTokens: number } | null` - Statistics tracking input and output tokens for the current execution.
 - `errorMessage`: `string | null` - Details of the most recent execution or database error.
 - `apiKeysConfigured`: `boolean` - Indicates whether required API keys are configured. It is `true` if and only if there is a non-empty global OpenRouter API key or Gemini API key in the `settings` store, or at least one preset in the `presets` store has a non-empty `apiKey` defined.
-- **`graphRunnerActor`**: A reference to the active spawned child actor managing LangGraph execution. The runner's core execution logic is implemented as an `AsyncGenerator` that yields at each node execution step, allowing the runner actor to pause, persist state, and resume execution without blocking the browser's main thread. transitions are triggered by the parent machine resuming the generator.
+- **`graphRunnerActor`**: A reference to the active spawned child actor managing custom workflow execution. The runner's core execution logic is implemented as an `AsyncGenerator` that yields at each node execution step, allowing the runner actor to pause, persist state, and resume execution without blocking the browser's main thread. Transitions are triggered by the parent machine resuming the generator.
 
 ### 2. State Descriptions
 
@@ -2183,7 +2183,7 @@ The parent coordinator state machine context maintains the following variables:
   - _Interactive Controls_:
     - Execution Control Panel: All buttons are disabled.
     - Main Chat Input / Send Button: Disabled.
-- **`executing`**: Running `@langchain/langgraph/web` steps in the browser.
+- **`executing`**: Running custom workflow execution steps in the browser.
   - _Interactive Controls_:
     - Execution Control Panel:
       - Pause button: Enabled, triggers `PAUSE`.
@@ -2920,7 +2920,7 @@ Governs the lifecycle of the custom background execution runner, which runs as a
 
 #### Event-Driven Generator Loop Implementation
 
-To integrate the `LangGraph` asynchronous execution with XState's event-driven architecture, the `graphRunnerActor` implements the execution loop as an `AsyncGenerator`:
+To integrate the custom workflow asynchronous execution with XState's event-driven architecture, the `graphRunnerActor` implements the execution loop as an `AsyncGenerator`:
 
 1. **Generator Initialization**: Upon entering the `initializing` state, the actor instantiates the compiled graph as an `AsyncGenerator` (using the `graph.stream()` or a similar iterator).
 2. **Driving the Loop**:
@@ -3433,13 +3433,13 @@ To ensure a stable and incremental build, the application will be developed in t
     - Implement the main layout (Sidebar, Header, Chat Feed).
     - Build Thread Management CRUD (creation, selection, deletion).
     - Implement the Chat Input area and basic message bubble rendering.
-3.  **Phase 3: Core LangGraph Execution**:
+3.  **Phase 3: Core Custom Orchestration Execution**:
     - Develop the `GraphRunnerActor` child actor and the custom IndexedDB checkpointer.
     - Implement the basic 1-agent workflow execution path.
     - Integrate streaming responses (text and reasoning tokens) with the UI.
 4.  **Phase 4: Workflow Management**:
     - Build the Workflow JSON Editor and custom workflow CRUD.
-    - Implement the Workflow Compilation factory (converting JSON to `StateGraph`).
+    - Implement the Workflow Compilation factory (converting JSON to executable custom workflow graphs).
     - Add structural validation for custom workflows.
 5.  **Phase 5: Advanced Orchestration & Loops**:
     - Implement the Debate Workflow logic (Initiator, Debaters, Evaluators, Summarizer).
@@ -3467,7 +3467,7 @@ Governs the display state of individual message bubbles in a multi-agent chat fe
 - **States**:
   - `rendering`:
     - _Avatar & Header Bar_:
-      - If `message.role === "assistant"` and `message.name` is defined (e.g. "Debater_A"), a distinct header is displayed at the top of the bubble containing the agent's name and an auto-generated visual avatar (e.g. initials with a deterministic background color based on the name hash) so users can visually scan who said what. To ensure visual consistency and adherence to Carbon aesthetics, the background color is deterministically mapped from the name's hash to a predefined palette of Carbon-compliant muted/neutral tones.
+      - If `message.role === "assistant"` and `message.name` is defined (e.g. "Debater_A"), a distinct header is displayed at the top of the bubble containing the agent's name and an auto-generated visual avatar (e.g. initials with a deterministic background color based on the name hash) so users can visually scan who said what. To ensure visual consistency and adherence to custom design system aesthetics, the background color is deterministically mapped from the name's hash to a predefined palette of custom design system muted/neutral tones.
       - If `message.role === "user"`, the bubble is aligned to the right, styled distinctly from assistants.
     - _Tool Call Nesting_:
       - If the agent makes a tool call, the tool call accordion (governed by the Message Accordion State Machine) is nested _inside_ the bottom of the agent's message bubble block, rather than floating independently, visually linking the tool execution to the agent that triggered it.
@@ -3603,7 +3603,7 @@ To ensure a stable and iterative development process, the implementation should 
 - **Focus on Integration Tests**: Test the full user flow and logic integration over isolated unit tests.
 - **Mocking**: No mocks are allowed except for API mocks. Use `msw` for mocking network requests.
 - **Model-Based Testing**: Use XState's graph utilities for model-based testing to automatically generate tests for state machines. Import from `xstate/graph` instead of the deprecated `@xstate/graph` package (e.g., [Stately Graph Docs](https://stately.ai/docs/graph#model-based-testing)).
-- **Test Coverage**: Track test coverage using Vitest. Ensure code is well-covered, especially critical state machines and LangGraph logic.
+- **Test Coverage**: Track test coverage using Vitest. Ensure code is well-covered, especially critical state machines and custom execution logic.
 
 ### TDD Implementation Checklist for Coding Agents
 
