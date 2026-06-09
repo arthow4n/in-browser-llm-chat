@@ -18,6 +18,7 @@
     - [6. Workflow Creation and Modification Tools Schema](#6-workflow-creation-and-modification-tools-schema)
     - [7. Debate Workflow Execution Details](#7-debate-workflow-execution-details)
     - [8. Custom Runner and Checkpointer Integration Details](#8-custom-runner-and-checkpointer-integration-details)
+      - [Standard Step Persistence Sequence](#standard-step-persistence-sequence)
       - [IndexedDB Checkpointer Mapping to Custom Runner State](#indexeddb-checkpointer-mapping-to-custom-runner-state)
       - [Rollback and Resubmission Sequence](#rollback-and-resubmission-sequence)
     - [9. System Message Injection Details](#9-system-message-injection-details)
@@ -601,7 +602,15 @@ These tools allow LLM agents to interactively create or modify custom workflows 
 
 ### 8. Custom Runner and Checkpointer Integration Details
 
-To run orchestration graphs directly in the browser, the application integrates a custom state-based execution runner lifecycle with IndexedDB persistence.
+#### Standard Step Persistence Sequence
+
+To ensure that a thread's state can be recovered consistently after a crash or page reload, every successful execution step of the graph runner must follow this strict database write sequence:
+
+1. **Append Message(s)**: Write the generated assistant or tool messages to the `messages` store.
+2. **Persist Checkpoint**: Write the execution state and metadata to the `checkpoints` and `checkpoint_writes` stores.
+3. **Update Thread Metadata**: Update the `threads` store record with the `latestCheckpointId`, `latestCheckpointNs`, and updated `tokenStats`.
+
+This sequence ensures that if the process is interrupted, the system will never have a thread metadata reference to a checkpoint that doesn't yet exist in the `checkpoints` store.
 
 #### IndexedDB Checkpointer Mapping to Custom Runner State
 
@@ -1258,6 +1267,7 @@ The application uses a custom, premium design system built with Vanilla CSS and 
 
 To achieve a premium, modern aesthetic, the following color palette and typography guidelines must be used. All colors should be implemented as CSS variables on the root element.
 
+- **Design System Implementation Note**: All components MUST be implemented using the CSS variables defined in the Theme Palette section to ensure seamless theme switching and visual consistency. Avoid hardcoding color values.
 - **Typography**:
   - Primary Font: 'Inter' or 'Outfit' (Google Fonts), sans-serif.
   - Scale: Use a modular scale (e.g., 1.25) for headings.
@@ -1372,6 +1382,7 @@ To achieve a premium, modern aesthetic, the following color palette and typograp
   - **Style**: Background matches `--bg-tertiary`, with subtle padding and a border. Supports syntax highlighting colors for JSON keys and values.
   - **Features**: Integrated scrollbars (horizontal and vertical) and a "Copy" button in the top-right corner.
 
+- **`OverflowMenu`**: A specialized `Dropdown` used for contextual actions on a specific item (e.g., a message bubble). It is triggered by a three-dots icon and renders a list of action buttons. On mobile viewports, it can be configured to render as a `Modal` for better accessibility.
 - **`Avatar`**:
   - **Logic**: Generates a circular avatar with a deterministic background color and the user's/agent's initials based on a hash of the name.
 
@@ -1447,6 +1458,7 @@ The application layout is built using a custom design system with Vanilla CSS. T
 
 ### 1. Global Navigation and Layout
 
+- **Components used**: `SideNav`, `ApplicationLayout`, `Button`, `Dropdown`, `Notification`.
 - **SideNav Navigation (Custom Sidebar Navigation)**:
   - **Header Area**: App branding, manual theme toggle selector (Light / Dark / Auto-sync with System), and a hamburger menu button.
   - **Thread List**: A scrollable list of chat threads, showing thread titles, active workflow/preset indicators, and a branch indicator if a thread was cloned.
@@ -1459,11 +1471,13 @@ The application layout is built using a custom design system with Vanilla CSS. T
 
 ### 2. Main Chat Interface
 
+- **Components used**: `ChatHeader`, `ExecutionControlPanel`, `ChatFeed`, `MessageBubble`, `ChatInputArea`, `NewChatForm`, `BudgetExceededCard`, `ProposedActionCard`, `AskQuestionsToolForm`, `ErrorBubble`, `InlineMessageEditor`, `MessageOptionsMenu`, `Avatar`, `Accordion`, `Badge`, `LoadingSpinner`.
 - **Chat Header**:
   - Displays the active thread's title.
   - Displays the active workflow.
   - **Preset Dropdown Switcher**: The active preset is displayed as a dropdown trigger in the Chat Header, allowing quick preset switching. Next to it, a configure icon allows editing the preset in a modal panel. If a built-in preset is edited, the UI prompts the user to "Clone and Customize" to create a new custom preset copy.
   - **Preview API Payload Button**: Clicking it opens a Modal showing the exact JSON structure of messages (including injected system messages) that would be sent to the LLM API next. Injected messages are highlighted with a distinct background/border and marked with an `[INJECTED]` badge to assist debugging. Since a workflow may contain multiple agents, the modal includes a dropdown selector showing all agents in the current workflow (defaulting to the workflow's entry agent node if the thread is empty, or the next scheduled agent based on the graph's execution checkpoint) so the user can inspect the preview payload for any specific agent. For new or empty threads with no message history, the payload preview displays the initial system prompt configuration for the selected agent, combined with any active injected system messages. During active background execution, the preview button is disabled to prevent race conditions with running state updates.
+
 - **Execution & Loop Control Panel (Sticky)**:
   - **Desktop**: Rendered as a sticky control bar at the top of the chat area.
   - **Mobile**: Collapses into a compact, sticky status bar at the top or bottom of the viewport to save vertical space; tapping it opens a modal overlay containing detailed turn counters and control actions.
@@ -1494,7 +1508,9 @@ The application layout is built using a custom design system with Vanilla CSS. T
 
 ### 3. Workflow Management CRUD View
 
-- **Workflow List**: Scrollable list of built-in and user-defined workflows, each with active edit/delete buttons; built-in workflows must be clearly marked as such in the UI.
+- **Components used**: `WorkflowListView`, `WorkflowJsonEditor`, `TextArea`, `Button`, `Card`, `Badge`.
+- **Workflow List**:
+  Scrollable list of built-in and user-defined workflows, each with active edit/delete buttons; built-in workflows must be clearly marked as such in the UI.
 - **Workflow JSON Editor Pane**:
   - Text-based JSON editor containing a `TextArea` displaying the JSON content.
   - **Mobile**: Rendered as a simple `TextArea` with word-wrap and scrolling, relying on the native mobile keyboard (no helper keyboard bar or custom virtual buttons).
@@ -1503,18 +1519,22 @@ The application layout is built using a custom design system with Vanilla CSS. T
 
 ### 4. LLM Preset CRUD View
 
-- **Preset List**: List of configured LLM presets with options to edit or delete.
+- **Components used**: `PresetListView`, `PresetEditor`, `TextInput`, `Dropdown`, `Button`, `Card`, `Badge`.
+- **Preset List**:
+  List of configured LLM presets with options to edit or delete.
 - **Preset Configuration Panel**:
   - Fields for configuring Name, Provider (`"openrouter" | "gemini"`), Model ID (string), API Key (optional override), Temperature, Max Tokens, Reasoning/Thinking Level, and Budget Policy (e.g. max steps without user message, max tokens per run limit).
   - **Connection Testing**: Includes a "Test Connection" button next to the API Key field to verify custom or local provider settings. Clicking it triggers an asynchronous mock API request (e.g. querying the `/v1/models` endpoint or requesting a 1-token dummy response) using the configured API Key and model, passing any custom headers. Displays a loading spinner while testing, a green success badge (showing provider/model and latency), or a red warning banner detailing status codes, CORS block warnings, or network errors on failure. This test is optional and non-blocking.
 
 ### 5. Global Settings View
 
+- **Components used**: `GlobalSettingsForm`, `TextInput`, `Dropdown`, `Button`, `Notification`.
 - **Global Config Form**:
   - **API Keys & Security Section**: Password-masked input fields (masked by default with a show/hide toggle button) for OpenRouter and Gemini API keys. Includes visual status indicators (spinner, green check for valid, red cross for invalid) that asynchronously perform lightweight validation requests immediately on-save.
   - **Theme Override Selector**: Selector for manually forcing Light/Dark mode.
   - **Injected System Messages Section**: Global UI list configuration for system messages that apply to all workflows.
   - **Thread Operations Section**: Includes a "Compact Thread" button to allow manual purging of older checkpoints (preserving only the latest active checkpoint) for the active thread to reclaim IndexedDB storage. A confirmation dialog warns the user that compacting deletes the execution checkpoint history, which prevents rewinding, editing, or branching from older messages.
+
 - **Onboarding / Warning Banner**:
   - Displays a persistent, clickable warning banner at the very top of the workspace: `"No API keys configured. Click here to configure settings."`.
   - Disables the main chat input field until a preset/API key is successfully configured in Settings.
