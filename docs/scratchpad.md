@@ -929,9 +929,13 @@ To ensure the application is implemented correctly and can be verified in a test
       - Mock `Consensus_Evaluator_B` response: `{"consensusReached": false, "reasoning": "No agreement yet"}`.
       - Assert routing back to `Debater_A`.
       - Assert `currentRound` in the graph state increments to `2` upon entering `Debater_A` again. This is verified by inspecting the `checkpoint` record created immediately after `Consensus_Evaluator_B` executes and routes to `Debater_A`, ensuring the updated round count is persisted.
-    - **Round 2**:
+    - **Round 2 (Consensus reached)**:
       - Mock `Debater_A` response: calls `declare_consensus` tool with `reasoning: "We agree on the basics"` and `agreedPoints: ["Point A", "Point B"]`.
       - `Debater_A` executes $\rightarrow$ a tool call message is created in the `messages` store $\rightarrow$ assert `lastAgentId` updated to `"Debater_A"`.
+    - **Alternative: Loop Limit Termination**:
+      - Mock a scenario where the `maxLoopLimit` is reached (e.g. set to 2 for the test).
+      - Mock responses such that `Consensus_Evaluator_A` and `Consensus_Evaluator_B` always return `consensusReached: false`.
+      - Assert that upon reaching the `maxLoopLimit`, the evaluator bypasses LLM calls and routes directly to the `Summarizer` node along the `on_consensus` edge, while the state's `consensusReached` remains `false`.
   - **Phase 3 (Consensus)**:
     - The `tool` node executes $\rightarrow$ a tool result message for `declare_consensus` is created in the `messages` store $\rightarrow$ assert `consensusReached` is set to `true` in the graph state (checkpoint record).
     - `Consensus_Evaluator_A` detects `consensusReached: true` in graph state $\rightarrow$ routes to `Summarizer` along the `on_consensus` edge.
@@ -970,6 +974,9 @@ To ensure the application is implemented correctly and can be verified in a test
       }
     }
     ```
+  - **Refusal Happy Path**:
+    - User clicks "Refuse to Answer" for the entire form $\rightarrow$ dispatches `REFUSE` to `AskQuestionsToolForm` machine.
+    - Assert a `tool` result message is written to the `messages` store where all questions are marked as `refused: true` and a `refusalReason` is provided.
   - Assert `threads.activeInterrupt` is cleared and `draftAnswers` for this `toolCallId` are deleted from the thread record.
   - Execution resumes and continues to the next node in the graph.
   - **Page reload restoration**: Simulate a page reload by unmounting the current chat component (using `cleanup()` from `@testing-library/react`) and re-mounting it with the same `currentThreadId`. Assert the form restores the user's current selections from `draftAnswers` in IndexedDB. Additionally, assert that `draftAnswers` are written to the `threads` store in real-time on every `UPDATE_ANSWER` event (verifying that the DB record for the active thread is updated immediately after each field change to ensure no loss of data if the page is closed).
@@ -992,7 +999,7 @@ To ensure the application is implemented correctly and can be verified in a test
   - Assert the runner's local `budgetOverride` context is updated to extend the limits (e.g., `stepsOverride = currentSteps + originalMaxSteps`). Verify that this override is used for subsequent API calls instead of the preset's base limit.
   - Assert that the next step(s) execute successfully until the new override limit is hit or the workflow terminates.
 
-  - **Run Reset Verification**: Assert that once the run concludes (transitions to `inactive`) or is interrupted by a new user message, the runner's local `stepsInCurrentRun` and `tokensInCurrentRun` are reset to 0, and `budgetOverride` is reset to `null`.
+  - **Run Reset Verification**: Assert that once the run concludes (transitions to `inactive`) or is interrupted by a new user message, the runner's local `stepsInCurrentRun` and `tokensInCurrentRun` are reset to 0, and `budgetOverride` is reset to `null`. This is verified by checking the runner actor's context after a `SUBMIT_MESSAGE` event triggers a new execution run.
 
 - **Exercised Components**: `ChatFeed`, `BudgetExceededCard`, `Card`, `Badge`, `Button`.
 - **Exercised State Machines**: `ExecutionState`, `BudgetExceededCard`, `GraphRunnerActor`.
@@ -1121,6 +1128,7 @@ To ensure the application is implemented correctly and can be verified in a test
 - **When**: User starts a new chat selecting this custom workflow from the `Dropdown` in the `NewChatForm`, enters "Hello" in the `ChatInputArea` `TextInput`, and clicks the `Button` (Send) $\rightarrow$ dispatches `SUBMIT_MESSAGE` { content: "Hello" }.
 - **Then**:
   - **State Transitions**: Assert the `ExecutionState` transitions `inactive` $\rightarrow$ `executing` $\rightarrow$ `inactive`.
+  - **Auto-Start Verification**: Assert that upon `SUBMIT_SUCCESS` in the `NewChatForm`, an auto-start event is dispatched to the Parent Coordinator, which triggers the transition to `executing` and spawns the `graphRunnerActor`.
   - Assert the `workflowSnapshot` in the `threads` record matches this JSON.
   - **Execution Sequence**:
     - `Agent A` executes $\rightarrow$ mock response "I think AI is great!" $\rightarrow$ a message with `role: "assistant"`, `name: "Agent A"`, and the above content is created in the `messages` store at `sequence: 1` $\rightarrow$ assert `lastAgentId` updated to `"n1"`.
@@ -1500,8 +1508,20 @@ These components are built using the Core Components above to create complex UI 
     - Contains "Submit" and "Refuse to Answer" buttons.
   - **Interactions**: Submit button is disabled until all `required: true` questions are answered (note: clicking "Refuse to Answer" for a required question also satisfies the requirement).
   - **Sizing**: All form controls have a minimum touch target of `44x44px`.
-- **`BudgetExceededCard`**: Notification-style `Card` using `Badge` and `Button`.
-- **`ProposedActionCard`**: Approval-style `Card` using `Badge` and `Button`.
+- **`BudgetExceededCard`**:
+  - **Structure**: A `Card` (variant `"notification"`) rendered inline in the chat feed when execution limits are hit.
+  - **Components**:
+    - Header: "Budget Exceeded" title.
+    - Content: Displays current usage (steps or tokens) vs the limit using `Badge` components.
+    - Controls: "Increase Budget & Resume" (variant `"primary"`) and "Abort" (variant `"secondary"`) buttons.
+  - **Sizing**: All interactive elements must have a minimum touch target of 44x44px.
+- **`ProposedActionCard`**:
+  - **Structure**: A `Card` (variant `"notification"`) rendered inline for database-modifying tool calls.
+  - **Components**:
+    - Header: "Proposed Action" title.
+    - Content: Displays a structured list or a visual diff of the proposed changes.
+    - Controls: "Approve" (variant `"primary"`) and "Deny" (variant `"secondary"`) buttons.
+  - **Sizing**: All interactive elements must have a minimum touch target of 44x44px.
 - **`WorkflowJsonEditor`**: Editor pane combining `TextArea` and `Button` for JSON management.
 - **`PresetEditor`**: Configuration form using `TextInput`, `Dropdown`, and `Button`.
 - **`PresetListView`**: List view utilizing `Card`, `Button`, and `Badge`.
@@ -1509,26 +1529,32 @@ These components are built using the Core Components above to create complex UI 
 - **`GlobalSettingsForm`**: Full-page form using `TextInput`, `Dropdown`, `Button`, and `Notification`.
 - **`ThreadSettingsModal`**: Management modal using `TextInput`, `Dropdown`, `Button`, and `Modal`.
 - **`ThreadSettingsModal`**: A management modal used for modifying thread-level settings, including the active preset, active workflow, and triggering workflow synchronization. It uses a `Modal` as the base and includes `Dropdown` and `Button` components.
-- **`ConfirmationModal`**: A generic confirmation dialog featuring a title, description, and "Confirm"/"Cancel" buttons.
-- **`PromptingBranchModal`**: A specialized modal for naming a new branched thread.
+- **`ConfirmationModal`**:
+  - **Structure**: A generic `Modal` for critical actions.
+  - **Components**:
+    - Header: Action title (e.g. "Delete Thread").
+    - Content: Descriptive text explaining the consequences.
+    - Footer: "Confirm" (variant `"primary"` or `"danger"`) and "Cancel" (variant `"secondary"`) buttons.
+- **`PromptingBranchModal`**:
+  - **Structure**: A `Modal` for initiating a thread branch.
+  - **Components**:
+    - Header: "Branch Thread" title.
+    - Content: A `TextInput` for the new thread name, prefilled with "Branch of [Parent Thread Title]".
+    - Footer: "Confirm Branch" (variant `"primary"`) and "Cancel" (variant `"secondary"`) buttons.
 - **`ApiPayloadPreviewModal`**:
   - **Structure**: A `Modal` displaying the current LLM API payload as a JSON `CodeView`.
   - **Components**:
     - An agent selector `Dropdown` allowing the user to switch between agents in the current workflow to inspect their specific payload.
     - A `CodeView` displaying the messages array, highlighting injected system messages with an `[INJECTED]` badge.
   - **Interactions**: Agent selection updates the displayed JSON in real-time.
-- **`InlineMessageEditor`**: A component that replaces a message bubble with a text area for inline editing.
-- **`ErrorBubble`**: Special `Card` (variant `"notification"`, theme `"danger"`) with integrated `Button` for recovery.
-- **`ChatFeed`**:
-  - **Structure**: A vertically scrollable container that manages the rendering of `MessageBubble` components in chronological order.
-  - **Features**:
-    - Implements a debounced Markdown and LaTeX rendering pipeline.
-    - Manages the `ChatFeedAutoScroll` state machine to keep the latest message or active form in view.
-    - Dynamically adjusts its `padding-bottom` based on the height of the `ChatInputArea` and `ExecutionControlPanel`.
-  - **Sizing**: Occupies the remaining vertical space of the main content area.
-- **`MessageBubble`**: Core chat unit using `Card`, `Avatar`, `Accordion` for reasoning/tools, and `OverflowMenu`.
 - **`InlineMessageEditor`**: A specialized input component that replaces a message bubble inline for editing. It combines a `TextArea` for content and a set of `Button` controls (Save, Cancel) at the bottom.
-- **`ErrorBubble`**: A specialized `Card` (variant `"notification"`, theme `"danger"`) used to render execution errors inline in the chat feed, incorporating an error icon and recovery `Button` controls.
+- **`ErrorBubble`**:
+  - **Structure**: A specialized `Card` (variant `"notification"`, theme `"danger"`) used to render execution errors inline in the chat feed.
+  - **Components**:
+    - Header: Displays the name of the agent node that failed and an error icon.
+    - Content: Displays the error type (e.g. "API Error 429") and a detailed descriptive message.
+    - Footer: Contains recovery controls: "Retry" button, "Change Preset" dropdown, and "Edit Last Message" shortcut.
+  - **Interactions**: All interactive elements must have a minimum touch target of 44x44px.
 - **`MessageOptionsMenu`**:
   - **Structure**: A composite component that uses an `OverflowMenu` trigger. On desktop, it renders as a floating dropdown menu. On mobile viewports, it renders as a `Modal` centered in the viewport for easier touch interaction.
   - **Components**: Contains a list of action `Button` items (Edit, Delete, Branch).
