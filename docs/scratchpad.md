@@ -3,7 +3,7 @@
 <!-- TOC -->
 <!-- This Table of Contents is generated automatically. Do not edit it manually. -->
 
-- [Scratchpad](#scratchpad) - [V. Chat Feed Auto-Scroll State Machine](#v-chat-feed-auto-scroll-state-machine)
+- [Scratchpad](#scratchpad)
   - [Tech stack](#tech-stack)
   - [Features and use cases to support](#features-and-use-cases-to-support)
   - [Technical Architecture Proposals](#technical-architecture-proposals)
@@ -938,7 +938,7 @@ To ensure the application is implemented correctly and can be verified in a test
   - Q3: "Additional comments" (type: `free-text`, required: `false`)
 - **Then**:
   - Assert execution pauses; verify the thread record's `activeInterrupt` is set to `{ type: "ask_questions", ... }`. Verify it contains the correct `toolCallId` and the `questions` array exactly as defined above.
-  - UI renders an inline form card. Assert:
+  - UI renders an inline AskQuestionsToolForm component. Assert:
     - Q1 is rendered as a radio button group.
     - Q2 is rendered as a checkbox group.
     - Q3 is rendered as a text area.
@@ -971,7 +971,7 @@ To ensure the application is implemented correctly and can be verified in a test
   - **Step Limit Trigger**: Mock API responses for the first 2 steps, ensuring the 2nd step completes normally. After the 2nd step, the runner halts execution.
   - **Token Limit Trigger**: Mock an API response for a single step that returns `completionTokens: 1100`. The runner halts execution immediately after this step.
   - Assert the thread record's `activeInterrupt` is set to `{ type: "budget_exceeded", budgetDetails: { stepCount: ..., currentTokens: ..., maxTokens: ... } }`.
-  - UI renders the `Budget Exceeded Card` as a `Card` (variant `"notification"`) inline in the chat feed. Assert it correctly displays the current value (steps or tokens) and the limit using `Badge` components.
+  - UI renders the BudgetExceededCard component inline in the chat feed. Assert it correctly displays the current value (steps or tokens) and the limit using `Badge` components.
   - User clicks the `Button` (variant `"primary"`) "Increase Budget & Resume" $\rightarrow$ dispatches `INCREASE_BUDGET` to `BudgetExceededCard` machine.
   - Assert the runner's local `budgetOverride` context is updated to extend the limits (e.g., `stepsOverride = currentSteps + originalMaxSteps`).
   - Assert that the next step(s) execute successfully until the new override limit is hit or the workflow terminates.
@@ -1646,7 +1646,7 @@ The parent coordinator state machine context maintains the following variables:
   - `tokenStats`: `{ promptTokens: number; completionTokens: number; totalTokens: number } | null` - Statistics tracking input and output tokens for the current execution.
 - `errorMessage`: `string | null` - Details of the most recent execution or database error.
 - `apiKeysConfigured`: `boolean` - Indicates whether required API keys are configured. It is `true` if and only if there is a non-empty global OpenRouter API key or Gemini API key in the `settings` store, or at least one preset in the `presets` store has a non-empty `apiKey` defined.
-- `graphRunnerActor`: `any` - A reference to the active spawned child actor managing LangGraph execution.
+- **`graphRunnerActor`**: A reference to the active spawned child actor managing LangGraph execution. The runner's core execution logic is implemented as an `AsyncGenerator` that yields at each node execution step, allowing the runner actor to pause, persist state, and resume execution without blocking the browser's main thread. transitions are triggered by the parent machine resuming the generator.
 
 ### 2. State Descriptions
 
