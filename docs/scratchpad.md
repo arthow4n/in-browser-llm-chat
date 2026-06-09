@@ -1421,6 +1421,7 @@ These components are built using the Core Components above to create complex UI 
 - **`WorkflowListView`**: List view utilizing `Card`, `Button`, and `Badge`.
 - **`GlobalSettingsForm`**: Full-page form using `TextInput`, `Dropdown`, `Button`, and `Notification`.
 - **`ThreadSettingsModal`**: Management modal using `TextInput`, `Dropdown`, `Button`, and `Modal`.
+- **`ThreadSettingsModal`**: A management modal used for modifying thread-level settings, including the active preset, active workflow, and triggering workflow synchronization. It uses a `Modal` as the base and includes `Dropdown` and `Button` components.
 - **`ConfirmationModal`**: A generic confirmation dialog featuring a title, description, and "Confirm"/"Cancel" buttons.
 - **`PromptingBranchModal`**: A specialized modal for naming a new branched thread.
 - **`ApiPayloadPreviewModal`**:
