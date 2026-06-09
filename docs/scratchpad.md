@@ -1692,13 +1692,13 @@ These components are built using the Core Components above to create complex UI 
   - **Interactions**: Updates the thread record in IndexedDB and dispatches `INITIALIZE_CHECKPOINT` to refresh the runner state.
 
 - **`ChatHeader`**:
-  - **Structure**: A horizontal bar at the top of the chat interface.
+  - **Structure**: A horizontal bar at the top of the chat interface using `display: flex` with `justify-content: space-between` and `align-items: center`.
   - **Components**:
     - Active thread title (Text).
     - Active workflow name (Text/Badge).
     - Preset Dropdown Switcher: A `Dropdown` allowing quick switching of LLM presets. Includes a "Configure" icon button next to it that opens the `PresetEditor` modal.
-    - API Payload Preview Button: A `Button` that opens the `ApiPayloadPreviewModal`.
-  - **Sizing**: Fixed height, sticky at top.
+    - API Payload Preview Button: A `Button` (variant `"ghost"`) that opens the `ApiPayloadPreviewModal`.
+  - **Sizing**: Fixed height (e.g., `56px`), sticky at top, with `z-index: 10`.
 
 - **`MessageBubble`**:
   - **Structure**: A `Card` (variant `"standard"`) representing a single message.
