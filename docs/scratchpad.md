@@ -972,9 +972,11 @@ To ensure the application is implemented correctly and can be verified in a test
   - Assert the thread record's `activeInterrupt` in the `threads` store is set to `{ type: "budget_exceeded", budgetDetails: { stepCount: ..., currentTokens: ..., maxTokens: ... } }`.
   - UI renders the BudgetExceededCard component inline in the chat feed. Assert it correctly displays the current value (steps or tokens) and the limit using `Badge` components.
   - User clicks the `Button` (variant `"primary"`) "Increase Budget & Resume" $\rightarrow$ dispatches `INCREASE_BUDGET` to `BudgetExceededCard` machine.
-  - Assert the runner's local `budgetOverride` context is updated to extend the limits (e.g., `stepsOverride = currentSteps + originalMaxSteps`).
+  - Assert the runner's local `budgetOverride` context is updated to extend the limits (e.g., `stepsOverride = currentSteps + originalMaxSteps`). Verify that this override is used for subsequent API calls instead of the preset's base limit.
   - Assert that the next step(s) execute successfully until the new override limit is hit or the workflow terminates.
+
   - **Run Reset Verification**: Assert that once the run concludes (transitions to `inactive`) or is interrupted by a new user message, the runner's local `stepsInCurrentRun` and `tokensInCurrentRun` are reset to 0, and `budgetOverride` is reset to `null`.
+
 - **Exercised Components**: `ChatFeed`, `BudgetExceededCard`, `Card`, `Badge`, `Button`.
 - **Exercised State Machines**: `ExecutionState`, `BudgetExceededCard`, `GraphRunnerActor`.
 - **Exercised Systems**: `IndexedDB`.
@@ -1038,8 +1040,9 @@ To ensure the application is implemented correctly and can be verified in a test
     1. A `user` role entry containing the merged content of any messages at index 1 (including the `[System Notification]: ...` prefixed injected message) and the actual user message.
     2. The `systemInstruction` property of the API call contains the merged text from index 0.
   - **Non-Entry Agent Verification**: Change the agent selector in the `Dropdown` within the modal to a non-entry agent (e.g., `Debater_B`). Assert that this agent's specific system prompt is also correctly merged with the global system messages at the specified depths.
-  - **Persistence**: Assert that none of these injected or merged system messages are stored in the `messages` store or checkpoints.
+  - **Persistence**: Assert that none of these injected or merged system messages are stored in the `messages` store or checkpoints. Use a spy on the `idb` store's `put`/`add` methods to verify that no system messages are written to the database during the execution of this step.
   - Assert that if only one system message is configured at depth 0, it is correctly placed at the start of the payload.
+
 - **Exercised Components**: `ApiPayloadPreviewModal`, `ChatHeader`, `Modal`, `Dropdown`, `CodeView`, `Badge`.
 - **Exercised State Machines**: `ApiPayloadPreviewModal`.
 - **Exercised Systems**: `IndexedDB`.
@@ -1067,6 +1070,7 @@ To ensure the application is implemented correctly and can be verified in a test
     - Assert `workflowSnapshot` in the thread record is updated to S3.
     - Assert that all message history and checkpoints for the thread are purged from the `messages` and `checkpoints` stores.
     - Assert the thread's `latestCheckpointId` and `latestCheckpointNs` are reset to `null`.
+    - Assert the thread's `tokenStats` are reset to `{ promptTokens: 0, completionTokens: 0, totalTokens: 0 }`.
 - **Exercised Components**: `ThreadSettingsModal`, `WorkflowJsonEditor`, `Modal`, `Button`.
 - **Exercised State Machines**: `WorkflowSyncing`.
 - **Exercised Systems**: `IndexedDB`.
@@ -1343,13 +1347,25 @@ To achieve a premium, modern aesthetic, the following color palette and typograp
     - `inline`: Rendered within the content flow (e.g., under a form).
   - **Types**: `info`, `success`, `warning`, `error`.
 
+- **`RadioGroup`**:
+  - **Structure**: A group of radio inputs with associated labels.
+  - **Style**: Custom-styled radio circles with a clear active state (accent color). Labels are clickable and have a minimum touch target of `44x44px`.
+  - **Interactions**: Only one option can be selected at a time.
+
+- **`CheckboxGroup`**:
+  - **Structure**: A group of checkbox inputs with associated labels.
+  - **Style**: Custom-styled check-boxes with a clear active state (accent color). Labels are clickable and have a minimum touch target of `44x44px`.
+  - **Interactions**: Multiple options can be selected.
+
 - **`Accordion`**:
-  - **Structure**: An expandable header (containing a title and a toggle icon) and a collapsible body.
+  - **Structure**: A toggleable component consisting of a `Header` (title, toggle icon) and a `Body` (collapsible content).
+  - **Style**: Subtle border or divider, light background change on header hover.
+  - **Animation**: Smooth height transition using `grid-template-rows` or `max-height`.
   - **Sizing**: The body is capped at `max-height: 250px` with vertical scrolling enabled.
 
 - **`LoadingSpinner` / `SkeletonLoader`**:
   - `LoadingSpinner`: SVG animation for active processes.
-  - `SkeletonLoader`: Pulsing grey placeholders used during initial data loads.
+  - `SkeletonLoader`: Pulsing grey placeholders (opacity transition `0.5` $\to$ `1.0`) used as structural placeholders for text, avatars, and cards during initial data loads.
 
 - **`CodeView`**:
   - **Structure**: A read-only, formatted display for JSON or code. Uses a monospaced font (e.g., 'JetBrains Mono' or 'Fira Code').
