@@ -891,8 +891,12 @@ To ensure the application is implemented correctly and can be verified in a test
 - **Given**: App is initialized with valid API keys and a default preset, and the "Standard 1-agent" built-in workflow is selected.
 - **When**:
   1. User enters "Hello" in the `ChatInputArea` `TextInput`.
-  2. User clicks the `Button` (variant 'primary') $\rightarrow$ dispatches `SUBMIT_MESSAGE` { content: "Hello" } to the Parent Coordinator.
+  2. User clicks the `Button` (variant `"primary"`) $\rightarrow$ dispatches `SUBMIT_MESSAGE` { content: "Hello" } to the Parent Coordinator.
 - **Then**:
+  - **Design System Check**:
+    - Assert `<html>` or `<body>` has a theme class (e.g., `theme-light` or `theme-dark`).
+    - Assert the `ChatInputArea` and `Button` have a minimum touch target of `44x44px`.
+    - Assert that during `initializing` state, `SkeletonLoader` components were visible for the main content area.
   - **Submit Message**:
     - Assert `ViewState` transitions `initializing` $\rightarrow$ `idle` $\rightarrow$ `chatting` and `ExecutionState` transitions `inactive` $\rightarrow$ `executing`.
     - Assert that by querying the `messages` store using the `threadId` index, a record exists with `content: "Hello"`, `role: "user"`, and `sequence: 0`.
@@ -1688,89 +1692,152 @@ To ensure a predictable TDD implementation, the following mapping defines which 
 
 ### Layout & Composite Components
 
-These components are built using the Core Components above to create complex UI sections.
-
-- **`PresetConnectionTester`**:
-  - **Structure**: A status indicator integrated into the `PresetEditor` configuration form.
-  - **Components**:
-    - "Test Connection" button.
-    - Success state: Green badge displaying provider/model and request latency (e.g., `150ms`).
-    - Failure state: Red warning banner detailing status codes (e.g., "401 Unauthorized") or network errors.
-  - **Interactions**: Triggered via the "Test Connection" button, performing a lightweight dummy API call using the current preset's configuration.
-
-- **`PresetListView`**:
-  - **Structure**: A vertical list of LLM preset configurations.
-  - **Components**:
-    - Uses `Card` (variant `"standard"`) for each preset entry.
-    - Each card displays the preset name, provider, and model using `Text` and `Badge` (variant `"info"`).
-    - Includes a `Button` (variant `"ghost"`) for editing (triggers `OPEN_PRESET_EDIT`) and a `Button` (variant `"danger"`) for deleting (triggers `DELETE_PRESET`).
-  - **Sizing**: Occupies the main content area, with cards spaced by `16px`.
-  - **Pagination**: Implements infinite scroll; initially loads 10 items and fetches the next 10 upon reaching the bottom of the list. Supports search-based filtering and alphabetical sorting by name.
-
-- **`CustomWorkflowListView`**:
-  - **Structure**: A vertical list of agent orchestration workflows.
-  - **Components**:
-    - Uses `Card` (variant `"standard"`) for each workflow entry.
-    - Each card displays the workflow name, a short description, and a `Badge` identifying it as "Built-in" (green) or "Custom" (blue).
-    - Includes a `Button` (variant `"ghost"`) for editing (triggers `OPEN_WORKFLOW_EDIT`) and a `Button` (variant `"danger"`) for deleting (triggers `DELETE_WORKFLOW` - only for custom workflows).
-  - **Sizing**: Occupies the main content area, with cards spaced by `16px`.
-  - **Pagination**: Implements infinite scroll; initially loads 10 items and fetches the next 10 upon reaching the bottom of the list. Supports search-based filtering and alphabetical sorting by name.
-
-- **`SideNav`**:
-  - **Desktop**: A persistent vertical drawer on the left side of the viewport.
-  - **Mobile**: A sliding overlay that enters from the left, covering a portion of the screen (max-width `280px`), accompanied by a semi-transparent backdrop that closes the menu when tapped.
-  - **Animations**: Uses smooth CSS transitions for the sliding effect (e.g., `transform: translateX()` with `ease-in-out`).
-  - **Components**: Contains `Button`, `Dropdown`, and `Card` based thread items.
-  - **Header Area**: App branding, manual theme toggle selector (using a `Dropdown` component), and a hamburger menu button.
+These components are built using the Core Components above to create complex UI sections. To maintain a premium aesthetic, these components must be implemented with strict adherence to the specified CSS layout and structural rules.
 
 - **`ApplicationLayout`**:
   - **Structure**: The top-level layout coordinator that manages the `SideNav` visibility and the main content area.
-  - **Loading/Initializing Layout**: When the `ViewState` is in the `initializing` state, the `ApplicationLayout` must render `SkeletonLoader` components as placeholders for the `SideNav` thread list and the main content area (e.g., the `NewChatForm` or `ChatFeed`) to prevent layout shift and provide immediate visual feedback.
-  - **Sizing**: Full viewport width and height (100vw, 100vh), with `overflow: hidden` on the root and `overflow-y: auto` on the main content area.
+  - **Visual Spec**: Full viewport width and height (`100vw`, `100vh`), with `overflow: hidden` on the root and `overflow-y: auto` on the main content area.
+  - **Loading/Initializing Layout**: When the `ViewState` is in the `initializing` state, the `ApplicationLayout` MUST render `SkeletonLoader` components as placeholders for the `SideNav` thread list and the main content area (e.g., the `NewChatForm` or `ChatFeed`) to prevent layout shift and provide immediate visual feedback.
+  - **Sizing**: Use `display: grid` with `grid-template-columns: auto 1fr` for the sidebar and main content layout.
+
+- **`SideNav`**:
+  - **Desktop**: A persistent vertical drawer on the left side of the viewport.
+  - **Mobile**: A sliding overlay that enters from the left, covering a portion of the screen (max-width `280px`), accompanied by a semi-transparent backdrop (`background: rgba(0,0,0,0.5)`) that closes the menu when tapped.
+  - **Animations**: Uses smooth CSS transitions for the sliding effect (e.g., `transform: translateX()` with `cubic-bezier(0.4, 0, 0.2, 1)`).
+  - **Components**:
+    - Header Area: App branding, manual theme toggle selector (using a `Dropdown` component), and a hamburger menu button.
+    - Thread List: A scrollable list of chat threads using `Card` items.
+    - Quick Links / Accordion: Dedicated tabs or accordion navigation options to switch the main content area between: Chat Interface, Workflow Management, LLM Preset Settings, and Global Settings.
+  - **Visual Spec**: `background: var(--bg-secondary)`, `border-right: 1px solid var(--border-color)`, `z-index: 30`.
+
+- **`ChatHeader`**:
+  - **Structure**: A horizontal bar at the top of the chat interface.
+  - **Visual Spec**: `display: flex`, `justify-content: space-between`, `align-items: center`, `height: 56px`, `position: sticky`, `top: 0`, `z-index: 10`, `background: var(--bg-primary)`, `border-bottom: 1px solid var(--border-color)`.
+  - **Components**:
+    - Active thread title (Text).
+    - Active workflow name (Text/Badge).
+    - Preset Dropdown Switcher: A `Dropdown` allowing quick preset switching. Includes a "Configure" icon button next to it that opens the `PresetEditor` modal.
+    - API Payload Preview Button: A `Button` (variant `"ghost"`) that opens the `ApiPayloadPreviewModal`.
 
 - **`ChatFeed`**:
   - **Structure**: A scrollable container that renders `MessageBubble` components in chronological order.
+  - **Visual Spec**: `display: flex`, `flex-direction: column`, `gap: 24px`, `padding: 24px`, `overflow-y: auto`, `scroll-behavior: smooth`.
   - **Features**: Implements scroll anchoring to maintain position during content updates and coordinates with the `ChatFeedAutoScrollStateMachine` to smoothly scroll to the bottom upon new messages or focus on active tool forms.
   - **Sizing**: Dynamically adjusts its `padding-bottom` based on the height of the sticky `ChatInputArea` and `ExecutionControlPanel`.
 
+- **`MessageBubble`**:
+  - **Structure**: A `Card` (variant `"standard"`) representing a single message.
+  - **Visual Spec**:
+    - Alignment: User messages aligned to the right, agent messages aligned to the left.
+    - Border Radius: User bubbles use `border-radius: 16px 16px 4px 16px`; agent bubbles use `border-radius: 16px 16px 16px 4px`.
+    - Visual Distinction (Multi-Agent): Assistant bubbles must display a distinct background tint or a left-border color (4px width) deterministically generated from the agent's name hash: `hsl(${hue}, 40%, 90%)` for light theme and `hsl(${hue}, 30%, 20%)` for dark theme.
+  - **Components**:
+    - Header: Displays the agent/user `Avatar` and `name` (for assistants), and a timestamp.
+    - Content: Renders markdown/math using `react-markdown` and `rehype-katex`.
+    - Reasoning Accordion: An `Accordion` that reveals reasoning tokens (collapsed by default).
+    - Tool Accordion: An `Accordion` that reveals tool calls/results (collapsed by default).
+    - Overflow Menu Trigger: An `OverflowMenu` button that opens the `MessageOptionsMenu`.
+  - **Sizing**: Max-width 80% of viewport, aligned left (agent) or right (user).
+  - **Loading State**: When the `GraphRunnerActor` is in `running.requesting`, a "Thinking..." bubble is rendered with a `SkeletonLoader` pulsing text lines.
+
 - **`ChatInputArea`**:
-  - **Structure**: A composite input section containing a role selector `Dropdown`, a dynamic `TextArea` for user input, and a `Button` for submission.
-  - **Interactions**: Supports `Shift+Enter` for newlines and `Enter` for submission (on desktop). Controls are dynamically disabled/enabled based on the `ExecutionState`.
+  - **Structure**: A composite input section anchored to the bottom.
+  - **Visual Spec**: `position: sticky`, `bottom: 0`, `z-index: 10`, `display: flex`, `align-items: flex-end`, `gap: 12px`, `padding: 16px`, `background: var(--bg-primary)`, `border-top: 1px solid var(--border-color)`.
+  - **Components**:
+    - Role Selector Dropdown: `Dropdown` for selecting "User", "Assistant", or "System".
+    - Input Field: A `TextArea` that dynamically grows in height as the user types (up to a max constraint).
+    - Send Button: A `Button` (variant `"primary"`) with a send icon.
   - **Sizing**: Minimum height of `48px` to ensure all interactive elements meet the `44x44px` touch target requirement. Dynamic height expansion up to a maximum constraint.
 
-- **`Modal`**:
-  - **Structure**: A base generic modal overlay used as a wrapper for specific dialogs.
-  - **Components**: A semi-transparent backdrop, a centered content container with a title bar (containing a close button), a scrollable body, and a footer for primary/secondary action buttons.
-  - **Animations**: Smooth fade-in and scale-up transitions.
-  - **Accessibility**: Focus trapping and "Escape" key to close.
+- **`ExecutionControlPanel`**:
+  - **Desktop**: A sticky horizontal control bar at the top of the chat area.
+  - **Mobile**: Collapses into a compact, sticky status bar at the top or bottom of the viewport. Tapping it opens a full-screen modal overlay.
+  - **Visual Spec**: `display: flex`, `justify-content: space-between`, `align-items: center`, `padding: 8px 16px`, `background: var(--bg-secondary)`, `border-radius: 8px`, `box-shadow: var(--shadow-sm)`.
+  - **Components**: Uses `Button`, `Badge`, and `LoadingSpinner`.
 
-- **`GlobalSettingsForm`**:
-  - **Structure**: A full-page configuration form for managing API keys, theme preferences, and injected system messages.
-  - **Components**: Uses `TextInput` (masked for keys), `Dropdown` for theme, and a dynamic list of `TextInput` pairs for system messages.
-  - **Interactions**: Triggers API key validation on save and dynamic theme updates across the app.
-
-- **`CheckpointCompactionDialog`**:
-  - **Structure**: A specialized `ConfirmationModal` for purging historical checkpoints.
-  - **Components**: Warning text explaining the consequences of compaction and a "Confirm Compact" button.
-  - **Interactions**: triggers the database purge of all checkpoints except the latest active one.
-  - **`NewChatForm`**:
+- **`NewChatForm`**:
   - **Structure**: A centered layout displayed when no thread is active.
+  - **Visual Spec**: `display: flex`, `flex-direction: column`, `align-items: center`, `justify-content: center`, `gap: 24px`, `max-width: 600px`, `margin: 0 auto`.
   - **Components**:
-    - Workflow Selector: A `Dropdown` for selecting the starting workflow (built-in or custom).
+    - Workflow Selector: A `Dropdown` for selecting the starting workflow.
     - Preset Selector: A `Dropdown` for selecting the initial LLM preset.
     - Initial Message Input: A `TextArea` for the first user prompt.
     - Submit Button: A `Button` (variant `"primary"`) to create the thread and start execution.
-  - **Sizing**: Centered in the main content area, restricted width. Use a `flexbox` layout with `flex-direction: column` and a gap of `24px` between fields.
+
+- **`BudgetExceededCard`**:
+  - **Structure**: A `Card` (variant `"notification"`, theme `"danger"`) rendered inline in the chat feed.
+  - **Visual Spec**: `border: 1px solid var(--status-danger)`, `background: var(--bg-tertiary)`, `padding: 16px`, `border-radius: 12px`.
+  - **Components**: Header title, current usage vs limit (using `Badge` components), and action buttons ("Increase Budget & Resume", "Abort").
+
+- **`ProposedActionCard`**:
+  - **Structure**: A `Card` (variant `"notification"`) rendered inline for database-modifying tool calls.
+  - **Visual Spec**: `border: 1px solid var(--accent-primary)`, `background: var(--bg-secondary)`, `padding: 16px`, `border-radius: 12px`.
+  - **Components**: Header title, a structured list or visual diff of proposed changes, and action buttons ("Approve", "Deny").
+
+- **`AskQuestionsToolForm`**:
+  - **Structure**: A specialized tool-driven form rendered as a `Card` (variant `"prompt"`) inline in the chat feed.
+  - **Visual Spec**: `border: 1px solid var(--border-color)`, `background: var(--bg-primary)`, `padding: 16px`, `border-radius: 12px`, `box-shadow: var(--shadow-sm)`.
+  - **Components**: Questions rendered using `RadioGroup` (single-select), `CheckboxGroup` (multi-select), and `TextInput`/`TextArea` (free-text). Includes "Submit" and "Refuse to Answer" buttons.
+
+- **`ErrorBubble`**:
+  - **Structure**: A specialized `Card` (variant `"notification"`, theme `"danger"`) used to render execution errors inline in the chat feed.
+  - **Visual Spec**: `border: 1px solid var(--status-danger)`, `background: var(--bg-tertiary)`, `padding: 16px`, `border-radius: 12px`.
+  - **Components**: Header (agent name + error icon), Content (error code + details), and Footer (Retry button, Preset dropdown, Edit shortcut).
+
+- **`InlineMessageEditor`**:
+  - **Structure**: A specialized input component that replaces a message bubble inline for editing.
+  - **Visual Spec**: `border: 2px solid var(--accent-primary)`, `background: var(--bg-primary)`, `padding: 12px`, `border-radius: 12px`.
+  - **Components**: `TextArea` for content editing and a button group ("Save", "Cancel").
+
+- **`ApiPayloadPreviewModal`**:
+  - **Structure**: A `Modal` displaying the current LLM API payload as a JSON `CodeView`.
+  - **Visual Spec**: Modal layout with a `Dropdown` agent selector in the header and a `CodeView` block filling the content area.
+
+- **`CodeBlockControl`**:
+  - **Structure**: A small, floating control bar anchored to the top-right of a `CodeView` block.
+  - **Visual Spec**: `position: absolute`, `top: 8px`, `right: 8px`, `display: flex`, `gap: 8px`, `padding: 4px 8px`, `background: rgba(0,0,0,0.4)`, `backdrop-filter: blur(4px)`, `border-radius: 4px`, `z-index: 20`.
+  - **Components**: "Copy Code" and "Download" buttons (variant `"ghost"`).
+
+- **`CustomWorkflowListView`**:
+  - **Structure**: A vertical list of agent orchestration workflows.
+  - **Visual Spec**: `display: grid`, `grid-template-columns: repeat(auto-fill, minmax(300px, 1fr))`, `gap: 16px`.
+  - **Components**: `Card` (variant `"standard"`) items containing the workflow name, description, and status `Badge`.
+
+- **`WorkflowJsonEditor`**:
+  - **Structure**: A specialized JSON configuration editor combining a full-screen `TextArea` with a toolbar of utility buttons.
+  - **Visual Spec**: `display: flex`, `flex-direction: column`, `height: 100%`. The `TextArea` uses a monospaced font and fills the available height. The toolbar is at the top with `display: flex`, `gap: 12px`, `padding: 12px`, `border-bottom: 1px solid var(--border-color)`.
+  - **Components**: `TextArea`, `Button` (Save, Cancel, Delete, Import, Export, Copy), and a `Notification` banner for validation errors.
+
+- **`PresetListView`**:
+  - **Structure**: A vertical list of LLM preset configurations.
+  - **Visual Spec**: `display: grid`, `grid-template-columns: repeat(auto-fill, minmax(300px, 1fr))`, `gap: 16px`.
+  - **Components**: `Card` (variant `"standard"`) items containing the preset name, provider, and model.
+
+- **`PresetEditor`**:
+  - **Structure**: A configuration form for LLM presets, implemented as a `Modal` or a dedicated view.
+  - **Visual Spec**: Single-column form layout with `gap: 16px` between fields. All input fields are aligned to a common baseline.
+  - **Components**: `TextInput`, `Dropdown`, `Button`, and the `PresetConnectionTester` status indicator.
+
+- **`GlobalSettingsForm`**:
+  - **Structure**: A full-page configuration form for managing API keys, theme preferences, and injected system messages.
+  - **Visual Spec**: Organized into sections using `Card` (variant `"standard"`) as containers, with `gap: 24px` between sections.
+  - **Components**: `TextInput`, `Dropdown`, `Button`, and a dynamic list of injected message inputs.
+
+- **`CheckpointCompactionDialog`**:
+  - **Structure**: A specialized `ConfirmationModal` for purging historical checkpoints.
+  - **Visual Spec**: Modal layout with a warning icon and a red-themed confirmation button.
 
 - **`ThreadSettingsModal`**:
   - **Structure**: A management `Modal` for adjusting thread-level configurations.
-  - **Components**:
-    - Thread Title Input: A `TextInput` field that is editable (via edit icon).
-    - Preset selection dropdown: A `Dropdown` for selecting a different `activePresetId`.
-    - Sync Workflow button: Triggers `WorkflowSyncing` state machine.
-    - Compact Checkpoints button: Triggers `CheckpointCompactionDialog` state machine.
-    - Delete Thread button: Triggers `TRIGGER_DELETE` in the `SideNav` machine.
-  - **Interactions**: Updates the thread record in IndexedDB and dispatches `INITIALIZE_CHECKPOINT` to refresh the runner state.
+  - **Visual Spec**: Modal layout with a vertical list of settings fields and buttons.
+
+- **`ConfirmationModal`**:
+  - **Structure**: A generic `Modal` for critical actions.
+  - **Visual Spec**: Centered overlay with a title, descriptive text, and a footer with primary/secondary action buttons.
+
+- **`PromptingBranchModal`**:
+  - **Structure**: A `Modal` for initiating a thread branch.
+  - **Visual Spec**: Modal layout with a `TextInput` for the new thread name and action buttons.
 
 - **`ChatHeader`**:
   - **Structure**: A horizontal bar at the top of the chat interface using `display: flex` with `justify-content: space-between` and `align-items: center`.
@@ -3618,6 +3685,10 @@ When implementing any feature from this scratchpad, follow this TDD cycle:
 4. **Implement Component UI**: Build the component using the Design System's Core/Composite components, binding its state and events to the XState machine.
 5. **Write Integration Test**: Implement the test case using Vitest and MSW, asserting on:
    - UI state transitions (e.g., `SkeletonLoader` $\rightarrow$ `Card`).
+   - Design System Requirements:
+     - Assert that all interactive elements have a minimum touch target of `44x44px`.
+     - Assert that the active theme class (`theme-light` or `theme-dark`) is correctly applied to the root element.
+     - Assert that color values match the CSS variables defined in the Theme Palette.
    - Database writes (using `fake-indexeddb` and spies on `idb` store methods).
    - API payloads (using MSW interceptors).
    - XState event dispatches.
