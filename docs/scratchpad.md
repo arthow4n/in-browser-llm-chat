@@ -1439,6 +1439,34 @@ These components are built using the Core Components above to create complex UI 
   - **Animations**: Uses smooth CSS transitions for the sliding effect (e.g., `transform: translateX()` with `ease-in-out`).
   - **Components**: Contains `Button`, `Dropdown`, and `Card` based thread items.
 - **`ApplicationLayout`**: The top-level layout coordinator that manages the `SideNav` visibility and the main content area.
+
+- **`ChatHeader`**:
+  - **Structure**: A horizontal bar at the top of the chat interface.
+  - **Components**:
+    - Active thread title (Text).
+    - Active workflow name (Text/Badge).
+    - Preset Dropdown Switcher: A `Dropdown` allowing quick switching of LLM presets. Includes a "Configure" icon button next to it that opens the `PresetEditor` modal.
+    - API Payload Preview Button: A `Button` that opens the `ApiPayloadPreviewModal`.
+  - **Sizing**: Fixed height, sticky at top.
+
+- **`MessageBubble`**:
+  - **Structure**: A `Card` (variant `"standard"`) representing a single message.
+  - **Components**:
+    - Header: Displays the agent/user `Avatar` and `name` (for assistant messages), and a timestamp.
+    - Content: Renders markdown/math using `react-markdown` and `rehype-katex`.
+    - Reasoning Accordion: An `Accordion` that reveals reasoning tokens (collapsed by default).
+    - Tool Accordion: An `Accordion` that reveals tool calls/results (collapsed by default).
+    - Overflow Menu Trigger: An `OverflowMenu` button that opens the `MessageOptionsMenu`.
+  - **Sizing**: Max-width 80% of viewport, aligned left (agent) or right (user).
+
+- **`NewChatForm`**:
+  - **Structure**: A centered layout displayed when no thread is active.
+  - **Components**:
+    - Workflow Selector: A `Dropdown` for selecting the starting workflow (built-in or custom).
+    - Preset Selector: A `Dropdown` for selecting the initial LLM preset.
+    - Initial Message Input: A `TextArea` for the first user prompt.
+    - Submit Button: A `Button` (variant `"primary"`) to create the thread and start execution.
+  - **Sizing**: Centered in the main content area, restricted width.
 - **`ChatHeader`**: Top bar featuring a `Dropdown` for presets and `Button` for payload preview.
 - **`ExecutionControlPanel`**:
   - **Desktop**: A sticky horizontal control bar at the top of the chat area.
