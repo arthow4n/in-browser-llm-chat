@@ -1465,6 +1465,10 @@ To ensure full implementation, the following mapping defines which components ar
 
 - **`Modal` / `Dialog`**:
   - **Structure**: Centered overlay with a blurred/dimmed backdrop, a title bar with a close button, a scrollable content area, and a footer for action buttons.
+  - **Variants**:
+    - `ConfirmationModal`: Generic yes/no modal for critical actions (e.g., "Delete Thread").
+    - `PromptingBranchModal`: Specialized modal for initiating thread branches, including a text input for the new thread name.
+    - `CheckpointCompactionDialog`: Modal for confirming the purging of historical checkpoints.
   - **Animations**: Smooth fade-in and scale-up transitions.
   - **Accessibility**: Focus trapping and "Escape" key to close.
 
@@ -1531,6 +1535,7 @@ To ensure a predictable TDD implementation, the following mapping defines which 
 | `ChatInputArea`                 | `ChatInputArea`                                       |
 | `MessageBubble` (Inline Editor) | `InlineMessageEditorAction`                           |
 | `MessageBubble` (Accordions)    | `MessageAccordion`                                    |
+| `MessageOptionsMenu`            | `InlineMessageEditorAction`                           |
 | `AskQuestionsToolForm`          | `AskQuestionsToolForm`                                |
 | `BudgetExceededCard`            | `BudgetExceededCard`                                  |
 | `ProposedActionCard`            | `ProposedActionCard`                                  |
@@ -1551,6 +1556,14 @@ To ensure a predictable TDD implementation, the following mapping defines which 
 ### Layout & Composite Components
 
 These components are built using the Core Components above to create complex UI sections.
+
+- **`PresetConnectionTester`**:
+  - **Structure**: A status indicator integrated into the `PresetEditor` configuration form.
+  - **Components**:
+    - "Test Connection" button.
+    - Success state: Green badge displaying provider/model and request latency (e.g., `150ms`).
+    - Failure state: Red warning banner detailing status codes (e.g., "401 Unauthorized") or network errors.
+  - **Interactions**: Triggered via the "Test Connection" button, performing a lightweight dummy API call using the current preset's configuration.
 
 - **`PresetListView`**:
   - **Structure**: A vertical list of LLM preset configurations.
