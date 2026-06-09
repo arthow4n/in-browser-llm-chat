@@ -304,7 +304,7 @@ interface GraphState {
 }
 ```
 
-During runtime, a compiler function converts this JSON schema into an executable custom state-based workflow graph. The compiler maps each `WorkflowNode` type to its concrete execution behavior:
+During runtime, a compiler function converts this JSON schema into an executable custom state-based workflow graph using the LangGraph `StateGraph` API. The compiler maps each `WorkflowNode` type to a concrete function (node) in the LangGraph instance and connects them using `addEdge` or `addConditionalEdges` based on the `WorkflowEdge` definitions. The state of the graph is managed using the `GraphState` interface described below, and the resulting graph is compiled into a runnable object. The compiler maps each `WorkflowNode` type to its concrete execution behavior:
 
 - **`agent`**: Invokes the LLM specified by `presetId` (or the default preset) using the `systemPrompt`, passing the thread's message history. It binds the tools specified in the `tools` array. During execution, the agent node also updates the `lastAgentId` state property in the `GraphState` to its own node ID, ensuring that subsequent tool nodes can route results back to it. If the `presetId` is missing or has been deleted from the database, compilation and execution will not fail; instead, the compiler automatically falls back to the thread's active preset, and if that is also invalid, it falls back to the global default preset, displaying a non-blocking warning notification in the execution control panel.
 - **`input`**: Execution is interrupted/paused, waiting for a user message.
@@ -1320,6 +1320,7 @@ To achieve a premium, modern aesthetic, the following color palette and typograp
     - `secondary`: Outlined background, used for complementary actions.
     - `danger`: Red background/border, used for destructive actions (e.g., Delete).
     - `ghost`: Text-only, used for low-priority or subtle actions.
+    - `fab`: Floating Action Button, circular, high-elevation, used for "Scroll to Bottom" in chat feeds.
   - **States**:
     - `idle`: Default state.
     - `loading`: Displays a `LoadingSpinner` and is disabled.
@@ -1438,6 +1439,8 @@ These components are built using the Core Components above to create complex UI 
     - Dynamically adjusts its `padding-bottom` based on the height of the `ChatInputArea` and `ExecutionControlPanel`.
   - **Sizing**: Occupies the remaining vertical space of the main content area.
 - **`MessageBubble`**: Core chat unit using `Card`, `Avatar`, `Accordion` for reasoning/tools, and `OverflowMenu`.
+- **`InlineMessageEditor`**: A specialized input component that replaces a message bubble inline for editing. It combines a `TextArea` for content and a set of `Button` controls (Save, Cancel) at the bottom.
+- **`ErrorBubble`**: A specialized `Card` (variant `"notification"`, theme `"danger"`) used to render execution errors inline in the chat feed, incorporating an error icon and recovery `Button` controls.
 - **`MessageOptionsMenu`**:
   - **Structure**: A composite component that uses an `OverflowMenu` trigger. On desktop, it renders as a floating dropdown menu. On mobile viewports, it renders as a `Modal` centered in the viewport for easier touch interaction.
   - **Components**: Contains a list of action `Button` items (Edit, Delete, Branch).
