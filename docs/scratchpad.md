@@ -353,6 +353,7 @@ A single high-level state machine will coordinate the application using two para
 
 - **`ViewState` (Navigation Region)**:
   - `initializing`: Reads config, API keys, presets, workflows, and active thread from IndexedDB.
+  - _Initial State (Empty DB)_: If no API keys or presets are found in the `settings` or `presets` stores, the machine transitions to `onboarding`. If the `threads` store is empty, the machine transitions to `idle` after initialization.
   - `onboarding`: Blocker state active when no API keys are configured.
   - `idle`: Main screen active with no loaded thread.
   - `chatting`: Thread view active, showing message history and enabling input.
@@ -853,7 +854,7 @@ To ensure the application is implemented correctly and can be verified in a test
   1. User lands on the homepage.
   2. User clicks the onboarding `Notification` (type 'warning') banner $\rightarrow$ dispatches `OPEN_SETTINGS`.
   3. User enters API keys (e.g., Gemini API key) into `TextInput` fields and clicks the `Button` (variant 'primary') $\rightarrow$ dispatches `SAVE` to `GlobalSettingsForm` machine.
-  4. User navigates via `SideNav` $\rightarrow$ Global Settings $\rightarrow$ select "Dark" from the `Dropdown` selector $\rightarrow$ click the `Button` (variant 'primary') $\rightarrow$ dispatches `SAVE` to `GlobalSettingsForm`.
+  4. User navigates via the `SideNav` "Settings" link $\rightarrow$ Global Settings view $\rightarrow$ select "Dark" from the `Dropdown` selector $\rightarrow$ click the `Button` (variant 'primary') $\rightarrow$ dispatches `SAVE` to `GlobalSettingsForm`.
   5. User navigates back to the chat interface $\rightarrow$ dispatches `CLOSE_SETTINGS`.
 - **Then**:
   - **State Transitions**: Assert `ViewState` transitions `initializing` $\rightarrow$ `onboarding` $\rightarrow$ `globalSettings` $\rightarrow$ `idle`.
@@ -1390,8 +1391,14 @@ To ensure a consistent and accessible user experience, the following interaction
 
 ### Responsive Behavior
 
-The application adapts its layout for viewports below `672px` (Mobile Viewport):
+The application adapts its layout for viewports below `672px` (Mobile Viewport).
 
+- **Layering & Z-Index**: To ensure a consistent visual hierarchy, the following z-index layers are used:
+  - Base Layout: `z-0`
+  - Sticky Panels (Header, Control Panel): `z-10`
+  - Tooltips / Overflow Menus: `z-20`
+  - SideNav Overlay: `z-30`
+  - Modals & Backdrops: `z-40`
 - **SideNav**: Transitions from a persistent vertical drawer to a sliding overlay. The overlay enters from the left (max-width `280px`) with a semi-transparent backdrop. Tapping the backdrop or any menu item auto-collapses the overlay.
 - **Execution Control Panel**: Collapses from a sticky horizontal bar into a compact sticky status bar (top or bottom). Tapping this bar opens a full-screen modal overlay containing all turn counters and control actions.
 - **Message Options Menu**: Transitions from a floating dropdown menu to a centered viewport modal for easier touch interaction.
@@ -1574,7 +1581,6 @@ These components are built using the Core Components above to create complex UI 
     - Tool Accordion: An `Accordion` that reveals tool calls/results (collapsed by default).
     - Overflow Menu Trigger: An `OverflowMenu` button that opens the `MessageOptionsMenu`.
   - **Sizing**: Max-width 80% of viewport, aligned left (agent) or right (user).
-  - **Visual Distinction**: For assistant messages, the bubble must display a distinct background tint or a left-border color (e.g. 4px width) deterministically generated from a hash of the agent's name to ensure visual consistency across sessions and easy differentiation in multi-agent debates.
   - **Visual Distinction**: For assistant messages, the bubble must display a distinct background tint or a left-border color (e.g. 4px width) deterministically generated from a hash of the agent's name to ensure visual consistency across sessions and easy differentiation in multi-agent debates.
 
 - **`NewChatForm`**:
