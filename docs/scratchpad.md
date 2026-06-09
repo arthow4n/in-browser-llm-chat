@@ -859,22 +859,19 @@ To ensure the application is implemented correctly and can be verified in a test
   4. User navigates via the `SideNav` "Settings" link $\rightarrow$ Global Settings view $\rightarrow$ select "Dark" from the `Dropdown` selector $\rightarrow$ click the `Button` (variant 'primary') $\rightarrow$ dispatches `SAVE` to `GlobalSettingsForm`.
   5. User navigates back to the chat interface $\rightarrow$ dispatches `CLOSE_SETTINGS`.
 - **Then**:
-  - **Step 1: Initial Load**:
+  - **Initial Load**:
     - Assert `ViewState` transitions `initializing` $\rightarrow$ `onboarding`.
     - Assert `SkeletonLoader` is visible for all main content areas during the `initializing` state.
     - Assert IndexedDB database `in-browser-llm-chat-db` is initialized and all required stores are created.
-  - **Step 2: Configure API Keys**:
-    - User clicks the onboarding `Notification` banner $\rightarrow$ dispatches `OPEN_SETTINGS`.
-    - User enters API keys into `TextInput` fields and clicks `Save` $\rightarrow$ dispatches `SAVE` to `GlobalSettingsForm`.
+  - **Configure API Keys**:
+    - Assert `ViewState` transitions to `globalSettings`.
     - Assert `settings` store contains a record with `key: "api_keys"` and the provided keys.
     - Assert `presets` store is automatically seeded with default presets.
     - Assert `settings` store contains `default_preset_id` matching one of the seeded presets.
-  - **Step 3: Set Theme**:
-    - User navigates to "Settings" via `SideNav` $\rightarrow$ select "Dark" from `Dropdown` $\rightarrow$ click `Save` $\rightarrow$ dispatches `SAVE`.
+  - **Set Theme**:
     - Assert theme preference is saved in `settings` as `{ key: "ui_config", value: { theme: "dark" } }`.
     - Assert `<html>` or `<body>` element has the theme class `theme-dark`.
-  - **Step 4: Return to Chat**:
-    - User navigates back to chat interface $\rightarrow$ dispatches `CLOSE_SETTINGS`.
+  - **Return to Chat**:
     - Assert `ViewState` transitions `globalSettings` $\rightarrow$ `idle`.
     - Assert the onboarding `Notification` banner is removed and the `ChatInputArea` `TextInput` field is enabled.
 - **Exercised Components**: `GlobalSettingsForm`, `SideNav`, `ChatInputArea`, `ApplicationLayout`, `Notification`, `TextInput`, `Button`, `Dropdown`.
@@ -887,22 +884,24 @@ To ensure the application is implemented correctly and can be verified in a test
   - `settings` store contains valid `api_keys` and a valid `default_preset_id`.
   - `presets` store contains the preset matching `default_preset_id`.
 - **Given**: App is initialized with valid API keys and a default preset, and the "Standard 1-agent" built-in workflow is selected.
-- **When**: User starts a new chat with the default workflow, enters "Hello" in the `ChatInputArea` `TextInput`, and clicks the `Button` (variant 'primary') $\rightarrow$ dispatches `SUBMIT_MESSAGE` { content: "Hello" } to the Parent Coordinator.
+- **When**:
+  1. User enters "Hello" in the `ChatInputArea` `TextInput`.
+  2. User clicks the `Button` (variant 'primary') $\rightarrow$ dispatches `SUBMIT_MESSAGE` { content: "Hello" } to the Parent Coordinator.
 - **Then**:
-  - **Step 1: Submit Message**:
+  - **Submit Message**:
     - Assert `ViewState` transitions `initializing` $\rightarrow$ `idle` $\rightarrow$ `chatting` and `ExecutionState` transitions `inactive` $\rightarrow$ `executing`.
     - Assert a user message "Hello" is created in the `messages` store with `threadId: [ID]` and `sequence: 0`.
     - Assert the `threads` store contains a new record with `status: "executing"`.
-  - **Step 2: API Call**:
+  - **API Call**:
     - Mock the API response using MSW with content "Hello! How can I help you today?" and usage metadata `{ promptTokens: 10, completionTokens: 15 }`.
     - Assert the API request contains the correct API key (from preset or global settings) and merged system prompts.
-  - **Step 3: Process Response**:
+  - **Process Response**:
     - Assert an assistant message is created in the `messages` store with `role: "assistant"`, `content: "Hello! How can I help you today?"`, and usage metadata.
     - Assert a checkpoint record is created in the `checkpoints` store.
     - Assert the thread record's `latestCheckpointId` is updated.
     - Assert `tokenStats` in the `threads` store are updated to `{ promptTokens: 10, completionTokens: 15, totalTokens: 25 }`.
     - Assert the sequence of writes: User Message $\rightarrow$ Assistant Message $\rightarrow$ Checkpoint $\rightarrow$ Thread Metadata.
-  - **Step 4: UI Update**:
+  - **UI Update**:
     - Assert "Thinking..." skeleton bubble is rendered during `executing` state.
     - Assert `LoadingSpinner` is visible on the Send button during submission.
     - Assert both messages are displayed in the `ChatFeed` using `MessageBubble` components.
@@ -924,7 +923,9 @@ To ensure the application is implemented correctly and can be verified in a test
   - `Debater_B` (agent) $\rightarrow$ `Consensus_Evaluator_B` (consensus_check)
   - `Consensus_Evaluator_B` (consensus_check) $\rightarrow$ `Debater_A` (agent) [on_no_consensus]
   - `Consensus_Evaluator_B` (consensus_check) $\rightarrow$ `Summarizer` (summary) [on_consensus]
-- **When**: User starts a new chat with the "Debate" workflow, seeds it by sending a user message with a topic (e.g., "AI safety") $\rightarrow$ dispatches `SUBMIT_MESSAGE` { content: "AI safety" }.
+- **When**:
+  1. User starts a new chat with the "Debate" workflow.
+  2. User seeds the debate by sending a user message with a topic (e.g., "AI safety") $\rightarrow$ dispatches `SUBMIT_MESSAGE` { content: "AI safety" }.
 - **Then**:
   - **State Transitions**: Assert the `ExecutionState` remains in `executing` throughout the autonomous run until termination.
   - **Phase 1 (Seeding)**:
@@ -964,7 +965,8 @@ To ensure the application is implemented correctly and can be verified in a test
 - **Prerequisites**:
   - A workflow is defined that contains an agent capable of calling the `ask_questions` tool.
 - **Given**: A workflow where an agent can call the `ask_questions` tool.
-- **When**: The active agent invokes `ask_questions` with a set of questions:
+- **When**:
+  1. The active agent invokes `ask_questions` with a set of questions:
   - Q1: "What is your favorite color?" (type: `single-select`, options: `["Red", "Blue", "Green"]`, required: `true`)
   - Q2: "Which of these features do you like?" (type: `multi-select`, options: `["Speed", "Accuracy", "Safety"]`, required: `true`)
   - Q3: "Additional comments" (type: `free-text`, required: `false`)
