@@ -907,7 +907,7 @@ To ensure the application is implemented correctly and can be verified in a test
     - Assert `LoadingSpinner` is visible on the Send button during submission.
     - Assert both messages are displayed in the `ChatFeed` using `MessageBubble` components.
     - Assert `ChatInputArea` `TextInput` is enabled once `ExecutionState` returns to `inactive`.
-- **Exercised Components**: `ChatInputArea`, `ChatFeed`, `MessageBubble`, `SideNav`, `TextInput`, `Button`, `Avatar`, `Card`, `LoadingSpinner`.
+- **Exercised Components**: `ChatInputArea`, `ChatFeed`, `MessageBubble`, `SideNav`, `TextInput`, `Button`, `Avatar`, `Card`, `LoadingSpinner`, `Accordion`.
 - **Exercised State Machines**: `ViewState`, `ExecutionState`, `GraphRunnerActor`.
 - **Exercised Systems**: `IndexedDB`, `MSW`, `Custom Runner`, `Vercel AI SDK`.
 
@@ -955,7 +955,7 @@ To ensure the application is implemented correctly and can be verified in a test
     - Mock `Summarizer` response: "In summary, both agents agreed on Point A and B. The debate concluded that AI safety is essential but should be balanced with efficiency."
     - `Summarizer` executes $\rightarrow$ a final summary message with `name: "Summarizer"` is created in the `messages` store $\rightarrow$ assert `lastAgentId` updated to `"Summarizer"` $\rightarrow$ execution transitions to `inactive`.
     - UI displays the full sequence of agents in the `ChatFeed` using `MessageBubble` components (each with a unique `Avatar` and background tint) and each assistant message bubble displays the correct agent name (e.g. "Debater A") in the header.
-- **Exercised Components**: `ChatFeed`, `MessageBubble`, `ExecutionControlPanel`, `Avatar`, `Badge`, `Button`, `Card`.
+- **Exercised Components**: `ChatFeed`, `MessageBubble`, `ExecutionControlPanel`, `Avatar`, `Badge`, `Button`, `Card`, `Accordion`.
 - **Exercised State Machines**: `ExecutionState`, `GraphRunnerActor`, `ExecutionControlPanel`.
 - **Exercised Systems**: `IndexedDB`, `MSW`, `Custom Runner`.
 
@@ -992,7 +992,7 @@ To ensure the application is implemented correctly and can be verified in a test
   - Assert `threads.activeInterrupt` is cleared and `draftAnswers` for this `toolCallId` are deleted from the thread record.
   - Execution resumes and continues to the next node in the graph.
   - **Page reload restoration**: Simulate a page reload by unmounting the current chat component (using `cleanup()` from `@testing-library/react`) and re-mounting it with the same `currentThreadId`. Assert the form restores the user's current selections from `draftAnswers` in IndexedDB. Additionally, assert that `draftAnswers` are written to the `threads` store in real-time on every `UPDATE_ANSWER` event (verifying that the DB record for the active thread is updated immediately after each field change to ensure no loss of data if the page is closed).
-- **Exercised Components**: `ChatFeed`, `AskQuestionsToolForm`, `Card`, `TextInput`, `TextArea`, `Button`.
+- **Exercised Components**: `ChatFeed`, `AskQuestionsToolForm`, `Card`, `TextInput`, `TextArea`, `Button`, `RadioGroup`, `CheckboxGroup`.
 - **Exercised State Machines**: `ExecutionState`, `AskQuestionsToolForm`.
 - **Exercised Systems**: `IndexedDB`.
 
@@ -1031,7 +1031,7 @@ To ensure the application is implemented correctly and can be verified in a test
     - Assert all checkpoints and `checkpoint_writes` associated with these cloned messages (identified by their `[checkpointNs, checkpointId]` pairs) are cloned to the new thread's records in IndexedDB. Specifically, assert that for every `checkpoint_write` in the parent thread matching the filtered `checkpointId`s, a corresponding record with the new `threadId` exists in the `checkpoint_writes` store.
     - Assert the new thread's `latestCheckpointId` and `latestCheckpointNs` are set to the checkpoint of the branched message (sequence 2).
   - UI navigates to the new thread ID using `MessageOptionsMenu` and `Toggled Sidebar` context, and displays the cloned history in the `ChatFeed`.
-- **Exercised Components**: `MessageBubble`, `OverflowMenu`, `MessageOptionsMenu`, `SideNav`, `Modal`, `Button`, `Card`, `TextInput`.
+- **Exercised Components**: `MessageBubble`, `OverflowMenu`, `MessageOptionsMenu`, `SideNav`, `Modal`, `Button`, `Card`, `TextInput`, `Accordion`.
 - **Exercised State Machines**: `ViewState`, `InlineMessageEditorAction`.
 - **Exercised Systems**: `IndexedDB`.
 
@@ -1050,7 +1050,7 @@ To ensure the application is implemented correctly and can be verified in a test
   - Message 2 is updated with new content in the `messages` store. Assert that the DB record for message 2 now contains the updated text.
   - Verify `tokenStats` are accurately recalculated by summing the `promptTokens` and `completionTokens` usage metadata of all remaining messages (sequence $\le$ 2) and updating the thread record.
   - **Execution Resume**: Upon clicking the `Button` (Resume), verify that the custom runner merges the edited message 2 (retaining its original message ID) into the execution state, saves a new synchronized checkpoint $C_{new}$ to the `checkpoints` store, and resumes execution.
-- **Exercised Components**: `MessageBubble`, `OverflowMenu`, `MessageOptionsMenu`, `InlineMessageEditor`, `TextInput`, `Button`, `Card`, `TextArea`.
+- **Exercised Components**: `MessageBubble`, `OverflowMenu`, `MessageOptionsMenu`, `InlineMessageEditor`, `TextInput`, `Button`, `Card`, `TextArea`, `Accordion`.
 - **Exercised State Machines**: `InlineMessageEditorAction`, `ExecutionState`, `GraphRunnerActor`.
 - **Exercised Systems**: `IndexedDB`, `Custom Runner`.
 
@@ -1148,7 +1148,7 @@ To ensure the application is implemented correctly and can be verified in a test
   - Assert that the graph executes the nodes in the specified sequence and creates corresponding messages in the `messages` store with the correct `sequence` (User:0, Agent A:1, Agent B:2) and `name` from the `WorkflowNode` definitions.
   - Assert the execution terminates as there are no further outgoing edges from `n2`.
   - UI displays the sequence of responses in the `ChatFeed` using `MessageBubble` components.
-- **Exercised Components**: `NewChatForm`, `ChatFeed`, `MessageBubble`, `Dropdown`, `TextInput`, `Button`.
+- **Exercised Components**: `NewChatForm`, `ChatFeed`, `MessageBubble`, `Dropdown`, `TextInput`, `Button`, `Accordion`.
 - **Exercised State Machines**: `ViewState`, `ExecutionState`, `GraphRunnerActor`.
 - **Exercised Systems**: `IndexedDB`, `Custom Runner`.
 
