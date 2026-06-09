@@ -1698,6 +1698,7 @@ These components are built using the Core Components above to create complex UI 
 - **`MessageBubble`**:
   - **Structure**: A `Card` (variant `"standard"`) representing a single message.
   - **Loading State**: When the `GraphRunnerActor` is in `running.requesting` state, the UI should render a 'Thinking...' bubble. This is a `MessageBubble` variant that replaces the content area with a `SkeletonLoader` (pulsing text lines) to indicate that the agent is preparing a response.
+  - **Visual Distinction (Multi-Agent)**: For assistant messages, the bubble must display a distinct background tint or a left-border color (e.g. 4px width) deterministically generated from a hash of the agent's name to ensure visual consistency across sessions and easy differentiation in multi-agent debates. Use the same HSL hue calculation as the `Avatar` component for this color: `(name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) * 137) % 360` for the hue, with a muted saturation and lightness (e.g. `hsl(${hue}, 40%, 90%)` for light theme and `hsl(${hue}, 30%, 20%)` for dark theme).
   - **Components**:
     - Header: Displays the agent/user `Avatar` and `name` (for assistant messages), and a timestamp.
     - Content: Renders markdown/math using `react-markdown` and `rehype-katex`.
@@ -1706,6 +1707,14 @@ These components are built using the Core Components above to create complex UI 
     - Overflow Menu Trigger: An `OverflowMenu` button that opens the `MessageOptionsMenu`.
   - **Sizing**: Max-width 80% of viewport, aligned left (agent) or right (user).
   - **Visual Distinction**: For assistant messages, the bubble must display a distinct background tint or a left-border color (e.g. 4px width) deterministically generated from a hash of the agent's name to ensure visual consistency across sessions and easy differentiation in multi-agent debates. Use the same HSL hue calculation as the `Avatar` component for this color.
+
+- **`ErrorBubble`**:
+  - **Structure**: A specialized `Card` (variant `"notification"`, theme `"danger"`) used to render execution errors inline in the chat feed.
+  - **Components**:
+    - Header: Displays the name of the agent node that failed and an error icon.
+    - Content: Displays the error type/code and a detailed descriptive message.
+    - Footer: Contains recovery controls: "Retry" button, "Change Preset" dropdown, and "Edit Last Message" shortcut.
+  - **Sizing**: All interactive elements must have a minimum touch target of 44x44px.
 
 - **`CodeBlockControl`**:
   - **Structure**: A small, floating control bar anchored to the top-right of a `CodeView` block.
@@ -1855,7 +1864,7 @@ The application layout is built using a custom design system with Vanilla CSS. T
   - **Controls**: Displays the current execution stats. For workflows with loops, it shows the current loop round, turn count, and token usage. For sequential workflows, it shows the current node/step, turn count, and token usage (prompt and completion tokens tracked separately, without currency calculation). Contains buttons to Pause, Resume, or Abort execution, plus "Force Consensus" (triggers `graph.updateState` to set `consensusReached: true`) and "Summarize early" (triggers `FORCE_SUMMARIZE` to bypass remaining loop nodes) buttons specifically visible during loop workflows.
 - **Chat Feed**:
   - **Message Bubbles**: Render user and assistant/agent messages with rich markdown formatting, GitHub Flavored Markdown (e.g. tables, checkboxes), and LaTeX math support (both inline and block equations). During active streaming, the rendering of Markdown and LaTeX will be debounced by 100ms. A lightweight streaming text renderer will display incoming text immediately without full Markdown/LaTeX compilation. When the 100ms debounce interval is reached, or when the stream naturally completes a chunk, the full `react-markdown` compilation is triggered. This maintains smooth 60fps scrolling while ensuring math and formatted text appear promptly. Before passing the streamed string to `react-markdown`, the rendering layer checks the count of triple backticks (` ``` `). If the count is odd (meaning a block is open), it automatically appends `\n``` ` to the end of the streaming text to handle unclosed code blocks safely.
-    - **Multi-Agent Distinction**: To ensure multi-agent orchestrations are readable, assistant messages MUST clearly display the name of the agent (e.g. "Debater A", "Summarizer") in a header above the message text. If multiple agents participate, assign a subtle, distinct background tint or left-border color to each agent's message bubble, deterministically generated from a hash of the agent's name to ensure visual consistency across sessions. Use the same HSL hue calculation as the `Avatar` component: `(name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) * 137) % 360` for the hue, with a muted saturation and lightness (e.g., `hsl(${hue}, 40%, 90%)` for light theme and `hsl(${hue}, 30%, 20%)` for dark theme). This makes the conversation easy to follow even on small mobile screens.
+    - **Multi-Agent Distinction**: To ensure multi-agent orchestrations are readable, assistant messages MUST clearly display the name of the agent (e.g. "Debater A", "Summarizer") in a header above the message text. Visual styling (background tint or left-border color) is defined in the Design System Description.
   - **Performance & Virtualization**: The message feed uses standard browser rendering. Virtualization (only rendering messages in the viewport) is deferred unless performance benchmarks degrade for threads exceeding 200+ messages.
   - **Message Options Menu**: Each message bubble includes a small, low-profile overflow button (three-dots icon) with a minimum `44x44px` target. This button is permanently visible (with a light opacity like `0.6`) on both desktop and mobile viewports (no hover-only requirements; this no-hover, permanently visible approach is globally applied for all UI elements). Clicking/tapping it opens a custom dropdown menu overlay (or a custom modal on mobile viewports for easier touch interaction) containing "Edit", "Delete", and "Branch Thread" options.
   - **Inline Message Editing**: Clicking "Edit" transforms the message bubble inline into a text area to save changes.
