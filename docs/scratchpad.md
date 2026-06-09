@@ -48,6 +48,10 @@
     - [13. LLM Database Modification Approval Flow](#13-llm-database-modification-approval-flow)
     - [14. Error Recovery Flow](#14-error-recovery-flow)
     - [15. Lifecycle and Recovery Flow](#15-lifecycle-and-recovery-flow)
+    - [16. Thread Settings Configuration Flow](#16-thread-settings-configuration-flow)
+    - [17. Workflow JSON Utility Flow (Import/Export/Clipboard)](#17-workflow-json-utility-flow-importexportclipboard)
+    - [18. Preset Connection Testing Flow](#18-preset-connection-testing-flow)
+    - [19. Global Settings Thread Compaction Flow](#19-global-settings-thread-compaction-flow)
   - [Design System Description](#design-system-description)
     - [Theme Palette & Typography](#theme-palette--typography)
     - [Interaction Policies](#interaction-policies)
@@ -1247,9 +1251,57 @@ To ensure the application is implemented correctly and can be verified in a test
     - Verify the `graphRunnerActor` for `T3` is stopped and its internal `AbortController` is triggered to cancel the active API request.
     - Verify `ExecutionState` transitions `executing` $\rightarrow$ `checkingStatus` $\rightarrow$ `inactive` (or `awaitingHumanInput` if `T4` was interrupted).
     - Verify that returning to `T3` later starts execution from the last successfully persisted checkpoint.
-- **Exercised Components**: `ApplicationLayout`, `SideNav`.
-- **Exercised State Machines**: `ViewState`, `ExecutionState`, `GraphRunnerActor`.
-- **Exercised Systems**: `IndexedDB`.
+
+### 16. Thread Settings Configuration Flow
+
+- **Prerequisites**:
+  - A thread exists.
+- **Given**: An active thread.
+- **When**: User opens the `ThreadSettingsModal` $\rightarrow$ selects a different preset from the `Dropdown` $\rightarrow$ clicks "Save" $\rightarrow$ dispatches `UPDATE_PRESET` to the Parent Coordinator.
+- **Then**:
+  - Assert the `threads` store record for the thread is updated with the new `activePresetId`.
+  - Assert `INITIALIZE_CHECKPOINT` is dispatched, and the `graphRunnerActor` re-loads its preset configuration.
+  - UI displays a success notification and closes the modal.
+
+### 17. Workflow JSON Utility Flow (Import/Export/Clipboard)
+
+- **Given**: A custom workflow is loaded in the `WorkflowJsonEditor`.
+- **When (Export)**: User clicks "Export to File" $\rightarrow$ dispatches `EXPORT_WORKFLOW`.
+- **Then**: Assert that a `.json` file containing the current workflow configuration is downloaded via a temporary blob URL.
+- **When (Clipboard)**: User clicks "Copy JSON" $\rightarrow$ dispatches `COPY_JSON`.
+- **Then**: Assert that the JSON content is written to the system clipboard using `navigator.clipboard.writeText`.
+- **When (Import)**: User uploads a valid `.json` workflow file via "Import from File" $\rightarrow$ dispatches `IMPORT_WORKFLOW`.
+- **Then**:
+  - Assert the `jsonContent` in the editor is updated to match the file content.
+  - Assert the editor transitions to `editing.dirty` and `isDirty` is set to `true`.
+  - Assert structural validation is performed, and any errors are displayed under the `TextArea`.
+
+### 18. Preset Connection Testing Flow
+
+- **Given**: A preset is being edited in the `PresetEditor`.
+- **When (Success)**: User clicks "Test Connection" $\rightarrow$ dispatches `TEST_CONNECTION`.
+- **Then**:
+  - Mock a successful 1-token dummy response from the LLM provider using MSW.
+  - Assert the `PresetConnectionTester` machine transitions `testing` $\rightarrow$ `success`.
+  - UI displays a green badge with the latency (e.g. `150ms`) and the model name.
+- **When (Failure)**: User clicks "Test Connection" with an invalid API key.
+- **Then**:
+  - Mock a `401 Unauthorized` response from the API using MSW.
+  - Assert the `PresetConnectionTester` machine transitions `testing` $\rightarrow$ `failure`.
+  - UI displays a red warning banner with the status code and a suggestion to check the API key.
+
+### 19. Global Settings Thread Compaction Flow
+
+- **Prerequisites**:
+  - A thread exists with multiple historical checkpoints.
+- **Given**: A thread with a history of checkpoints.
+- **When**: User opens Global Settings $\rightarrow$ selects the active thread $\rightarrow$ clicks "Compact Thread" $\rightarrow$ confirms in the `CheckpointCompactionDialog`.
+- **Then**:
+  - Assert a read-write transaction is opened on `checkpoints`, `checkpoint_writes`, and `messages`.
+  - Assert all checkpoints and writes are deleted except for the latest active one.
+  - Assert all messages that previously pointed to the deleted checkpoints now have `checkpointId: null` and `checkpointNs: null`.
+  - Assert the `ConfirmationModal` closes and a success notification is displayed.
+  - Assert that the "Edit", "Delete", and "Branch" options for compacted messages are now disabled in the `MessageOptionsMenu`.
 
 - **Prerequisites**:
   - `settings` store contains valid `api_keys`.
@@ -1364,12 +1416,7 @@ To ensure full implementation, the following mapping defines which components ar
 - **Workflow Management**: `WorkflowListView`, `WorkflowJsonEditor`, `TextArea`, `Button`, `Card`, `Badge`.
 - **LLM Preset CRUD**: `PresetListView`, `PresetEditor`, `TextInput`, `Dropdown`, `Button`, `Card`, `Badge`.
 - **Global Settings**: `GlobalSettingsForm`, `TextInput`, `Dropdown`, `Button`, `Notification`.
-
-- **`Text` Components**:
-  - `Heading`: Uses the modular typography scale; bold weight.
-  - `Body`: Standard body text (16px), normal weight.
-  - `Caption`: Smaller text (12px-14px), `text-secondary` color, used for timestamps or metadata.
-  - `Label`: Semibold, used for form labels and badge text.
+- **Thread Management**: `ThreadSettingsModal`, `ConfirmationModal`, `PromptingBranchModal`.
 
 - **`Text` Components**:
   - `Heading`: Uses the modular typography scale; bold weight.
@@ -1490,6 +1537,24 @@ These components are built using the Core Components above to create complex UI 
   - **Header Area**: App branding, manual theme toggle selector (using a `Dropdown` component), and a hamburger menu button.
 
 - **`ApplicationLayout`**: The top-level layout coordinator that manages the `SideNav` visibility and the main content area.
+
+- **`ChatFeed`**:
+  - **Structure**: A scrollable container that renders `MessageBubble` components in chronological order.
+  - **Features**: Implements scroll anchoring to maintain position during content updates and coordinates with the `ChatFeedAutoScrollStateMachine` to smoothly scroll to the bottom upon new messages or focus on active tool forms.
+  - **Sizing**: Dynamically adjusts its `padding-bottom` based on the height of the sticky `ChatInputArea` and `ExecutionControlPanel`.
+
+- **`ChatInputArea`**:
+  - **Structure**: A composite input section containing a role selector `Dropdown`, a dynamic `TextArea` for user input, and a `Button` for submission.
+  - **Interactions**: Supports `Shift+Enter` for newlines and `Enter` for submission (on desktop). Controls are dynamically disabled/enabled based on the `ExecutionState`.
+
+- **`NewChatForm`**:
+  - **Structure**: A centered initialization panel containing `Dropdown` selectors for Workflow and Preset, and a `TextArea` for the initial message.
+  - **Interactions**: Submitting the form creates a new thread in IndexedDB and navigates to the new thread view.
+
+- **`ThreadSettingsModal`**:
+  - **Structure**: A management `Modal` for adjusting thread-level configurations.
+  - **Components**: Contains a `Dropdown` for selecting a different `activePresetId` and a `Button` for triggering `WorkflowSyncing`.
+  - **Interactions**: Updates the thread record in IndexedDB and dispatches `INITIALIZE_CHECKPOINT` to refresh the runner state.
 
 - **`ChatHeader`**:
   - **Structure**: A horizontal bar at the top of the chat interface.
