@@ -1385,6 +1385,10 @@ To achieve a premium, modern aesthetic, the following color palette and typograp
   - `--status-danger`: `#DC3545` (Red)
   - `--border-color`: `#DEE2E6` (Soft grey border)
   - `--shadow-sm`: `0 2px 4px rgba(0,0,0,0.05)`
+  - `--code-key`: `#A626A4` (Purple)
+  - `--code-value`: `#50A14F` (Green)
+  - `--code-string`: `#98C379` (Light green)
+  - `--code-number`: `#D19A66` (Orange)
 
 - **Dark Theme (`theme-dark`)**:
   - `--bg-primary`: `#121212` (Deep black/grey)
@@ -1399,6 +1403,10 @@ To achieve a premium, modern aesthetic, the following color palette and typograp
   - `--status-danger`: `#E74C3C` (Bright red)
   - `--border-color`: `#3F3F3F` (Dark grey border)
   - `--shadow-sm`: `0 2px 4px rgba(0,0,0,0.3)`
+  - `--code-key`: `#C678DD` (Purple)
+  - `--code-value`: `#98C379` (Green)
+  - `--code-string`: `#D19A66` (Orange)
+  - `--code-number`: `#D19A66` (Orange)
 
 ### Interaction Policies
 
@@ -1445,7 +1453,7 @@ To ensure full implementation, the following mapping defines which components ar
 
 - **Global Navigation & Layout**: `SideNav`, `ApplicationLayout`, `Button`, `Dropdown`, `Notification`, `Modal`.
 - **Main Chat Interface**: `ChatHeader`, `ExecutionControlPanel`, `ChatFeed`, `MessageBubble`, `ChatInputArea`, `NewChatForm`, `BudgetExceededCard`, `ProposedActionCard`, `AskQuestionsToolForm`, `ErrorBubble`, `InlineMessageEditor`, `MessageOptionsMenu`, `ApiPayloadPreviewModal`, `CodeBlockControl`, `Avatar`, `Accordion`, `Badge`, `LoadingSpinner`, `CodeView`.
-- **Workflow Management**: `WorkflowListView`, `WorkflowJsonEditor`, `TextArea`, `Button`, `Card`, `Badge`, `RadioGroup`, `CheckboxGroup`.
+- **Workflow Management**: `WorkflowListView`, `WorkflowJsonEditor`, `TextArea`, `Button`, `Card`, `Badge`, `RadioGroup`, `CheckboxGroup`, `Notification`.
 - **LLM Preset CRUD**: `PresetListView`, `PresetEditor`, `TextInput`, `Dropdown`, `Button`, `Card`, `Badge`.
 - **Global Settings**: `GlobalSettingsForm`, `TextInput`, `Dropdown`, `Button`, `Notification`, `CheckpointCompactionDialog`.
 - **Thread Management**: `ThreadSettingsModal`, `ConfirmationModal`, `PromptingBranchModal`.
