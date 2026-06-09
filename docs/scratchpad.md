@@ -1585,6 +1585,7 @@ To ensure a predictable TDD implementation, the following mapping defines which 
 | `CheckpointCompactionDialog`    | `CheckpointCompactionDialog`                          |
 | `CodeBlockControl`              | `CodeBlockControl`                                    |
 | `NewChatForm`                   | `NewChatForm`                                         |
+| `ErrorBubble`                   | `ExecutionState`                                      |
 
 ### Layout & Composite Components
 
@@ -1651,6 +1652,7 @@ These components are built using the Core Components above to create complex UI 
   - **Structure**: A specialized `ConfirmationModal` for purging historical checkpoints.
   - **Components**: Warning text explaining the consequences of compaction and a "Confirm Compact" button.
   - **Interactions**: triggers the database purge of all checkpoints except the latest active one.
+  - **`NewChatForm`**:
   - **Structure**: A centered layout displayed when no thread is active.
   - **Components**:
     - Workflow Selector: A `Dropdown` for selecting the starting workflow (built-in or custom).
