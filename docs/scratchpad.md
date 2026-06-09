@@ -859,20 +859,24 @@ To ensure the application is implemented correctly and can be verified in a test
   4. User navigates via the `SideNav` "Settings" link $\rightarrow$ Global Settings view $\rightarrow$ select "Dark" from the `Dropdown` selector $\rightarrow$ click the `Button` (variant 'primary') $\rightarrow$ dispatches `SAVE` to `GlobalSettingsForm`.
   5. User navigates back to the chat interface $\rightarrow$ dispatches `CLOSE_SETTINGS`.
 - **Then**:
-  - **State Transitions**: Assert `ViewState` transitions `initializing` $\rightarrow$ `onboarding` $\rightarrow$ `globalSettings` $\rightarrow$ `idle`.
-  - **Initial Load Checks**:
+  - **Step 1: Initial Load**:
     - Assert `ViewState` transitions `initializing` $\rightarrow$ `onboarding`.
     - Assert `SkeletonLoader` is visible for all main content areas during the `initializing` state.
-    - Assert IndexedDB database `in-browser-llm-chat-db` is initialized and all required stores (`settings`, `presets`, `workflows`, `threads`, `messages`, `checkpoints`, `checkpoint_writes`) are created.
-    - Assert built-in workflows ("Standard 1-agent", "Debate") are visible in the `Dropdown` selection of the "New Chat" form.
-  - **Database Writes**:
-    - Assert the `settings` store contains a record with `key: "api_keys"` and the provided keys.
-    - Assert the `presets` store is automatically seeded with default presets ("Default Gemini Flash" using `gemini-2.5-flash` and "Default OpenRouter Flash" using `google/gemini-2.5-flash`).
-    - Assert that the `settings` store contains a record `{ key: "default_preset_id", value: [UUID] }` where `[UUID]` matches one of the seeded presets.
+    - Assert IndexedDB database `in-browser-llm-chat-db` is initialized and all required stores are created.
+  - **Step 2: Configure API Keys**:
+    - User clicks the onboarding `Notification` banner $\rightarrow$ dispatches `OPEN_SETTINGS`.
+    - User enters API keys into `TextInput` fields and clicks `Save` $\rightarrow$ dispatches `SAVE` to `GlobalSettingsForm`.
+    - Assert `settings` store contains a record with `key: "api_keys"` and the provided keys.
+    - Assert `presets` store is automatically seeded with default presets.
+    - Assert `settings` store contains `default_preset_id` matching one of the seeded presets.
+  - **Step 3: Set Theme**:
+    - User navigates to "Settings" via `SideNav` $\rightarrow$ select "Dark" from `Dropdown` $\rightarrow$ click `Save` $\rightarrow$ dispatches `SAVE`.
     - Assert theme preference is saved in `settings` as `{ key: "ui_config", value: { theme: "dark" } }`.
-  - **UI Feedback**:
+    - Assert `<html>` or `<body>` element has the theme class `theme-dark`.
+  - **Step 4: Return to Chat**:
+    - User navigates back to chat interface $\rightarrow$ dispatches `CLOSE_SETTINGS`.
+    - Assert `ViewState` transitions `globalSettings` $\rightarrow$ `idle`.
     - Assert the onboarding `Notification` banner is removed and the `ChatInputArea` `TextInput` field is enabled.
-    - Assert the `<html>` or `<body>` element has the dark theme class `theme-dark`.
 - **Exercised Components**: `GlobalSettingsForm`, `SideNav`, `ChatInputArea`, `ApplicationLayout`, `Notification`, `TextInput`, `Button`, `Dropdown`.
 - **Exercised State Machines**: `ViewState`, `ApplicationLayout`.
 - **Exercised Systems**: `IndexedDB`.
@@ -885,24 +889,24 @@ To ensure the application is implemented correctly and can be verified in a test
 - **Given**: App is initialized with valid API keys and a default preset, and the "Standard 1-agent" built-in workflow is selected.
 - **When**: User starts a new chat with the default workflow, enters "Hello" in the `ChatInputArea` `TextInput`, and clicks the `Button` (variant 'primary') $\rightarrow$ dispatches `SUBMIT_MESSAGE` { content: "Hello" } to the Parent Coordinator.
 - **Then**:
-  - **State Transitions**: Assert `ViewState` transitions `initializing` $\rightarrow$ `idle` $\rightarrow$ `chatting` and the `ExecutionState` transitions `inactive` $\rightarrow$ `executing` $\rightarrow$ `inactive`.
-  - **Database Writes**:
-    - Assert the `threads` store contains a new record with `status: "executing"`, `workflowId` and `activePresetId` matching selection. Assert the thread's title is initialized as "Hello".
+  - **Step 1: Submit Message**:
+    - Assert `ViewState` transitions `initializing` $\rightarrow$ `idle` $\rightarrow$ `chatting` and `ExecutionState` transitions `inactive` $\rightarrow$ `executing`.
     - Assert a user message "Hello" is created in the `messages` store with `threadId: [ID]` and `sequence: 0`.
+    - Assert the `threads` store contains a new record with `status: "executing"`.
+  - **Step 2: API Call**:
     - Mock the API response using MSW with content "Hello! How can I help you today?" and usage metadata `{ promptTokens: 10, completionTokens: 15 }`.
-    - Assert an assistant message is created in the `messages` store with `threadId: [ID]`, `sequence: 1`, `role: "assistant"`, `content: "Hello! How can I help you today?"`, and usage metadata `{ promptTokens: 10, completionTokens: 15 }`.
-    - Assert a checkpoint record is created in the `checkpoints` store with a unique `checkpointId`.
-    - Assert the thread record's `latestCheckpointId` is updated to match this new checkpoint.
-    - Use a spy on the `idb` store's `put`/`add` methods to assert that the writes to `messages`, `checkpoints`, and `threads` occur in this chronological order: (1) User Message $\rightarrow$ (2) Assistant Message $\rightarrow$ (3) Checkpoint $\rightarrow$ (4) Thread Metadata Update. Since `idb` is a wrapper, this is achieved by spying on the underlying `IDBObjectStore.prototype.put` and `IDBObjectStore.prototype.add` methods when using `fake-indexeddb`.
-  - **API Payload Verification**: Use MSW to intercept the request (e.g., standard Gemini API or OpenRouter API endpoints called by the Vercel AI SDK integrations) and assert:
-    - **API Key Sourcing**: Verify that the request header contains the correct API key (cloned from the preset if present, otherwise from the global settings).
-    - **For Gemini**: The request contains both the agent's system prompt and any injected system messages (merged with `\n\n`), and the user message "Hello" is sent as a `user` role part in the contents.
-    - **For OpenRouter**: The request messages array starts with a `role: "system"` message containing the merged system prompts, followed by the user message "Hello" as `role: "user"`.
-  - **UI Feedback**:
-    - Assert the "Thinking..." skeleton bubble is rendered in the `ChatFeed` while the `ExecutionState` is `executing` and the runner is in `running.requesting`.
-    - Assert a `LoadingSpinner` is visible on the Send button during the transition to `submitting`.
+    - Assert the API request contains the correct API key (from preset or global settings) and merged system prompts.
+  - **Step 3: Process Response**:
+    - Assert an assistant message is created in the `messages` store with `role: "assistant"`, `content: "Hello! How can I help you today?"`, and usage metadata.
+    - Assert a checkpoint record is created in the `checkpoints` store.
+    - Assert the thread record's `latestCheckpointId` is updated.
     - Assert `tokenStats` in the `threads` store are updated to `{ promptTokens: 10, completionTokens: 15, totalTokens: 25 }`.
-    - UI displays both messages in the `ChatFeed` using `MessageBubble` components (with an `Avatar` and correct `Icon` for the Send button), and the `ChatInputArea` `TextInput` field is enabled once `ExecutionState` returns to `inactive`.
+    - Assert the sequence of writes: User Message $\rightarrow$ Assistant Message $\rightarrow$ Checkpoint $\rightarrow$ Thread Metadata.
+  - **Step 4: UI Update**:
+    - Assert "Thinking..." skeleton bubble is rendered during `executing` state.
+    - Assert `LoadingSpinner` is visible on the Send button during submission.
+    - Assert both messages are displayed in the `ChatFeed` using `MessageBubble` components.
+    - Assert `ChatInputArea` `TextInput` is enabled once `ExecutionState` returns to `inactive`.
 - **Exercised Components**: `ChatInputArea`, `ChatFeed`, `MessageBubble`, `SideNav`, `TextInput`, `Button`, `Avatar`, `Card`, `LoadingSpinner`.
 - **Exercised State Machines**: `ViewState`, `ExecutionState`, `GraphRunnerActor`.
 - **Exercised Systems**: `IndexedDB`, `MSW`, `Custom Runner`, `Vercel AI SDK`.
@@ -1518,6 +1522,8 @@ To ensure full implementation, the following mapping defines which components ar
 - **`OverflowMenu`**: A specialized `Dropdown` used for contextual actions on a specific item (e.g., a message bubble). It is triggered by a three-dots icon and renders a list of action buttons. On mobile viewports, it can be configured to render as a `Modal` for better accessibility.
 - **`Avatar`**:
   - **Logic**: Generates a circular avatar with a deterministic background color and the user's/agent's initials based on a hash of the name.
+  - **Implementation**: Generate a hue value using `(name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) * 137) % 360` and use `hsl(${hue}, 60%, 70%)` for the background color.
+  - **Style**: Circular shape, centered text, high-contrast text color.
 
 - **`Icon`**:
   - A library of consistent SVG icons used across all buttons and menus (e.g., `Send`, `Pause`, `Resume`, `Delete`, `Edit`, `Branch`, `Settings`, `User`, `Bot`, `ChevronDown`, `Check`, `X`). All icons must be rendered at a consistent size (typically 20x20px or 24x24px) and use the `currentColor` CSS property to automatically adapt to the active theme.
@@ -1626,7 +1632,7 @@ These components are built using the Core Components above to create complex UI 
     - Tool Accordion: An `Accordion` that reveals tool calls/results (collapsed by default).
     - Overflow Menu Trigger: An `OverflowMenu` button that opens the `MessageOptionsMenu`.
   - **Sizing**: Max-width 80% of viewport, aligned left (agent) or right (user).
-  - **Visual Distinction**: For assistant messages, the bubble must display a distinct background tint or a left-border color (e.g. 4px width) deterministically generated from a hash of the agent's name to ensure visual consistency across sessions and easy differentiation in multi-agent debates.
+  - **Visual Distinction**: For assistant messages, the bubble must display a distinct background tint or a left-border color (e.g. 4px width) deterministically generated from a hash of the agent's name to ensure visual consistency across sessions and easy differentiation in multi-agent debates. Use the same HSL hue calculation as the `Avatar` component for this color.
 
 - **`NewChatForm`**:
   - **Structure**: A centered layout displayed when no thread is active.
@@ -1635,12 +1641,13 @@ These components are built using the Core Components above to create complex UI 
     - Preset Selector: A `Dropdown` for selecting the initial LLM preset.
     - Initial Message Input: A `TextArea` for the first user prompt.
     - Submit Button: A `Button` (variant `"primary"`) to create the thread and start execution.
-  - **Sizing**: Centered in the main content area, restricted width.
+  - **Sizing**: Centered in the main content area, restricted width. Use a `flexbox` layout with `flex-direction: column` and a gap of `24px` between fields.
 - **`ChatHeader`**: Top bar featuring a `Dropdown` for presets and `Button` for payload preview.
 - **`ExecutionControlPanel`**:
   - **Desktop**: A sticky horizontal control bar at the top of the chat area.
   - **Mobile**: Collapses into a compact, sticky status bar at the top or bottom of the viewport. Tapping this bar opens a full-screen modal overlay containing all counters and control actions.
   - **Components**: Uses `Button`, `Badge`, and `LoadingSpinner`.
+  - **Layout**: Use `display: flex` with `justify-content: space-between` and `align-items: center`. On mobile, the compact bar should use `display: flex` with `align-items: center` and a small padding.
 - **`ChatInputArea`**: Complex input section using `TextInput`, `TextArea`, `Dropdown` for role selection, and `Button`.
 - **`NewChatForm`**: Initialization form using `Dropdown` for workflow/preset and `TextArea` for initial message.
 - **AskQuestionsToolForm**:
