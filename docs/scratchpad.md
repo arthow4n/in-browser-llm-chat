@@ -1160,13 +1160,14 @@ To ensure the application is implemented correctly and can be verified in a test
   - **State Transitions**: Assert the `ViewState` transitions `idle` $\rightarrow$ `presetConfig` $\rightarrow$ `idle`.
   - **Event Dispatch**: Assert the `LOAD_PRESET` and `SAVE` events are dispatched.
   - Assert a new record is created in the `presets` store using the `PresetEditor` component, with the specified configuration and a generated UUID.
+  - Assert the `PresetListView` updates to include the new preset as a `Card` with the correct name and model.
   - User starts a new chat and selects the "Fast Gemini" preset from the `Dropdown` in the `NewChatForm` $\rightarrow$ dispatches `SUBMIT` in `NewChatForm`.
   - Assert the thread record in the `threads` store is created with `activePresetId` matching the new preset's UUID.
   - When the first message is sent, assert the API request uses the `temperature: 0.1` and model `gemini-2.5-flash` as configured in the preset.
   - User edits a built-in preset (e.g. "Default Gemini Flash") and clicks the `Button` (Save) $\rightarrow$ dispatches `SAVE` in `PresetEditor`.
   - Assert the UI prompts the user to "Clone and Customize" via a `ConfirmationModal`.
   - User clicks the `Button` (Clone and Customize) $\rightarrow$ a new custom preset record is created in the `presets` store with the updated configuration, while the original built-in preset remains unchanged.
-  - Assert the `PresetEditor` now displays the newly created custom preset.
+  - Assert the `PresetListView` now shows the new custom clone as a separate `Card`.
   - User starts a new chat and selects this newly cloned preset.
   - Assert the API request uses the updated configuration.
 - **Exercised Components**: `PresetEditor`, `PresetListView`, `ConfirmationModal`, `TextInput`, `Dropdown`, `Button`.
@@ -1181,9 +1182,11 @@ To ensure the application is implemented correctly and can be verified in a test
   - **State Transitions**: Verify the `ViewState` transitions `idle` $\rightarrow$ `workflowConfig` $\rightarrow$ `idle`.
   - **Event Dispatch**: Verify the `LOAD_WORKFLOW` and `SAVE` events are dispatched.
   - Verify a new record is created in the `workflows` store using the `WorkflowJsonEditor` component, with the serialized graph definition.
+  - Assert the `WorkflowListView` updates to include the new workflow as a `Card` with the 'Custom' badge.
   - User starts a new chat, selects this custom workflow from the `Dropdown` in the `NewChatForm`, and sends a message.
   - Verify the thread record's `workflowSnapshot` is an exact copy of the workflow JSON.
   - User deletes the custom workflow from the Workflow Management view via the `Button` (Delete). Verify the record is removed from the `workflows` store.
+  - Assert the `WorkflowListView` is updated and the deleted workflow's `Card` is removed.
   - Verify that the thread still functions correctly and can be resumed or continued, as it uses the `workflowSnapshot` stored in the `threads` record rather than querying the `workflows` store. Specifically, mock a scenario where the workflow is deleted from the database and verify that the thread still executes using its snapshot.
   - Verify the graph execution follows the defined sequence (Node A $\rightarrow$ Node B) and creates corresponding messages in the `messages` store. Verify that the messages are created in the correct `sequence` order and that the `name` field of each message matches the `name` defined in the `WorkflowNode` (e.g. "Agent A", then "Agent B").
 - **Exercised Components**: `WorkflowJsonEditor`, `WorkflowListView`, `NewChatForm`, `TextArea`, `Dropdown`, `Button`.
@@ -1339,7 +1342,7 @@ The application adapts its layout for viewports below `672px` (Mobile Viewport):
 To ensure full implementation, the following mapping defines which components are used in each view:
 
 - **Global Navigation & Layout**: `SideNav`, `ApplicationLayout`, `Button`, `Dropdown`, `Notification`.
-- **Main Chat Interface**: `ChatHeader`, `ExecutionControlPanel`, `ChatFeed`, `MessageBubble`, `ChatInputArea`, `NewChatForm`, `BudgetExceededCard`, `ProposedActionCard`, `AskQuestionsToolForm`, `ErrorBubble`, `InlineMessageEditor`, `MessageOptionsMenu`, `Avatar`, `Accordion`, `Badge`, `LoadingSpinner`.
+- **Main Chat Interface**: `ChatHeader`, `ExecutionControlPanel`, `ChatFeed`, `MessageBubble`, `ChatInputArea`, `NewChatForm`, `BudgetExceededCard`, `ProposedActionCard`, `AskQuestionsToolForm`, `ErrorBubble`, `InlineMessageEditor`, `MessageOptionsMenu`, `ApiPayloadPreviewModal`, `Avatar`, `Accordion`, `Badge`, `LoadingSpinner`.
 - **Workflow Management**: `WorkflowListView`, `WorkflowJsonEditor`, `TextArea`, `Button`, `Card`, `Badge`.
 - **LLM Preset CRUD**: `PresetListView`, `PresetEditor`, `TextInput`, `Dropdown`, `Button`, `Card`, `Badge`.
 - **Global Settings**: `GlobalSettingsForm`, `TextInput`, `Dropdown`, `Button`, `Notification`.
@@ -1432,6 +1435,22 @@ To ensure full implementation, the following mapping defines which components ar
 ### Layout & Composite Components
 
 These components are built using the Core Components above to create complex UI sections.
+
+- **`PresetListView`**:
+  - **Structure**: A vertical list of LLM preset configurations.
+  - **Components**:
+    - Uses `Card` (variant `"standard"`) for each preset entry.
+    - Each card displays the preset name, provider, and model using `Text` and `Badge` (variant `"info"`).
+    - Includes a `Button` (variant `"ghost"`) for editing (triggers `OPEN_PRESET_EDIT`) and a `Button` (variant `"danger"`) for deleting (triggers `DELETE_PRESET`).
+  - **Sizing**: Occupies the main content area, with cards spaced by `16px`.
+
+- **`WorkflowListView`**:
+  - **Structure**: A vertical list of agent orchestration workflows.
+  - **Components**:
+    - Uses `Card` (variant `"standard"`) for each workflow entry.
+    - Each card displays the workflow name, a short description, and a `Badge` identifying it as "Built-in" (green) or "Custom" (blue).
+    - Includes a `Button` (variant `"ghost"`) for editing (triggers `OPEN_WORKFLOW_EDIT`) and a `Button` (variant `"danger"`) for deleting (triggers `DELETE_WORKFLOW` - only for custom workflows).
+  - **Sizing**: Occupies the main content area, with cards spaced by `16px`.
 
 - **`SideNav`**:
   - **Desktop**: A persistent vertical drawer on the left side of the viewport.
