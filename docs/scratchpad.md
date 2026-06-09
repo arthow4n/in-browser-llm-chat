@@ -873,7 +873,7 @@ To ensure the application is implemented correctly and can be verified in a test
     - Assert an assistant message is created in the `messages` store with `threadId: [ID]`, `sequence: 1`, `role: "assistant"`, `content: "Hello! How can I help you today?"`, and usage metadata `{ promptTokens: 10, completionTokens: 15 }`.
     - Assert a checkpoint record is created in the `checkpoints` store with a unique `checkpointId`.
     - Assert the thread record's `latestCheckpointId` is updated to match this new checkpoint.
-    - Use a spy on the `idb` store's `put`/`add` methods to assert that the writes to `messages`, `checkpoints`, and `threads` occur in this chronological order: (1) User Message $\rightarrow$ (2) Assistant Message $\rightarrow$ (3) Checkpoint $\rightarrow$ (4) Thread Metadata Update.
+    - Use a spy on the `idb` store's `put`/`add` methods to assert that the writes to `messages`, `checkpoints`, and `threads` occur in this chronological order: (1) User Message $\rightarrow$ (2) Assistant Message $\rightarrow$ (3) Checkpoint $\rightarrow$ (4) Thread Metadata Update. Since `idb` is a wrapper, this is achieved by spying on the underlying `IDBObjectStore.prototype.put` and `IDBObjectStore.prototype.add` methods when using `fake-indexeddb`.
   - **API Payload Verification**: Use MSW to intercept the request (e.g., standard Gemini API or OpenRouter API endpoints called by the Vercel AI SDK integrations) and assert:
     - **For Gemini**: The request contains both the agent's system prompt and any injected system messages (merged with `\n\n`), and the user message "Hello" is sent as a `user` role part in the contents.
     - **For OpenRouter**: The request messages array starts with a `role: "system"` message containing the merged system prompts, followed by the user message "Hello" as `role: "user"`.
@@ -1282,6 +1282,7 @@ To achieve a premium, modern aesthetic, the following color palette and typograp
   - Primary Font: 'Inter' or 'Outfit' (Google Fonts), sans-serif.
   - Scale: Use a modular scale (e.g., 1.25) for headings.
   - Body: 16px (minimum for inputs to prevent iOS auto-zoom).
+  - Theme Application: The active theme is applied by adding either the `theme-light` or `theme-dark` class to the root element (`<html>` or `<body>`). These classes act as selectors to activate the corresponding set of CSS variables defined below.
 
 - **Light Theme (`theme-light`)**:
   - `--bg-primary`: `#FFFFFF` (Pure white)
@@ -1388,10 +1389,17 @@ To achieve a premium, modern aesthetic, the following color palette and typograp
 
 These components are built using the Core Components above to create complex UI sections.
 
-- **`SideNav`**: Navigation drawer containing `Button`, `Dropdown`, and `Card` based thread items.
+- **`SideNav`**:
+  - **Desktop**: A persistent vertical drawer on the left side of the viewport.
+  - **Mobile**: A sliding overlay that enters from the left, covering a portion of the screen (max-width `280px`), accompanied by a semi-transparent backdrop that closes the menu when tapped.
+  - **Animations**: Uses smooth CSS transitions for the sliding effect (e.g., `transform: translateX()` with `ease-in-out`).
+  - **Components**: Contains `Button`, `Dropdown`, and `Card` based thread items.
 - **`ApplicationLayout`**: The top-level layout coordinator that manages the `SideNav` visibility and the main content area.
 - **`ChatHeader`**: Top bar featuring a `Dropdown` for presets and `Button` for payload preview.
-- **`ExecutionControlPanel`**: Sticky panel containing `Button` controls, `Badge` status, and `LoadingSpinner`.
+- **`ExecutionControlPanel`**:
+  - **Desktop**: A sticky horizontal control bar at the top of the chat area.
+  - **Mobile**: Collapses into a compact, sticky status bar at the top or bottom of the viewport. Tapping this bar opens a full-screen modal overlay containing all counters and control actions.
+  - **Components**: Uses `Button`, `Badge`, and `LoadingSpinner`.
 - **`ChatInputArea`**: Complex input section using `TextInput`, `TextArea`, `Dropdown` for role selection, and `Button`.
 - **`NewChatForm`**: Initialization form using `Dropdown` for workflow/preset and `TextArea` for initial message.
 - **`AskQuestionsToolForm`**: Tool-driven form using `Card`, `TextInput`, `TextArea`, `Dropdown`, and `Button`.
@@ -1409,6 +1417,9 @@ These components are built using the Core Components above to create complex UI 
 - **`InlineMessageEditor`**: A component that replaces a message bubble with a text area for inline editing.
 - **`ErrorBubble`**: Special `Card` (variant `"notification"`, theme `"danger"`) with integrated `Button` for recovery.
 - **`MessageBubble`**: Core chat unit using `Card`, `Avatar`, `Accordion` for reasoning/tools, and `OverflowMenu`.
+- **`MessageOptionsMenu`**:
+  - **Structure**: A composite component that uses an `OverflowMenu` trigger. On desktop, it renders as a floating dropdown menu. On mobile viewports, it renders as a `Modal` centered in the viewport for easier touch interaction.
+  - **Components**: Contains a list of action `Button` items (Edit, Delete, Branch).
 - **`OverflowMenu`**: Contextual `Dropdown` menu using `Button` items for message actions.
 
 ---
