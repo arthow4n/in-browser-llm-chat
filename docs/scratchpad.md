@@ -1425,7 +1425,7 @@ To achieve a premium, fluid feel, all UI transitions must adhere to the followin
 To ensure full implementation, the following mapping defines which components are used in each view:
 
 - **Global Navigation & Layout**: `SideNav`, `ApplicationLayout`, `Button`, `Dropdown`, `Notification`.
-- **Main Chat Interface**: `ChatHeader`, `ExecutionControlPanel`, `ChatFeed`, `MessageBubble`, `ChatInputArea`, `NewChatForm`, `BudgetExceededCard`, `ProposedActionCard`, `AskQuestionsToolForm`, `ErrorBubble`, `InlineMessageEditor`, `MessageOptionsMenu`, `ApiPayloadPreviewModal`, `Avatar`, `Accordion`, `Badge`, `LoadingSpinner`.
+- **Main Chat Interface**: `ChatHeader`, `ExecutionControlPanel`, `ChatFeed`, `MessageBubble`, `ChatInputArea`, `NewChatForm`, `BudgetExceededCard`, `ProposedActionCard`, `AskQuestionsToolForm`, `ErrorBubble`, `InlineMessageEditor`, `MessageOptionsMenu`, `ApiPayloadPreviewModal`, `CodeBlockControl`, `Avatar`, `Accordion`, `Badge`, `LoadingSpinner`.
 - **Workflow Management**: `WorkflowListView`, `WorkflowJsonEditor`, `TextArea`, `Button`, `Card`, `Badge`.
 - **LLM Preset CRUD**: `PresetListView`, `PresetEditor`, `TextInput`, `Dropdown`, `Button`, `Card`, `Badge`.
 - **Global Settings**: `GlobalSettingsForm`, `TextInput`, `Dropdown`, `Button`, `Notification`.
@@ -1606,12 +1606,22 @@ These components are built using the Core Components above to create complex UI 
   - **Interactions**: Supports `Shift+Enter` for newlines and `Enter` for submission (on desktop). Controls are dynamically disabled/enabled based on the `ExecutionState`.
 
 - **`NewChatForm`**:
-  - **Structure**: A centered initialization panel containing `Dropdown` selectors for Workflow and Preset, and a `TextArea` for the initial message.
-  - **Interactions**: Submitting the form creates a new thread in IndexedDB and navigates to the new thread view.
+  - **Structure**: A centered layout displayed when no thread is active.
+  - **Components**:
+    - Workflow Selector: A `Dropdown` for selecting the starting workflow (built-in or custom).
+    - Preset Selector: A `Dropdown` for selecting the initial LLM preset.
+    - Initial Message Input: A `TextArea` for the first user prompt.
+    - Submit Button: A `Button` (variant `"primary"`) to create the thread and start execution.
+  - **Sizing**: Centered in the main content area, restricted width. Use a `flexbox` layout with `flex-direction: column` and a gap of `24px` between fields.
 
 - **`ThreadSettingsModal`**:
   - **Structure**: A management `Modal` for adjusting thread-level configurations.
-  - **Components**: Contains a `Dropdown` for selecting a different `activePresetId` and a `Button` for triggering `WorkflowSyncing`.
+  - **Components**:
+    - Thread Title Input: A `TextInput` field that is editable (via edit icon).
+    - Preset selection dropdown: A `Dropdown` for selecting a different `activePresetId`.
+    - Sync Workflow button: Triggers `WorkflowSyncing` state machine.
+    - Compact Checkpoints button: Triggers `CheckpointCompactionDialog` state machine.
+    - Delete Thread button: Triggers `TRIGGER_DELETE` in the `SideNav` machine.
   - **Interactions**: Updates the thread record in IndexedDB and dispatches `INITIALIZE_CHECKPOINT` to refresh the runner state.
 
 - **`ChatHeader`**:
@@ -1634,29 +1644,28 @@ These components are built using the Core Components above to create complex UI 
   - **Sizing**: Max-width 80% of viewport, aligned left (agent) or right (user).
   - **Visual Distinction**: For assistant messages, the bubble must display a distinct background tint or a left-border color (e.g. 4px width) deterministically generated from a hash of the agent's name to ensure visual consistency across sessions and easy differentiation in multi-agent debates. Use the same HSL hue calculation as the `Avatar` component for this color.
 
-- **`NewChatForm`**:
-  - **Structure**: A centered layout displayed when no thread is active.
+- **`CodeBlockControl`**:
+  - **Structure**: A small, floating control bar anchored to the top-right of a `CodeView` block.
   - **Components**:
-    - Workflow Selector: A `Dropdown` for selecting the starting workflow (built-in or custom).
-    - Preset Selector: A `Dropdown` for selecting the initial LLM preset.
-    - Initial Message Input: A `TextArea` for the first user prompt.
-    - Submit Button: A `Button` (variant `"primary"`) to create the thread and start execution.
-  - **Sizing**: Centered in the main content area, restricted width. Use a `flexbox` layout with `flex-direction: column` and a gap of `24px` between fields.
-- **`ChatHeader`**: Top bar featuring a `Dropdown` for presets and `Button` for payload preview.
+    - Copy Button: A `Button` (variant `"ghost"`) with a copy icon and label.
+    - Download Button: A `Button` (variant `"ghost"`) with a download icon and label.
+    - Error Tooltip: A small red notification bubble that appears on failure.
+  - **Sizing**: Compact layout with `padding: 4px 8px`, using a semi-transparent background that contrasts with the code block's background.
+
 - **`ExecutionControlPanel`**:
   - **Desktop**: A sticky horizontal control bar at the top of the chat area.
   - **Mobile**: Collapses into a compact, sticky status bar at the top or bottom of the viewport. Tapping this bar opens a full-screen modal overlay containing all counters and control actions.
   - **Components**: Uses `Button`, `Badge`, and `LoadingSpinner`.
   - **Layout**: Use `display: flex` with `justify-content: space-between` and `align-items: center`. On mobile, the compact bar should use `display: flex` with `align-items: center` and a small padding.
-- **`ChatInputArea`**: Complex input section using `TextInput`, `TextArea`, `Dropdown` for role selection, and `Button`.
-- **`NewChatForm`**: Initialization form using `Dropdown` for workflow/preset and `TextArea` for initial message.
-- **AskQuestionsToolForm**:
+
+- **`AskQuestionsToolForm`**:
   - **Structure**: A specialized tool-driven form rendered as a `Card` (variant `"prompt"`) inline in the chat feed.
   - **Components**:
     - Displays a sequence of questions using `RadioGroup` for `single-select` questions, `CheckboxGroup` for `multi-select` questions, and `TextInput`/`TextArea` for `free-text` comments and inputs.
     - Contains "Submit" and "Refuse to Answer" buttons.
   - **Interactions**: Submit button is disabled until all `required: true` questions are answered (note: clicking "Refuse to Answer" for a required question also satisfies the requirement).
   - **Sizing**: All form controls have a minimum touch target of `44x44px`.
+
 - **`BudgetExceededCard`**:
   - **Structure**: A `Card` (variant `"notification"`) rendered inline in the chat feed when execution limits are hit.
   - **Components**:
@@ -1664,6 +1673,7 @@ These components are built using the Core Components above to create complex UI 
     - Content: Displays current usage (steps or tokens) vs the limit using `Badge` components.
     - Controls: "Increase Budget & Resume" (variant `"primary"`) and "Abort" (variant `"secondary"`) buttons.
   - **Sizing**: All interactive elements must have a minimum touch target of 44x44px.
+
 - **`ProposedActionCard`**:
   - **Structure**: A `Card` (variant `"notification"`) rendered inline for database-modifying tool calls.
   - **Components**:
@@ -1671,19 +1681,21 @@ These components are built using the Core Components above to create complex UI 
     - Content: Displays a structured list or a visual diff of the proposed changes.
     - Controls: "Approve" (variant `"primary"`) and "Deny" (variant `"secondary"`) buttons.
   - **Sizing**: All interactive elements must have a minimum touch target of 44x44px.
+
 - **`WorkflowJsonEditor`**: Editor pane combining `TextArea` and `Button` for JSON management.
 - **`PresetEditor`**: Configuration form using `TextInput`, `Dropdown`, and `Button`.
 - **`PresetListView`**: List view utilizing `Card`, `Button`, and `Badge`.
 - **`WorkflowListView`**: List view utilizing `Card`, `Button`, and `Badge`.
 - **`GlobalSettingsForm`**: Full-page form using `TextInput`, `Dropdown`, `Button`, and `Notification`.
 - **`ThreadSettingsModal`**: Management modal using `TextInput`, `Dropdown`, `Button`, and `Modal`.
-- **`ThreadSettingsModal`**: A management modal used for modifying thread-level settings, including the active preset, active workflow, and triggering workflow synchronization. It uses a `Modal` as the base and includes `Dropdown` and `Button` components.
+
 - **`ConfirmationModal`**:
   - **Structure**: A generic `Modal` for critical actions.
   - **Components**:
     - Header: Action title (e.g. "Delete Thread").
     - Content: Descriptive text explaining the consequences.
     - Footer: "Confirm" (variant `"primary"` or `"danger"`) and "Cancel" (variant `"secondary"`) buttons.
+
 - **`PromptingBranchModal`**:
   - **Structure**: A `Modal` for initiating a thread branch.
   - **Components**:
