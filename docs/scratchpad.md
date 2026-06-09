@@ -58,6 +58,7 @@
     - [Responsive Behavior](#responsive-behavior)
     - [Global Animations & Transitions](#global-animations--transitions)
     - [Design System Component Mapping](#design-system-component-mapping)
+    - [Component-to-Machine Mapping](#component-to-machine-mapping)
     - [Layout & Composite Components](#layout--composite-components)
   - [User Interface (UI) Specification](#user-interface-ui-specification)
     - [1. Global Navigation and Layout](#1-global-navigation-and-layout)
@@ -107,6 +108,7 @@
   - [Implementation Roadmap](#implementation-roadmap)
     - [Phase 9: Storage Maintenance](#phase-9-storage-maintenance)
   - [Testing Guidelines](#testing-guidelines)
+    - [TDD Implementation Checklist for Coding Agents](#tdd-implementation-checklist-for-coding-agents)
     - [Examples](#examples)
 
 <!-- ENDTOC -->
@@ -1516,6 +1518,36 @@ To ensure full implementation, the following mapping defines which components ar
 - **`Icon`**:
   - A library of consistent SVG icons used across all buttons and menus (e.g., `Send`, `Pause`, `Resume`, `Delete`, `Edit`, `Branch`, `Settings`, `User`, `Bot`, `ChevronDown`, `Check`, `X`). All icons must be rendered at a consistent size (typically 20x20px or 24x24px) and use the `currentColor` CSS property to automatically adapt to the active theme.
 
+### Component-to-Machine Mapping
+
+To ensure a predictable TDD implementation, the following mapping defines which XState machine governs each UI component's internal state:
+
+| Component                       | Governing State Machine                               |
+| :------------------------------ | :---------------------------------------------------- |
+| `ApplicationLayout`             | `MainApplicationLayout`                               |
+| `SideNav`                       | `SideNav`                                             |
+| `ChatHeader`                    | `ChatHeaderQuickPresetSwitcher`                       |
+| `ExecutionControlPanel`         | `Execution&LoopControlPanel`                          |
+| `ChatInputArea`                 | `ChatInputArea`                                       |
+| `MessageBubble` (Inline Editor) | `InlineMessageEditorAction`                           |
+| `MessageBubble` (Accordions)    | `MessageAccordion`                                    |
+| `AskQuestionsToolForm`          | `AskQuestionsToolForm`                                |
+| `BudgetExceededCard`            | `BudgetExceededCard`                                  |
+| `ProposedActionCard`            | `ProposedActionCard`                                  |
+| `ApiPayloadPreviewModal`        | `ApiPayloadPreviewModal`                              |
+| `WorkflowJsonEditor`            | `WorkflowJsonEditor`                                  |
+| `PresetEditor`                  | `PresetEditor`                                        |
+| `PresetListView`                | `PresetListView`                                      |
+| `WorkflowListView`              | `CustomWorkflowListView`                              |
+| `GlobalSettingsForm`            | `GlobalSettingsForm`                                  |
+| `ThreadSettingsModal`           | `ThreadSettingsModal`                                 |
+| `ConfirmationModal`             | (Handled by the initiating machine's prompting state) |
+| `PromptingBranchModal`          | `InlineMessageEditorAction`                           |
+| `PresetConnectionTester`        | `PresetConnectionTester`                              |
+| `CheckpointCompactionDialog`    | `CheckpointCompactionDialog`                          |
+| `CodeBlockControl`              | `CodeBlockControl`                                    |
+| `NewChatForm`                   | `NewChatForm`                                         |
+
 ### Layout & Composite Components
 
 These components are built using the Core Components above to create complex UI sections.
@@ -1644,7 +1676,12 @@ These components are built using the Core Components above to create complex UI 
     - An agent selector `Dropdown` allowing the user to switch between agents in the current workflow to inspect their specific payload.
     - A `CodeView` displaying the messages array, highlighting injected system messages with an `[INJECTED]` badge.
   - **Interactions**: Agent selection updates the displayed JSON in real-time.
-- **`InlineMessageEditor`**: A specialized input component that replaces a message bubble inline for editing. It combines a `TextArea` for content and a set of `Button` controls (Save, Cancel) at the bottom.
+- **`InlineMessageEditor`**:
+  - **Structure**: A specialized input component that replaces a message bubble inline for editing.
+  - **Components**:
+    - A `TextArea` for content editing (with `min-font-size: 16px` and dynamic height).
+    - A button group containing "Save" (variant `"primary"`) and "Cancel" (variant `"secondary"`) buttons.
+  - **Sizing**: All interactive controls (buttons, textarea) MUST have a minimum touch target of `44x44px`.
 - **`ErrorBubble`**:
   - **Structure**: A specialized `Card` (variant `"notification"`, theme `"danger"`) used to render execution errors inline in the chat feed.
   - **Components**:
@@ -3336,6 +3373,21 @@ To ensure a stable and iterative development process, the implementation should 
 - **Mocking**: No mocks are allowed except for API mocks. Use `msw` for mocking network requests.
 - **Model-Based Testing**: Use XState's graph utilities for model-based testing to automatically generate tests for state machines. Import from `xstate/graph` instead of the deprecated `@xstate/graph` package (e.g., [Stately Graph Docs](https://stately.ai/docs/graph#model-based-testing)).
 - **Test Coverage**: Track test coverage using Vitest. Ensure code is well-covered, especially critical state machines and LangGraph logic.
+
+### TDD Implementation Checklist for Coding Agents
+
+When implementing any feature from this scratchpad, follow this TDD cycle:
+
+1. **Read the Test Plan**: Identify the "Given/When/Then" scenario in the Integration Test Plan.
+2. **Verify Components**: Ensure all "Exercised Components" are defined in the Design System.
+3. **Implement State Machine**: Create the XState machine described in the "UI Component State Machines" section.
+4. **Implement Component UI**: Build the component using the Design System's Core/Composite components, binding its state and events to the XState machine.
+5. **Write Integration Test**: Implement the test case using Vitest and MSW, asserting on:
+   - UI state transitions (e.g., `SkeletonLoader` $\rightarrow$ `Card`).
+   - Database writes (using `fake-indexeddb` and spies on `idb` store methods).
+   - API payloads (using MSW interceptors).
+   - XState event dispatches.
+6. **Verify and Refine**: Run the test, fix bugs, and ensure the implementation matches the "Then" assertions exactly.
 
 ### Examples
 
