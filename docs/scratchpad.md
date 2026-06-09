@@ -52,6 +52,10 @@
     - [17. Workflow JSON Utility Flow (Import/Export/Clipboard)](#17-workflow-json-utility-flow-importexportclipboard)
     - [18. Preset Connection Testing Flow](#18-preset-connection-testing-flow)
     - [19. Global Settings Thread Compaction Flow](#19-global-settings-thread-compaction-flow)
+    - [20. Code Block Copy & Download Flow](#20-code-block-copy--download-flow)
+    - [21. Responsive Layout Adaptation Flow](#21-responsive-layout-adaptation-flow)
+    - [22. List Search & Pagination Flow (SideNav/Presets/Workflows)](#22-list-search--pagination-flow-sidenavpresetsworkflows)
+    - [23. Global Settings Injected Messages & API Key Status Flow](#23-global-settings-injected-messages--api-key-status-flow)
   - [Design System Description](#design-system-description)
     - [Theme Palette & Typography](#theme-palette--typography)
     - [Interaction Policies](#interaction-policies)
@@ -89,6 +93,7 @@
       - [K. Preset Editor State Machine](#k-preset-editor-state-machine)
       - [L. Workflow JSON Editor State Machine](#l-workflow-json-editor-state-machine)
       - [M. Graph Runner Actor State Machine](#m-graph-runner-actor-state-machine)
+      - [Event-Driven Generator Loop Implementation](#event-driven-generator-loop-implementation)
       - [N. Execution & Loop Control Panel State Machine](#n-execution--loop-control-panel-state-machine)
       - [O. Code Block Control State Machine](#o-code-block-control-state-machine)
       - [P. Preset List View State Machine](#p-preset-list-view-state-machine)
@@ -1358,6 +1363,79 @@ To ensure the application is implemented correctly and can be verified in a test
 - **Exercised Components**: `ChatFeed`, `ErrorBubble`, `InlineMessageEditor`.
 - **Exercised State Machines**: `ExecutionState`, `GraphRunnerActor`.
 - **Exercised Systems**: `IndexedDB`, `MSW`, `Custom Runner`.
+
+### 20. Code Block Copy & Download Flow
+
+- **Given**: A chat feed containing a code block with content `"console.log('Hello World');"` and language `"typescript"`.
+- **When**:
+  1. User clicks the "Copy Code" button in the `CodeBlockControl`.
+  2. User clicks the "Download" button in the `CodeBlockControl`.
+- **Then**:
+  - **Copy Action**:
+    - Assert the `CodeBlockControl` transitions to `copying` and then `copied`.
+    - Assert `navigator.clipboard.writeText` is called with the exact code content.
+    - Assert the button label changes to "Copied!" and shows a checkmark icon.
+    - Assert the button reverts to "Copy Code" after 2 seconds.
+  - **Download Action**:
+    - Assert the `CodeBlockControl` transitions to `downloading` and then `downloaded`.
+    - Assert a blob is created with the correct content and MIME type (`text/typescript`).
+    - Assert a temporary URL is created and a download is triggered for a file named `"script.ts"` (or equivalent).
+    - Assert the button label changes to "Downloaded!" and reverts after 2 seconds.
+- **Exercised Components**: `CodeBlockControl`, `CodeView`.
+- **Exercised State Machines**: `CodeBlockControl`.
+
+### 21. Responsive Layout Adaptation Flow
+
+- **Given**: The app is launched on a desktop viewport (width > 672px).
+- **When**:
+  1. User interacts with the `SideNav` (it should be a persistent drawer).
+  2. User resizes the browser window to a mobile viewport (width < 672px).
+  3. User clicks the hamburger menu button in the header.
+  4. User clicks a thread in the `SideNav` overlay.
+  5. User swipes right from the left edge of the screen.
+- **Then**:
+  - **Desktop View**: Assert `SideNav` is visible as a persistent sidebar and `isMobile` is `false`.
+  - **Resize Event**: Assert `MainApplicationLayout` detects the resize, updates `isMobile` to `true`, and closes the `SideNav` (sets `sidebarOpen` to `false`).
+  - **Mobile Navigation**:
+    - Assert the hamburger menu opens the `SideNav` as a sliding overlay with a semi-transparent backdrop.
+    - Assert that clicking a thread closes the overlay and navigates the route.
+    - Assert that the swipe-right gesture opens the `SideNav` overlay.
+- **Exercised Components**: `ApplicationLayout`, `SideNav`.
+- **Exercised State Machines**: `MainApplicationLayout`.
+
+### 22. List Search & Pagination Flow (SideNav/Presets/Workflows)
+
+- **Given**: The `presets` store contains 60 presets.
+- **When**:
+  1. User opens the Preset List View.
+  2. User scrolls to the bottom of the list.
+  3. User enters "Gemini" in the search input.
+  4. User changes the sort order to "Name" Ascending.
+- **Then**:
+  - **Initial Load**: Assert the first 10 presets (page 1) are rendered.
+  - **Infinite Scroll**: Assert that upon scrolling to bottom, the `PresetListView` transitions to `loading`, fetches the next 10 presets (page 2), and appends them to the list.
+  - **Search**: Assert the list is filtered to only show presets containing "Gemini", and the view resets to page 1.
+  - **Sorting**: Assert the filtered list is sorted alphabetically by name.
+- **Exercised Components**: `PresetListView`, `CustomWorkflowListView`, `SideNav`.
+- **Exercised State Machines**: `PresetListView`, `CustomWorkflowListView`, `SideNav`.
+- **Exercised Systems**: `IndexedDB`.
+
+### 23. Global Settings Injected Messages & API Key Status Flow
+
+- **Given**: The Global Settings view is open.
+- **When**:
+  1. User enters a new API key in the Gemini API key field.
+  2. User adds a new injected system message with content "Be helpful" and depth 0.
+  3. User changes the depth of the message to 1.
+  4. User removes the injected system message.
+  5. User clicks "Save".
+- **Then**:
+  - **Key Validation**: Assert the `APIKeyVisualStatusIndicator` transitions from `idle` $\to$ `validating` $\to$ `valid` (or `invalid`) immediately upon input change.
+  - **Injected Messages Management**: Assert the `injectedSystemMessages` array in the context is updated correctly during add, update, and remove actions.
+  - **Persistence**: Assert that upon clicking "Save", the `settings` store is updated with the new API keys and the array of injected system messages.
+- **Exercised Components**: `GlobalSettingsForm`, `APIKeyVisualStatusIndicator`.
+- **Exercised State Machines**: `GlobalSettingsForm`, `APIKeyVisualStatusIndicator`.
+- **Exercised Systems**: `IndexedDB`.
 
 ## Design System Description
 
@@ -2839,6 +2917,19 @@ Governs the lifecycle of the custom background execution runner, which runs as a
   - `RESUME_WITH_BUDGET_OVERRIDE` (contains stepOverride and tokenOverride): Transition from `interrupted.budgetExceeded` back to `running.requesting` (stores overrides in `budgetOverride` and resumes).
   - `COMPLETE`: Persists final state, updates thread status to `"inactive"`, transitions to `completed`.
   - `ERROR` (contains error details): Transitions to `failed` (updates thread status to `"error"`, notifies parent machine).
+
+#### Event-Driven Generator Loop Implementation
+
+To integrate the `LangGraph` asynchronous execution with XState's event-driven architecture, the `graphRunnerActor` implements the execution loop as an `AsyncGenerator`:
+
+1. **Generator Initialization**: Upon entering the `initializing` state, the actor instantiates the compiled graph as an `AsyncGenerator` (using the `graph.stream()` or a similar iterator).
+2. **Driving the Loop**:
+   - When the actor receives a `START` or `RESUME` event, it calls `await generator.next()`.
+   - The generator executes the graph until it reaches a `yield` point (e.g., after a node completion, a tool call interrupt, or a streaming token chunk).
+   - The yielded value contains the updated graph state, the active node, and any pending interrupts.
+3. **State Synchronization**: The actor processes the yielded value by updating the parent coordinator's context and persisting the checkpoint to IndexedDB.
+4. **Wait for Trigger**: The actor then transitions to a waiting state (`running.requesting` or `interrupted`). It does NOT call `next()` again until it receives a trigger event (e.g., `SUBMIT_TOOL_RESPONSE`, `RESUME`, or a simple `TICK` for continuous execution), ensuring the graph's progress is perfectly synchronized with UI events and DB writes.
+
 - **Database Reads/Writes & API Request/Response Sequences**:
   - **Reads**: During `initializing`, uses custom checkpointer to load state from `checkpoints` and `checkpoint_writes` stores. Syncs missing DB messages.
   - **Writes**: During `STEP_COMPLETE`, opens a read-write transaction to write the new message to `messages` store, save checkpoint config to `checkpoints` and `checkpoint_writes`, and update `latestCheckpointId`, `latestCheckpointNs`, and cumulative `tokenStats` in the `threads` store.
