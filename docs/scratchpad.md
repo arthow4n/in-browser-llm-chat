@@ -1237,7 +1237,26 @@ To ensure the application is implemented correctly and can be verified in a test
 
 ### 14. Error Recovery Flow
 
-... (Existing Error Recovery Flow Content) ...
+- **Prerequisites**:
+  - `settings` store contains valid `api_keys`.
+- **Given**: An active thread with a workflow.
+- **When**:
+  1. User triggers a workflow run $\rightarrow$ simulate a transient API error (e.g., mock a 500 Internal Server Error from the LLM provider using MSW) $\rightarrow$ dispatches `SUBMIT_MESSAGE`.
+  2. User observes the automatic retry behavior.
+  3. After retries fail, user clicks the "Retry" button in the `ErrorBubble` $\rightarrow$ dispatches `RETRY_STEP`.
+  4. Trigger a different error (e.g., mock a `429 Too Many Requests` error from the API using MSW).
+  5. User clicks the "Change Preset" dropdown in the `ErrorBubble` $\rightarrow$ selects an alternative LLM preset $\rightarrow$ clicks "Resume" $\rightarrow$ dispatches `CHANGE_PRESET_AND_RESUME`.
+  6. Trigger another error $\rightarrow$ user clicks the "Edit Last Message" shortcut in the `ErrorBubble` $\rightarrow$ focuses the `InlineMessageEditor` for the user's preceding message.
+  7. User edits and saves the message $\rightarrow$ dispatches `SAVE` to `InlineMessageEditorAction`.
+- **Then**:
+  - **Automatic Retry Verification**: Assert that the `graphRunnerActor` performs automatic retries with exponential backoff. Verify by asserting that the API endpoint is called exactly 4 times (initial call + 3 retries) before the actor transitions to the `failed` state.
+  - **Error UI State**: Assert that `ExecutionState` transitions to `error` and the `ErrorBubble` is rendered inline at the end of the chat feed, displaying the error code (e.g., "API Error 500") and the "Retry" button.
+  - **Retry Recovery**: Assert that `RETRY_STEP` triggers the `graphRunnerActor` to re-load the latest checkpoint and restart the failed node.
+  - **Preset Recovery**: Assert that `CHANGE_PRESET_AND_RESUME` updates the thread's `activePresetId` in the `threads` store, re-compiles the graph using the new preset, and restarts execution from the last persisted checkpoint.
+  - **Edit Recovery**: Assert the thread is rolled back to the preceding checkpoint (as described in `6. Message Edit & Rollback Flow`), and execution is automatically re-triggered from the new state.
+- **Exercised Components**: `ChatFeed`, `ErrorBubble`, `InlineMessageEditor`, `Dropdown`, `Button`.
+- **Exercised State Machines**: `ExecutionState`, `GraphRunnerActor`.
+- **Exercised Systems**: `IndexedDB`, `MSW`, `Custom Runner`.
 
 ### 15. Lifecycle and Recovery Flow
 
@@ -1697,8 +1716,40 @@ These components are built using the Core Components above to create complex UI 
     - Controls: "Approve" (variant `"primary"`) and "Deny" (variant `"secondary"`) buttons.
   - **Sizing**: All interactive elements must have a minimum touch target of 44x44px.
 
-- **`WorkflowJsonEditor`**: Editor pane combining `TextArea` and `Button` for JSON management.
-- **`PresetEditor`**: Configuration form using `TextInput`, `Dropdown`, and `Button`.
+- **`WorkflowJsonEditor`**:
+  - **Structure**: A specialized JSON configuration editor combining a full-screen `TextArea` with a toolbar of utility buttons.
+  - **Components**:
+    - `TextArea`: A monospaced, auto-expanding text area for editing workflow JSON. Includes a `min-font-size: 16px` for mobile compatibility.
+    - Toolbar: A horizontal bar containing:
+      - "Save" `Button` (variant `"primary"`, disabled if `isDirty` is false).
+      - "Cancel" `Button` (variant `"secondary"`).
+      - "Delete" `Button` (variant `"danger"`, hidden for built-in workflows).
+      - "Import from File" `Button` (variant `"ghost"`).
+      - "Export to File" `Button` (variant `"ghost"`).
+      - "Copy JSON" `Button` (variant `"ghost"`).
+    - Validation Area: A dedicated text area below the editor that displays a list of structural validation errors (e.g., "Missing entry point", "Invalid edge from node X to node Y") in red text.
+  - **Interactions**:
+    - `Save`: Triggers structural validation before writing to the `workflows` store.
+    - `Import`: Opens a file picker; upon upload, replaces `jsonContent` and sets `isDirty: true`.
+    - `Export`: Triggers a browser download of a `.json` file using a temporary Blob URL.
+    - `Copy`: Writes the current JSON content to the system clipboard via `navigator.clipboard.writeText`.
+  - **Sizing**: Occupies the main content area, with the `TextArea` filling the available height minus the toolbar and validation area.
+
+- **`PresetEditor`**:
+  - **Structure**: A configuration form for LLM presets, implemented as a `Modal` or a dedicated view.
+  - **Components**:
+    - Name Field: `TextInput` (required).
+    - Provider Selector: `Dropdown` with options `"openrouter" | "gemini"`.
+    - Model Identifier: `TextInput` (searchable hybrid dropdown that allows free-text).
+    - API Key Override: `TextInput` (masked, with show/hide toggle).
+    - Config Fields: `TextInput` for Temperature, Max Tokens, Reasoning Level.
+    - Budget Policy Section: `TextInput` for `maxStepsWithoutUser` and `maxTokensPerRun`.
+    - Connection Tester: `PresetConnectionTester` integrated next to the API Key field.
+    - Action Buttons: "Save" `Button` (variant `"primary"`), "Cancel" `Button` (variant `"secondary"`), "Delete" `Button` (variant `"danger"`).
+  - **Interactions**:
+    - `Save`: Validates fields (e.g., temperature range 0-2) before writing to the `presets` store.
+    - `Delete`: triggers a safety check (non-default, not active in threads) before deleting.
+  - **Sizing**: Centered modal with a single-column form layout and `16px` gap between fields. All interactive elements have `44x44px` touch targets.
 - **`PresetListView`**: List view utilizing `Card`, `Button`, and `Badge`.
 - **`WorkflowListView`**: List view utilizing `Card`, `Button`, and `Badge`.
 - **`GlobalSettingsForm`**: Full-page form using `TextInput`, `Dropdown`, `Button`, and `Notification`.
