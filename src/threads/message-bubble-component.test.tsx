@@ -156,4 +156,62 @@ describe("MessageBubbleComponent", () => {
     expect(screen.getByText("test_tool")).toBeInTheDocument();
     expect(screen.getByText("Tool result content")).toBeInTheDocument();
   });
+
+  it("renders nested ask_questions tool calls using AskQuestionsComponent", () => {
+    const message = createMockMessage({
+      role: "assistant",
+      name: "Debater A",
+      content: "Hello",
+    });
+    const nestedTools: Message[] = [
+      {
+        id: "call-msg-1",
+        threadId: "mock-thread-id",
+        sequence: 2,
+        role: "assistant" as const,
+        content: JSON.stringify({
+          questions: [
+            {
+              id: "q1",
+              text: "Is this correct?",
+              type: "single-select",
+              options: ["Yes", "No"],
+              required: true,
+            },
+          ],
+        }),
+        type: "tool_call" as const,
+        toolCallId: "call-1",
+        name: "ask_questions",
+        createdAt: Date.now(),
+        checkpointId: null,
+        checkpointNs: null,
+      },
+      {
+        id: "result-msg-1",
+        threadId: "mock-thread-id",
+        sequence: 3,
+        role: "tool" as const,
+        content: JSON.stringify({
+          answers: {
+            q1: { selected: ["Yes"] },
+          },
+        }),
+        type: "tool_result" as const,
+        toolCallId: "call-1",
+        name: "ask_questions",
+        createdAt: Date.now(),
+        checkpointId: null,
+        checkpointNs: null,
+      },
+    ];
+
+    render(<MessageBubbleComponent message={message} nestedTools={nestedTools} />);
+
+    // Should render AskQuestionsComponent in submitted state
+    expect(screen.getByText("Interactive Questionnaire")).toBeInTheDocument();
+    expect(screen.getByText("Submitted")).toBeInTheDocument();
+    expect(screen.getByText(/Is this correct\?/)).toBeInTheDocument();
+    expect(screen.getByText("Yes")).toBeInTheDocument();
+  });
 });

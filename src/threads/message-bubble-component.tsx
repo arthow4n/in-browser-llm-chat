@@ -4,8 +4,9 @@ import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
-import type { Message } from "../db/db-schema";
+import type { Message, AskQuestionsQuestion } from "../db/db-schema";
 import { streamingMessageBubbleMachine } from "./streaming-message-bubble-machine";
+import { AskQuestionsComponent } from "./ask-questions-component";
 import "katex/dist/katex.min.css";
 
 export interface MessageBubbleComponentProps {
@@ -165,6 +166,78 @@ export function MessageBubbleComponent({
         {nestedTools.length > 0 && (
           <div className="nested-tools-container" data-testid={`nested-tools-${message.id}`}>
             {nestedTools.map((toolMsg) => {
+              if (toolMsg.name === "ask_questions") {
+                // If it is a tool result, we skip rendering it directly because it's handled inline under the tool call
+                if (toolMsg.role === "tool") {
+                  return null;
+                }
+
+                let questions: AskQuestionsQuestion[] = [];
+                try {
+                  const parsed = JSON.parse(toolMsg.content);
+                  questions = parsed.questions || [];
+                } catch {
+                  // ignore
+                }
+
+                // Look for corresponding tool result to determine submitted/refused status
+                const resultMsg = nestedTools.find(
+                  (m) =>
+                    m.role === "tool" &&
+                    m.toolCallId === toolMsg.toolCallId &&
+                    m.name === "ask_questions",
+                );
+
+                let isSubmitted = false;
+                let isRefused = false;
+                let submittedAnswers:
+                  | Record<
+                      string,
+                      {
+                        selected?: string[];
+                        text?: string;
+                        refused?: boolean;
+                        refusalReason?: string;
+                      }
+                    >
+                  | undefined = undefined;
+                let refusalReason = "";
+
+                if (resultMsg) {
+                  try {
+                    const resultObj = JSON.parse(resultMsg.content);
+                    submittedAnswers = resultObj.answers || {};
+                    const ansList = Object.values(submittedAnswers || {});
+                    isRefused = ansList.some((ans) => ans?.refused);
+                    isSubmitted = !isRefused;
+                    if (isRefused) {
+                      refusalReason =
+                        ansList.find((ans) => ans?.refusalReason)?.refusalReason || "";
+                    }
+                  } catch {
+                    // ignore
+                  }
+                }
+
+                return (
+                  <div
+                    key={toolMsg.id}
+                    className="nested-tool-questions"
+                    data-testid={`nested-tool-questions-${toolMsg.id}`}
+                  >
+                    <AskQuestionsComponent
+                      threadId={message.threadId}
+                      toolCallId={toolMsg.toolCallId || ""}
+                      questions={questions}
+                      isSubmitted={isSubmitted}
+                      isRefused={isRefused}
+                      submittedAnswers={submittedAnswers}
+                      refusalReason={refusalReason}
+                    />
+                  </div>
+                );
+              }
+
               const toolDisplayName = toolMsg.name || `Tool (${toolMsg.toolCallId || "Unknown"})`;
               return (
                 <div

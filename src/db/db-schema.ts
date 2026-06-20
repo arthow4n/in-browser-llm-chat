@@ -116,6 +116,32 @@ export const ActiveInterruptSchema = z.object({
 });
 export type ActiveInterrupt = z.infer<typeof ActiveInterruptSchema>;
 
+export const AskQuestionsQuestionSchema = z.object({
+  id: z.string(),
+  text: z.string(),
+  type: z.enum(["single-select", "multi-select", "free-text"]).default("multi-select"),
+  options: z.array(z.string()).optional(),
+  allowFreetext: z.boolean().default(true),
+  required: z.boolean().default(true),
+});
+export type AskQuestionsQuestion = z.infer<typeof AskQuestionsQuestionSchema>;
+
+export const AskQuestionsSchema = z.object({
+  questions: z.array(AskQuestionsQuestionSchema),
+});
+export type AskQuestions = z.infer<typeof AskQuestionsSchema>;
+
+export interface AskQuestionsResponse {
+  answers: {
+    [questionId: string]: {
+      selected?: string[];
+      text?: string;
+      refused?: boolean;
+      refusalReason?: string;
+    };
+  };
+}
+
 export const DraftAnswerValueSchema = z.object({
   selected: z.array(z.string()).optional(),
   text: z.string().optional(),
