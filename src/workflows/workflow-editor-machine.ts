@@ -2,6 +2,7 @@ import { createMachine, assign, fromPromise } from "xstate";
 import { saveWorkflow, deleteWorkflow } from "./workflows-service";
 import { WorkflowSchema } from "../db/db-schema";
 import type { Workflow } from "../db/db-schema";
+import { validateWorkflowStructure } from "./workflow-validation";
 
 export interface WorkflowEditorContext {
   workflowId: string | null;
@@ -322,7 +323,13 @@ export const workflowEditorMachine = createMachine(
           throw errors;
         }
 
-        return parsed as Workflow;
+        const workflow = result.data;
+        const structuralErrors = validateWorkflowStructure(workflow);
+        if (structuralErrors.length > 0) {
+          throw structuralErrors;
+        }
+
+        return workflow;
       }),
       saveWorkflowActor: fromPromise(
         async ({ input }: { input: { workflowId: string | null; jsonContent: string } }) => {

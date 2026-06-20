@@ -6,6 +6,7 @@ import {
   listThreads,
 } from "../db/db-operations";
 import type { Workflow } from "../db/db-schema";
+import { validateWorkflowStructure } from "./workflow-validation";
 
 export const BUILT_IN_WORKFLOW_IDS = new Set(["standard-1-agent", "debate"]);
 
@@ -83,6 +84,10 @@ export async function getWorkflow(id: string): Promise<Workflow | undefined> {
 export async function saveWorkflow(workflow: Workflow): Promise<void> {
   if (BUILT_IN_WORKFLOW_IDS.has(workflow.id) || workflow.isBuiltIn) {
     throw new Error("Cannot modify built-in workflows.");
+  }
+  const validationErrors = validateWorkflowStructure(workflow);
+  if (validationErrors.length > 0) {
+    throw new Error(`Workflow validation failed: ${validationErrors.join("; ")}`);
   }
   await dbSaveWorkflow(workflow);
 }
