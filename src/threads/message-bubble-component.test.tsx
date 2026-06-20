@@ -1,0 +1,87 @@
+import { render, screen } from "@testing-library/react";
+import { describe, it, expect } from "vitest";
+import { MessageBubbleComponent } from "./message-bubble-component";
+import type { Message } from "../db/db-schema";
+
+describe("MessageBubbleComponent", () => {
+  const createMockMessage = (overrides: Partial<Message> = {}): Message => {
+    return {
+      id: "mock-message-id",
+      threadId: "mock-thread-id",
+      sequence: 1,
+      role: "user",
+      content: "Hello, this is standard text.",
+      type: "text",
+      createdAt: Date.now(),
+      checkpointId: null,
+      checkpointNs: null,
+      ...overrides,
+    };
+  };
+
+  it("renders basic user message text", () => {
+    const message = createMockMessage({ role: "user", content: "Hello World" });
+    render(<MessageBubbleComponent message={message} />);
+
+    expect(screen.getByTestId("message-row-mock-message-id")).toBeInTheDocument();
+    expect(screen.getByTestId("message-bubble-mock-message-id")).toHaveClass("user");
+    expect(screen.getByTestId("message-sender-mock-message-id")).toHaveTextContent("User");
+    expect(screen.getByTestId("message-content-mock-message-id")).toHaveTextContent("Hello World");
+  });
+
+  it("renders assistant message with custom agent name", () => {
+    const message = createMockMessage({
+      role: "assistant",
+      name: "Debater 1",
+      content: "I disagree.",
+    });
+    render(<MessageBubbleComponent message={message} />);
+
+    expect(screen.getByTestId("message-bubble-mock-message-id")).toHaveClass("assistant");
+    expect(screen.getByTestId("message-sender-mock-message-id")).toHaveTextContent("Debater 1");
+    expect(screen.getByTestId("message-content-mock-message-id")).toHaveTextContent("I disagree.");
+  });
+
+  it("renders markdown properly", () => {
+    const message = createMockMessage({
+      role: "assistant",
+      content: "This is **bold** text and a [link](https://example.com).",
+    });
+    render(<MessageBubbleComponent message={message} />);
+
+    const contentEl = screen.getByTestId("message-content-mock-message-id");
+    const strongEl = contentEl.querySelector("strong");
+    const linkEl = contentEl.querySelector("a");
+
+    expect(strongEl).toBeInTheDocument();
+    expect(strongEl).toHaveTextContent("bold");
+    expect(linkEl).toBeInTheDocument();
+    expect(linkEl).toHaveAttribute("href", "https://example.com");
+    expect(linkEl).toHaveAttribute("target", "_blank");
+  });
+
+  it("renders LaTeX block math", () => {
+    const message = createMockMessage({
+      role: "assistant",
+      content: "Here is a formula: $$E = mc^2$$",
+    });
+    render(<MessageBubbleComponent message={message} />);
+
+    const contentEl = screen.getByTestId("message-content-mock-message-id");
+    // Katex math elements have class names like 'katex'
+    const katexEl = contentEl.querySelector(".katex");
+    expect(katexEl).toBeInTheDocument();
+  });
+
+  it("renders reasoning bubble with thinking indicator", () => {
+    const message = createMockMessage({
+      role: "assistant",
+      type: "reasoning",
+      content: "I need to calculate 2+2.",
+    });
+    render(<MessageBubbleComponent message={message} />);
+
+    expect(screen.getByTestId("message-bubble-mock-message-id")).toHaveClass("reasoning-bubble");
+    expect(screen.getByText("Thinking Process")).toBeInTheDocument();
+  });
+});

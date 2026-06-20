@@ -1091,3 +1091,200 @@ body {
 .send-icon {
   font-size: 1.25rem;
 }
+
+/* Chat Feed & Message Bubble Styling */
+.chat-messages-viewport {
+  width: 100%;
+  max-width: 800px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1rem 0.5rem;
+}
+
+.message-row-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.message-header-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0 0.5rem;
+}
+
+.message-sender-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.message-timestamp {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  opacity: 0.7;
+}
+
+.message-bubble {
+  max-width: 85%;
+  padding: 1rem 1.25rem;
+  border-radius: 18px;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  position: relative;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  transition: var(--transition);
+}
+
+/* User Message Bubble Alignment and Styling */
+.message-row-wrapper.user-row {
+  align-items: flex-end;
+}
+
+.message-row-wrapper.user-row .message-header-bar {
+  flex-direction: row-reverse;
+}
+
+.message-bubble.user {
+  background: var(--accent-color);
+  color: #ffffff;
+  border-bottom-right-radius: 4px;
+}
+
+/* Assistant Message Bubble Alignment and Styling */
+.message-row-wrapper.assistant-row {
+  align-items: flex-start;
+}
+
+.message-bubble.assistant {
+  background: var(--surface-bg);
+  border: 1px solid var(--surface-border);
+  color: var(--text-primary);
+  border-bottom-left-radius: 4px;
+}
+
+/* System Message Bubble Styling */
+.message-row-wrapper.system-row {
+  align-items: center;
+}
+
+.message-bubble.system {
+  background: rgba(148, 163, 184, 0.1);
+  border: 1px dashed var(--surface-border);
+  color: var(--text-secondary);
+  border-radius: 12px;
+  max-width: 90%;
+  font-size: 0.9rem;
+}
+
+/* Tool Message Bubble Styling */
+.message-row-wrapper.tool-row {
+  align-items: flex-start;
+}
+
+.message-bubble.tool {
+  background: rgba(15, 23, 42, 0.3);
+  border: 1px solid var(--surface-border);
+  color: var(--text-secondary);
+  font-family: monospace;
+  font-size: 0.85rem;
+  border-radius: 12px;
+  max-width: 95%;
+}
+
+/* Reasoning/Thinking Message Bubble Styling */
+.message-bubble.reasoning-bubble {
+  background: rgba(99, 102, 241, 0.04);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  border-bottom-left-radius: 4px;
+}
+
+.reasoning-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #818cf8;
+}
+
+/* Markdown elements within bubble */
+.message-text-content p {
+  margin-bottom: 0.75rem;
+}
+
+.message-text-content p:last-child {
+  margin-bottom: 0;
+}
+
+.message-text-content ul,
+.message-text-content ol {
+  margin-left: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.message-text-content li {
+  margin-bottom: 0.25rem;
+}
+
+.message-text-content a {
+  color: #818cf8;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.message-bubble.user .message-text-content a {
+  color: #e0e7ff;
+}
+
+.message-text-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.message-text-content th,
+.message-text-content td {
+  border: 1px solid var(--surface-border);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.message-text-content th {
+  background: rgba(255, 255, 255, 0.05);
+  font-weight: 600;
+}
+
+/* Code Styles */
+.message-text-content .inline-code {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0.15rem 0.35rem;
+  border-radius: 6px;
+  font-family: monospace;
+  font-size: 0.85rem;
+}
+
+.message-bubble.user .message-text-content .inline-code {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.message-text-content .code-block-pre {
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  padding: 1rem;
+  overflow-x: auto;
+  margin: 0.75rem 0;
+}
+
+.message-text-content .code-block-pre code {
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: #f8fafc;
+}
