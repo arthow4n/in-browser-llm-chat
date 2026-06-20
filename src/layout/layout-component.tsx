@@ -16,6 +16,15 @@ export function LayoutComponent() {
     send({ type: "REFRESH_THREADS" });
   }, [location.pathname, send]);
 
+  // Navigate to newly created thread once layoutMachine finishes creation
+  useEffect(() => {
+    if (state.context.newCreatedThreadId) {
+      const targetId = state.context.newCreatedThreadId;
+      send({ type: "CLEAR_NEW_THREAD_ID" });
+      void navigate(`/threads/${targetId}`);
+    }
+  }, [state.context.newCreatedThreadId, send, navigate]);
+
   const activeThread = threadId ? state.context.threads.find((t) => t.id === threadId) : undefined;
 
   let title = "In-Browser LLM Chat";
@@ -28,15 +37,21 @@ export function LayoutComponent() {
   }
 
   const handleNewChat = () => {
-    // In Step 2.2 we will implement full thread creation. For now, navigate to thread route if needed
-    // or log/do nothing. Let's navigate to /threads/new or trigger callback if needed.
-    // Let's add a placeholder navigation or trigger.
-    void navigate("/threads/new-placeholder");
+    send({ type: "CREATE_THREAD" });
   };
 
   const handleDeleteThread = (id: string) => {
-    // In Step 2.2 we will implement full thread deletion.
-    console.log("Delete thread requested:", id);
+    const isDeletingActive = threadId === id;
+    if (
+      confirm(
+        "Are you sure you want to delete this conversation? This will permanently delete all messages and history.",
+      )
+    ) {
+      send({ type: "DELETE_THREAD", id });
+      if (isDeletingActive) {
+        void navigate("/settings");
+      }
+    }
   };
 
   return (

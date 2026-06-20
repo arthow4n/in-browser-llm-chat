@@ -50,12 +50,12 @@
   - [x] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
   - [x] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
 
-- [ ] **Step 2.2: Build Thread Management CRUD.** Implement thread creation (New Chat), thread selection in the SideNav, and thread deletion logic (including asynchronous cascading deletes if applicable). Sync selected thread ID with the URL.
-  - [ ] Implement the logic/feature.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Dispatch a subagent to perform code review.
-  - [ ] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
-  - [ ] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
+- [x] **Step 2.2: Build Thread Management CRUD.** Implement thread creation (New Chat), thread selection in the SideNav, and thread deletion logic (including asynchronous cascading deletes if applicable). Sync selected thread ID with the URL.
+  - [x] Implement the logic/feature.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Dispatch a subagent to perform code review.
+  - [x] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
+  - [x] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
 
 - [ ] **Step 2.3: Implement Chat Input Area.** Build the chat input textbox with auto-resize. Hook it up to state machine logic to emit events when a user sends a message.
   - [ ] Implement the logic/feature.

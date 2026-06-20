@@ -107,4 +107,84 @@ describe("Layout and Routing Integration Tests", () => {
     // Sidebar should lose mobile-open class
     expect(sidebar).not.toHaveClass("mobile-open");
   });
+
+  it("should support thread creation, selection, and deletion", async () => {
+    // Mock confirm dialog to return true
+    const confirmSpy = vi.spyOn(window, "confirm").mockImplementation(() => true);
+
+    await setSetting("api_keys", { openRouter: "mock-key", gemini: "" });
+
+    render(<AppComponent />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("app-layout")).toBeInTheDocument();
+    });
+
+    // 1. Thread Creation
+    const newChatBtn = screen.getByTestId("new-chat-btn");
+    fireEvent.click(newChatBtn);
+
+    // Sidebar should display the newly created thread link
+    // The link should render with text "New Chat" or similar, and we should transition routes (so header title updates)
+    let threadLink: HTMLElement | null = null;
+    await waitFor(() => {
+      threadLink = screen.getByText("New Chat", { selector: ".thread-title-text" });
+      expect(threadLink).toBeInTheDocument();
+    });
+
+    // Header title should update to "New Chat" because we automatically transitioned
+    await waitFor(() => {
+      expect(screen.getByTestId("header-title")).toHaveTextContent("New Chat");
+    });
+
+    // 2. Thread Selection
+    // Switch to settings first
+    const settingsLink = screen.getByTestId("settings-nav-link");
+    fireEvent.click(settingsLink);
+
+    // Wait for the URL path change to reflect in the state/UI title
+    await waitFor(
+      () => {
+        expect(screen.getByTestId("header-title")).toHaveTextContent("Global Settings");
+      },
+      { timeout: 2000 },
+    );
+
+    // Click the thread link to select it
+    // Refresh the threadLink query to be safe
+    const activeThreadLink = screen.getByText("New Chat", { selector: ".thread-title-text" });
+    fireEvent.click(activeThreadLink);
+    await waitFor(
+      () => {
+        expect(screen.getByTestId("header-title")).toHaveTextContent("New Chat");
+      },
+      { timeout: 2000 },
+    );
+
+    // 3. Thread Deletion
+    // Find the delete button next to the thread title in the list
+    const deleteBtn = screen.getByText("🗑");
+    fireEvent.click(deleteBtn);
+
+    expect(confirmSpy).toHaveBeenCalled();
+
+    // The thread link should be gone, and we should be redirected back to global settings (since we deleted the active thread)
+    await waitFor(
+      () => {
+        expect(
+          screen.queryByText("New Chat", { selector: ".thread-title-text" }),
+        ).not.toBeInTheDocument();
+      },
+      { timeout: 2000 },
+    );
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId("header-title")).toHaveTextContent("Global Settings");
+      },
+      { timeout: 2000 },
+    );
+
+    confirmSpy.mockRestore();
+  });
 });
