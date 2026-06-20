@@ -80,9 +80,9 @@
     "@ibm/plex-serif@2.0.0": true,
     "@openrouter/sdk@0.12.79": true,
     "@parcel/watcher@2.5.6": true,
-    "esbuild@0.28.0": true,
     "msw@2.14.6": true,
     "@google/genai": true,
-    "protobufjs": true
+    "protobufjs": true,
+    "esbuild@0.28.1": true
   }
 }

@@ -987,3 +987,107 @@ body {
     display: flex;
   }
 }
+
+/* Chat Input Area styling */
+.chat-input-area-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  background: var(--surface-bg);
+  border-top: 1px solid var(--surface-border);
+}
+
+.chat-input-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.chat-role-selector {
+  min-height: 44px;
+  padding: 0 0.75rem;
+  background: var(--input-bg);
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  outline: none;
+  transition: var(--transition);
+}
+
+.chat-role-selector:focus {
+  border-color: var(--input-focus-border);
+}
+
+.chat-input-textarea-wrapper {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  position: relative;
+}
+
+.chat-input-textarea {
+  flex: 1;
+  min-height: 44px;
+  max-height: 200px;
+  padding: 0.75rem 1rem;
+  background: var(--input-bg);
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  resize: none;
+  outline: none;
+  transition: var(--transition);
+}
+
+.chat-input-textarea:focus {
+  border-color: var(--input-focus-border);
+}
+
+.chat-input-textarea:disabled,
+.chat-role-selector:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.chat-send-btn {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-color);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.chat-send-btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+}
+
+.chat-send-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.chat-send-btn:disabled {
+  background: var(--surface-border);
+  color: var(--text-secondary);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.send-icon {
+  font-size: 1.25rem;
+}
