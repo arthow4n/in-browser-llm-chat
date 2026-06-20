@@ -34,12 +34,12 @@
   - [x] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
   - [x] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
 
-- [ ] **Step 1.4: Implement Theme Management & Onboarding.** Hook up the application theme switcher to the global setting. Add an onboarding view or blocker state that displays when no API keys are present in the `settings` store.
-  - [ ] Implement the logic/feature.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Dispatch a subagent to perform code review.
-  - [ ] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
-  - [ ] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
+- [x] **Step 1.4: Implement Theme Management & Onboarding.** Hook up the application theme switcher to the global setting. Add an onboarding view or blocker state that displays when no API keys are present in the `settings` store.
+  - [x] Implement the logic/feature.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Dispatch a subagent to perform code review.
+  - [x] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
+  - [x] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
 
 ## 2. Phase 2: Basic Chat Interface
 

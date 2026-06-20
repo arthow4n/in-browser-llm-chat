@@ -1,11 +1,13 @@
+import { useEffect } from "react";
 import { useMachine } from "@xstate/react";
 import { settingsFormMachine } from "./settings-machine";
 
 export interface SettingsComponentProps {
   onThemeChange?: (theme: "light" | "dark" | "system") => void;
+  onSettingsSave?: (settings: { theme: "light" | "dark" | "system"; hasApiKeys: boolean }) => void;
 }
 
-export function SettingsComponent({ onThemeChange }: SettingsComponentProps) {
+export function SettingsComponent({ onThemeChange, onSettingsSave }: SettingsComponentProps) {
   const [state, send] = useMachine(settingsFormMachine);
   const context = state.context;
 
@@ -16,6 +18,25 @@ export function SettingsComponent({ onThemeChange }: SettingsComponentProps) {
   const isError = state.matches("error");
 
   const isDisabled = isLoading || isSaving || isValidating || isTesting;
+
+  useEffect(() => {
+    if (
+      state.matches({ idle: "clean" }) &&
+      context.successMessage === "Settings saved successfully!"
+    ) {
+      onSettingsSave?.({
+        theme: context.theme,
+        hasApiKeys: !!(context.openRouterApiKey || context.geminiApiKey),
+      });
+    }
+  }, [
+    state,
+    context.successMessage,
+    context.theme,
+    context.openRouterApiKey,
+    context.geminiApiKey,
+    onSettingsSave,
+  ]);
 
   const handleFieldChange = (
     field: "openRouterApiKey" | "geminiApiKey" | "theme",
