@@ -63,7 +63,7 @@ describe("AppComponent UI Tests", () => {
       expect(screen.getByLabelText("Gemini API Key")).toBeInTheDocument();
     });
 
-    expect(screen.queryByTestId("app-workspace")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("app-layout")).not.toBeInTheDocument();
   });
 
   it("transitions to workspace view once API keys are saved", async () => {
@@ -94,17 +94,17 @@ describe("AppComponent UI Tests", () => {
     // Click Save
     fireEvent.click(saveBtn);
 
-    // Onboarding should disappear and main workspace should appear
+    // Onboarding should disappear and main workspace layout should appear
     await waitFor(
       () => {
-        expect(screen.getByTestId("app-workspace")).toBeInTheDocument();
+        expect(screen.getByTestId("app-layout")).toBeInTheDocument();
       },
       { timeout: 3000 },
     );
 
     expect(screen.queryByTestId("onboarding-view")).not.toBeInTheDocument();
-    expect(screen.getByTestId("tab-settings-btn")).toBeInTheDocument();
-    expect(screen.getByTestId("tab-presets-btn")).toBeInTheDocument();
+    expect(screen.getByTestId("settings-nav-link")).toBeInTheDocument();
+    expect(screen.getByTestId("presets-nav-link")).toBeInTheDocument();
   });
 
   it("skips onboarding and directly renders workspace if API keys exist", async () => {
@@ -116,10 +116,10 @@ describe("AppComponent UI Tests", () => {
     // Loader should be present initially
     expect(screen.getByTestId("app-loading")).toBeInTheDocument();
 
-    // Directly shows the workspace
+    // Directly shows the workspace layout
     await waitFor(
       () => {
-        expect(screen.getByTestId("app-workspace")).toBeInTheDocument();
+        expect(screen.getByTestId("app-layout")).toBeInTheDocument();
       },
       { timeout: 3000 },
     );

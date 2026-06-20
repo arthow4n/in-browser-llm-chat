@@ -1,30 +1,13 @@
 import { useEffect } from "react";
 import { useMachine } from "@xstate/react";
-import { createMachine } from "xstate";
+import { HashRouter, Routes, Route, Navigate } from "react-router";
 import { appMachine, applyDocumentTheme } from "./app-machine";
 import { SettingsComponent } from "../settings/settings-component";
 import { PresetsComponent } from "../presets/presets-component";
-
-const tabsMachine = createMachine({
-  id: "tabs",
-  initial: "settings",
-  states: {
-    settings: {
-      on: {
-        SHOW_PRESETS: { target: "presets" },
-      },
-    },
-    presets: {
-      on: {
-        SHOW_SETTINGS: { target: "settings" },
-      },
-    },
-  },
-});
+import { LayoutComponent } from "../layout/layout-component";
 
 export function AppComponent() {
   const [appState, sendApp] = useMachine(appMachine);
-  const [tabState, sendTab] = useMachine(tabsMachine);
 
   const context = appState.context;
 
@@ -99,37 +82,42 @@ export function AppComponent() {
     );
   }
 
-  // Main application view
+  // Main application view driven by React Router
   return (
-    <div className="app-workspace" data-testid="app-workspace">
-      <nav className="tabs-nav" aria-label="Main Navigation">
-        <button
-          type="button"
-          className={`tab-btn ${tabState.matches("settings") ? "active" : ""}`}
-          onClick={() => sendTab({ type: "SHOW_SETTINGS" })}
-          data-testid="tab-settings-btn"
-        >
-          Global Settings
-        </button>
-        <button
-          type="button"
-          className={`tab-btn ${tabState.matches("presets") ? "active" : ""}`}
-          onClick={() => sendTab({ type: "SHOW_PRESETS" })}
-          data-testid="tab-presets-btn"
-        >
-          LLM Presets
-        </button>
-      </nav>
-
-      <main style={{ width: "100%", display: "flex", justifyContent: "center" }}>
-        {tabState.matches("settings") && (
-          <SettingsComponent
-            onThemeChange={handleThemeChange}
-            onSettingsSave={handleSettingsSave}
+    <HashRouter>
+      <Routes>
+        <Route path="/" element={<LayoutComponent />}>
+          <Route index element={<Navigate to="/settings" replace />} />
+          <Route
+            path="settings"
+            element={
+              <SettingsComponent
+                onThemeChange={handleThemeChange}
+                onSettingsSave={handleSettingsSave}
+              />
+            }
           />
-        )}
-        {tabState.matches("presets") && <PresetsComponent />}
-      </main>
-    </div>
+          <Route path="presets" element={<PresetsComponent />} />
+          <Route
+            path="threads/:threadId"
+            element={
+              <div className="chat-feed-placeholder" data-testid="chat-feed-placeholder">
+                <p>Conversation Content Region</p>
+              </div>
+            }
+          />
+          <Route
+            path="threads/new-placeholder"
+            element={
+              <div className="chat-feed-placeholder" data-testid="chat-feed-placeholder">
+                <p>New Conversation Setup Region</p>
+              </div>
+            }
+          />
+          {/* Fallback to settings */}
+          <Route path="*" element={<Navigate to="/settings" replace />} />
+        </Route>
+      </Routes>
+    </HashRouter>
   );
 }
