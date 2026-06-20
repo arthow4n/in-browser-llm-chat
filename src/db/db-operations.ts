@@ -179,10 +179,11 @@ export async function getLatestCheckpoint(
   const db = await getDB();
   const tx = db.transaction("checkpoints", "readonly");
   const store = tx.objectStore("checkpoints");
-  let cursor = await store.openCursor(null, "prev");
+  const index = store.index("threadId");
+  let cursor = await index.openCursor(IDBKeyRange.only(threadId), "prev");
   while (cursor) {
     const val = cursor.value;
-    if (val.threadId === threadId && val.checkpointNs === checkpointNs) {
+    if (val.checkpointNs === checkpointNs) {
       return val;
     }
     cursor = await cursor.continue();
@@ -197,11 +198,12 @@ export async function listCheckpoints(
   const db = await getDB();
   const tx = db.transaction("checkpoints", "readonly");
   const store = tx.objectStore("checkpoints");
+  const index = store.index("threadId");
   const results: Checkpoint[] = [];
-  let cursor = await store.openCursor(null, "prev");
+  let cursor = await index.openCursor(IDBKeyRange.only(threadId), "prev");
   while (cursor) {
     const val = cursor.value;
-    if (val.threadId === threadId && val.checkpointNs === checkpointNs) {
+    if (val.checkpointNs === checkpointNs) {
       results.push(val);
     }
     cursor = await cursor.continue();
@@ -257,15 +259,12 @@ export async function getCheckpointWrites(
   const db = await getDB();
   const tx = db.transaction("checkpoint_writes", "readonly");
   const store = tx.objectStore("checkpoint_writes");
+  const index = store.index("threadId");
   const results: CheckpointWrites[] = [];
-  let cursor = await store.openCursor(null, "next");
+  let cursor = await index.openCursor(IDBKeyRange.only(threadId), "next");
   while (cursor) {
     const val = cursor.value;
-    if (
-      val.threadId === threadId &&
-      val.checkpointNs === checkpointNs &&
-      val.checkpointId === checkpointId
-    ) {
+    if (val.checkpointNs === checkpointNs && val.checkpointId === checkpointId) {
       results.push(val);
     }
     cursor = await cursor.continue();

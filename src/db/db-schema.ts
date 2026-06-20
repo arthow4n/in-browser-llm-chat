@@ -198,6 +198,7 @@ export interface CheckpointTuple {
   parentCheckpointId: string | null;
   checkpointId: string;
   checkpointNs: string;
+  pendingWrites?: [string, unknown][];
 }
 
 // --- Checkpoint Writes Store ---
