@@ -5,6 +5,7 @@ import { appMachine, applyDocumentTheme } from "./app-machine";
 import { SettingsComponent } from "../settings/settings-component";
 import { PresetsComponent } from "../presets/presets-component";
 import { LayoutComponent } from "../layout/layout-component";
+import { WorkflowEditorComponent } from "../workflows/workflow-editor-component";
 
 export function AppComponent() {
   const [appState, sendApp] = useMachine(appMachine);
@@ -98,6 +99,7 @@ export function AppComponent() {
             }
           />
           <Route path="presets" element={<PresetsComponent />} />
+          <Route path="workflows" element={<WorkflowEditorComponent />} />
           <Route
             path="threads/:threadId"
             element={

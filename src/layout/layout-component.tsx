@@ -32,6 +32,8 @@ export function LayoutComponent() {
     title = "Global Settings";
   } else if (location.pathname.startsWith("/presets")) {
     title = "LLM Presets";
+  } else if (location.pathname.startsWith("/workflows")) {
+    title = "Agent Workflows";
   } else if (threadId) {
     title = activeThread?.title || "Untitled Chat";
   }

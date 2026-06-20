@@ -96,6 +96,15 @@ export function SidebarComponent({
           <span>LLM Presets</span>
         </NavLink>
         <NavLink
+          to="/workflows"
+          className={({ isActive }) => `sidebar-footer-link ${isActive ? "active" : ""}`}
+          onClick={onCloseMobile}
+          data-testid="workflows-nav-link"
+        >
+          <span className="footer-icon">🔄</span>
+          <span>Agent Workflows</span>
+        </NavLink>
+        <NavLink
           to="/settings"
           className={({ isActive }) => `sidebar-footer-link ${isActive ? "active" : ""}`}
           onClick={onCloseMobile}
