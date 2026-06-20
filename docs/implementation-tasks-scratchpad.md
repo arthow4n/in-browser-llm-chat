@@ -86,7 +86,6 @@
   - [x] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
   - [x] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
 
-
 - [ ] **Step 3.3: Basic 1-Agent Workflow & Message Compilation.** Implement the compiler rules for taking raw message history and forming the exact payload for the LLM API. Hook up the Vercel AI SDK to perform the LLM call using the "Standard 1-agent" approach.
   - [ ] Implement the logic/feature.
   - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
