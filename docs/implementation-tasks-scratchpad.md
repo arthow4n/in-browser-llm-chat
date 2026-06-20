@@ -102,12 +102,12 @@
 
 ## 4. Phase 4: Workflow Management
 
-- [ ] **Step 4.1: Build Custom Workflow CRUD.** Implement the necessary hooks and services for reading, writing, and deleting workflows in the `workflows` IndexedDB store. Include logic to prevent deletion of built-in workflows or workflows currently in use.
-  - [ ] Implement the logic/feature.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Dispatch a subagent to perform code review.
-  - [ ] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
-  - [ ] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
+- [x] **Step 4.1: Build Custom Workflow CRUD.** Implement the necessary hooks and services for reading, writing, and deleting workflows in the `workflows` IndexedDB store. Include logic to prevent deletion of built-in workflows or workflows currently in use.
+  - [x] Implement the logic/feature.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Dispatch a subagent to perform code review.
+  - [x] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
+  - [x] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
 
 - [ ] **Step 4.2: Build the Workflow JSON Editor.** Implement the text-based JSON editor UI component (`Workflow JSON Editor State Machine`) for authoring workflow schemas.
   - [ ] Implement the logic/feature.
