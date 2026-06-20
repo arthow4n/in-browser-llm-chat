@@ -36,7 +36,13 @@ export type CompiledNodeAction =
     }
   | { kind: "input" }
   | { kind: "tool" }
-  | { kind: "consensus_check"; nodeId: string; systemPrompt: string; maxLoopLimit: number }
+  | {
+      kind: "consensus_check";
+      nodeId: string;
+      systemPrompt: string;
+      maxLoopLimit: number;
+      evaluatorMode: "pure-rule" | "llm";
+    }
   | { kind: "summary"; nodeId: string; nodeName: string; systemPrompt: string; presetId?: string };
 
 /**
@@ -215,11 +221,13 @@ function compileNodeAction(node: WorkflowNode): CompiledNodeAction {
 
     case "consensus_check": {
       const maxLoopLimit = typeof node.maxLoopLimit === "number" ? node.maxLoopLimit : 5;
+      const systemPrompt = (node.systemPrompt as string | undefined) ?? "";
       return {
         kind: "consensus_check",
         nodeId: node.id,
-        systemPrompt: (node.systemPrompt as string | undefined) ?? "",
+        systemPrompt,
         maxLoopLimit,
+        evaluatorMode: systemPrompt.trim() !== "" ? "llm" : "pure-rule",
       };
     }
 

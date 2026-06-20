@@ -265,6 +265,7 @@ describe("compileWorkflow – compiled node kinds", () => {
     expect(ccAction.kind).toBe("consensus_check");
     expect(ccAction.maxLoopLimit).toBe(5);
     expect(ccAction.systemPrompt).toBe("Evaluate consensus.");
+    expect(ccAction.evaluatorMode).toBe("llm");
   });
 
   it("respects custom maxLoopLimit on consensus_check nodes", () => {
@@ -290,6 +291,7 @@ describe("compileWorkflow – compiled node kinds", () => {
     const node = graph.nodes.get("cc")!;
     const ccAction = node.action as Extract<typeof node.action, { kind: "consensus_check" }>;
     expect(ccAction.maxLoopLimit).toBe(10);
+    expect(ccAction.evaluatorMode).toBe("pure-rule");
   });
 
   it("compiles a summary node with kind 'summary'", () => {
