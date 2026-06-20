@@ -24,52 +24,94 @@ export const BUILT_IN_WORKFLOWS: Workflow[] = [
   {
     id: "debate",
     name: "Debate",
-    description: "A multi-agent debate workflow where two agents debate a topic.",
+    description:
+      "A multi-agent debate workflow. Seed the debate with a topic, then let two agents debate in a loop until consensus is reached or the round limit is hit. A summarizer then synthesises the outcome.",
     isBuiltIn: true,
     nodes: [
+      {
+        id: "input",
+        type: "input",
+        name: "Topic Input",
+      },
       {
         id: "initiator",
         type: "agent",
         name: "Initiator",
-        systemPrompt: "You are the debate initiator. Set up the debate on the topic: {{topic}}.",
+        systemPrompt:
+          "You are the debate moderator. The user has proposed the following debate topic:\n\n{{topic}}\n\nWrite a concise opening statement that:\n1. Restates the topic clearly.\n2. Frames the key questions and tensions to be debated.\n3. Invites Debater A (pro) and Debater B (con) to present their opening arguments.\n\nKeep the opening under 200 words.",
       },
       {
         id: "Debater_A",
         type: "agent",
         name: "Debater A",
-        systemPrompt: "Argue in favor of the topic.",
+        systemPrompt:
+          "You are Debater A. You argue **in favour** of the debate topic: {{topic}}.\n\nGuidelines:\n- Present clear, logical arguments supported by evidence or reasoning.\n- Directly respond to your opponent's most recent counterargument.\n- Keep each response concise (under 250 words).\n- If you genuinely believe both sides have reached a satisfactory mutual understanding or agreement, you may call the `declare_consensus` tool to signal the end of the debate. Only do this when consensus is truly warranted — not prematurely.",
         loopHeader: true,
+        tools: ["declare_consensus"],
+        excludeToolsBeforeRound: { declare_consensus: 3 },
       },
       {
         id: "Debater_B",
         type: "agent",
         name: "Debater B",
-        systemPrompt: "Argue against the topic.",
+        systemPrompt:
+          "You are Debater B. You argue **against** the debate topic: {{topic}}.\n\nGuidelines:\n- Present clear, logical arguments supported by evidence or reasoning.\n- Directly respond to your opponent's most recent counterargument.\n- Keep each response concise (under 250 words).\n- If you genuinely believe both sides have reached a satisfactory mutual understanding or agreement, you may call the `declare_consensus` tool to signal the end of the debate. Only do this when consensus is truly warranted — not prematurely.",
+        tools: ["declare_consensus"],
+        excludeToolsBeforeRound: { declare_consensus: 3 },
+      },
+      {
+        id: "debate_tool",
+        type: "tool",
+        name: "Debate Tool Executor",
       },
       {
         id: "Consensus_Evaluator_A",
         type: "consensus_check",
         name: "Consensus Evaluator A",
+        systemPrompt:
+          'You are an impartial debate evaluator. Review the debate history between Debater A and Debater B on the topic: {{topic}}.\n\nAnalyse the most recent exchange and determine whether the debaters have reached a genuine consensus or mutual understanding.\n\nRespond with a JSON object in exactly this format:\n{"consensusReached": boolean, "reasoning": string}\n\n- Set `consensusReached` to `true` only if both debaters have clearly acknowledged each other\'s core points and converged toward agreement.\n- Set it to `false` if meaningful disagreement still exists.\n- Keep `reasoning` under 100 words.',
+        maxLoopLimit: 5,
       },
       {
         id: "Consensus_Evaluator_B",
         type: "consensus_check",
         name: "Consensus Evaluator B",
+        systemPrompt:
+          'You are an impartial debate evaluator. Review the debate history between Debater A and Debater B on the topic: {{topic}}.\n\nAnalyse the most recent exchange and determine whether the debaters have reached a genuine consensus or mutual understanding.\n\nRespond with a JSON object in exactly this format:\n{"consensusReached": boolean, "reasoning": string}\n\n- Set `consensusReached` to `true` only if both debaters have clearly acknowledged each other\'s core points and converged toward agreement.\n- Set it to `false` if meaningful disagreement still exists.\n- Keep `reasoning` under 100 words.',
+        maxLoopLimit: 5,
       },
       {
         id: "summarizer",
         type: "summary",
         name: "Summarizer",
-        systemPrompt: "Summarize the debate.",
+        systemPrompt:
+          "You are the debate summarizer. Review the complete debate history on the topic: {{topic}}.\n\nWrite a structured summary that includes:\n1. **Topic**: Restate the debate topic.\n2. **Key Arguments For**: Summarise the strongest points raised by Debater A.\n3. **Key Arguments Against**: Summarise the strongest points raised by Debater B.\n4. **Outcome**: State whether the debaters reached consensus. If consensus was reached, highlight the agreed points. If the debate ended without consensus (due to reaching the round limit or early termination), note the remaining points of disagreement.\n5. **Conclusion**: Offer a balanced closing remark.\n\nKeep the summary clear, neutral, and under 400 words.",
       },
     ],
     edges: [
+      { source: "input", target: "initiator" },
       { source: "initiator", target: "Debater_A" },
+      // Debater_A routes to tool on tool_call, otherwise to Consensus_Evaluator_A
+      { source: "Debater_A", target: "debate_tool", condition: "on_tool_call" },
       { source: "Debater_A", target: "Consensus_Evaluator_A" },
-      { source: "Consensus_Evaluator_A", target: "Debater_B", condition: "on_no_consensus" },
-      { source: "Consensus_Evaluator_A", target: "summarizer", condition: "on_consensus" },
+      // Debater_B routes to tool on tool_call, otherwise to Consensus_Evaluator_B
+      { source: "Debater_B", target: "debate_tool", condition: "on_tool_call" },
       { source: "Debater_B", target: "Consensus_Evaluator_B" },
-      { source: "Consensus_Evaluator_B", target: "Debater_A", condition: "on_no_consensus" },
+      // Tool node routes back to whichever agent triggered the tool call
+      { source: "debate_tool", target: "Debater_A", condition: "on_tool_result" },
+      { source: "debate_tool", target: "Debater_B", condition: "on_tool_result" },
+      // Consensus evaluators route to next debater or summarizer
+      {
+        source: "Consensus_Evaluator_A",
+        target: "Debater_B",
+        condition: "on_no_consensus",
+      },
+      { source: "Consensus_Evaluator_A", target: "summarizer", condition: "on_consensus" },
+      {
+        source: "Consensus_Evaluator_B",
+        target: "Debater_A",
+        condition: "on_no_consensus",
+      },
       { source: "Consensus_Evaluator_B", target: "summarizer", condition: "on_consensus" },
     ],
   },

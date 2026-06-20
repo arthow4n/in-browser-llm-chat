@@ -590,3 +590,219 @@ describe("compileWorkflow – standard 1-agent workflow", () => {
     expect(agNode.route(makeState())).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// compileWorkflow – built-in Debate Workflow (integration)
+// ---------------------------------------------------------------------------
+describe("compileWorkflow – built-in Debate Workflow", () => {
+  const debateWorkflow: Workflow = {
+    id: "debate",
+    name: "Debate",
+    description:
+      "A multi-agent debate workflow. Seed the debate with a topic, then let two agents debate in a loop until consensus is reached or the round limit is hit. A summarizer then synthesises the outcome.",
+    isBuiltIn: true,
+    nodes: [
+      { id: "input", type: "input", name: "Topic Input" },
+      {
+        id: "initiator",
+        type: "agent",
+        name: "Initiator",
+        systemPrompt: "You are the debate moderator. The topic is {{topic}}.",
+      },
+      {
+        id: "Debater_A",
+        type: "agent",
+        name: "Debater A",
+        systemPrompt: "You are Debater A arguing for {{topic}}.",
+        loopHeader: true,
+        tools: ["declare_consensus"],
+        excludeToolsBeforeRound: { declare_consensus: 3 },
+      },
+      {
+        id: "Debater_B",
+        type: "agent",
+        name: "Debater B",
+        systemPrompt: "You are Debater B arguing against {{topic}}.",
+        tools: ["declare_consensus"],
+        excludeToolsBeforeRound: { declare_consensus: 3 },
+      },
+      { id: "debate_tool", type: "tool", name: "Debate Tool Executor" },
+      {
+        id: "Consensus_Evaluator_A",
+        type: "consensus_check",
+        name: "Consensus Evaluator A",
+        systemPrompt: '{"consensusReached": false}',
+        maxLoopLimit: 5,
+      },
+      {
+        id: "Consensus_Evaluator_B",
+        type: "consensus_check",
+        name: "Consensus Evaluator B",
+        systemPrompt: '{"consensusReached": false}',
+        maxLoopLimit: 5,
+      },
+      {
+        id: "summarizer",
+        type: "summary",
+        name: "Summarizer",
+        systemPrompt: "Summarize the debate on {{topic}}.",
+      },
+    ],
+    edges: [
+      { source: "input", target: "initiator" },
+      { source: "initiator", target: "Debater_A" },
+      { source: "Debater_A", target: "debate_tool", condition: "on_tool_call" },
+      { source: "Debater_A", target: "Consensus_Evaluator_A" },
+      { source: "Debater_B", target: "debate_tool", condition: "on_tool_call" },
+      { source: "Debater_B", target: "Consensus_Evaluator_B" },
+      { source: "debate_tool", target: "Debater_A", condition: "on_tool_result" },
+      { source: "debate_tool", target: "Debater_B", condition: "on_tool_result" },
+      { source: "Consensus_Evaluator_A", target: "Debater_B", condition: "on_no_consensus" },
+      { source: "Consensus_Evaluator_A", target: "summarizer", condition: "on_consensus" },
+      { source: "Consensus_Evaluator_B", target: "Debater_A", condition: "on_no_consensus" },
+      { source: "Consensus_Evaluator_B", target: "summarizer", condition: "on_consensus" },
+    ],
+  };
+
+  it("compiles the debate workflow without errors", () => {
+    expect(() => compileWorkflow(debateWorkflow)).not.toThrow();
+  });
+
+  it("uses 'input' as the entry node", () => {
+    const graph = compileWorkflow(debateWorkflow);
+    expect(graph.entryNodeId).toBe("input");
+  });
+
+  it("compiles all 8 nodes", () => {
+    const graph = compileWorkflow(debateWorkflow);
+    expect(graph.nodes.size).toBe(8);
+  });
+
+  it("Debater_A is compiled as an agent node with loopHeader=true and declare_consensus tool", () => {
+    const graph = compileWorkflow(debateWorkflow);
+    const node = graph.nodes.get("Debater_A")!;
+    const action = node.action as Extract<typeof node.action, { kind: "agent" }>;
+    expect(action.kind).toBe("agent");
+    expect(action.loopHeader).toBe(true);
+    expect(action.tools).toContain("declare_consensus");
+    expect(action.excludeToolsBeforeRound).toEqual({ declare_consensus: 3 });
+  });
+
+  it("Debater_B is compiled as an agent node with declare_consensus tool", () => {
+    const graph = compileWorkflow(debateWorkflow);
+    const node = graph.nodes.get("Debater_B")!;
+    const action = node.action as Extract<typeof node.action, { kind: "agent" }>;
+    expect(action.kind).toBe("agent");
+    expect(action.tools).toContain("declare_consensus");
+    expect(action.excludeToolsBeforeRound).toEqual({ declare_consensus: 3 });
+  });
+
+  it("debate_tool is compiled as a tool node", () => {
+    const graph = compileWorkflow(debateWorkflow);
+    expect(graph.nodes.get("debate_tool")!.action.kind).toBe("tool");
+  });
+
+  it("Consensus_Evaluator_A is compiled as a consensus_check node with maxLoopLimit=5", () => {
+    const graph = compileWorkflow(debateWorkflow);
+    const node = graph.nodes.get("Consensus_Evaluator_A")!;
+    const action = node.action as Extract<typeof node.action, { kind: "consensus_check" }>;
+    expect(action.kind).toBe("consensus_check");
+    expect(action.maxLoopLimit).toBe(5);
+  });
+
+  it("summarizer is compiled as a summary node", () => {
+    const graph = compileWorkflow(debateWorkflow);
+    const node = graph.nodes.get("summarizer")!;
+    expect(node.action.kind).toBe("summary");
+  });
+
+  it("Debater_A routes to debate_tool on tool_call", () => {
+    const graph = compileWorkflow(debateWorkflow);
+    const node = graph.nodes.get("Debater_A")!;
+    const stateWithToolCall = makeState({
+      messages: [{ role: "assistant", tool_calls: [{ id: "tc-1" }] }],
+    });
+    expect(node.route(stateWithToolCall)).toBe("debate_tool");
+  });
+
+  it("Debater_A routes to Consensus_Evaluator_A when no tool call", () => {
+    const graph = compileWorkflow(debateWorkflow);
+    const node = graph.nodes.get("Debater_A")!;
+    const stateNoTool = makeState({
+      messages: [{ role: "assistant", content: "I argue that..." }],
+    });
+    expect(node.route(stateNoTool)).toBe("Consensus_Evaluator_A");
+  });
+
+  it("Debater_B routes to debate_tool on tool_call", () => {
+    const graph = compileWorkflow(debateWorkflow);
+    const node = graph.nodes.get("Debater_B")!;
+    const stateWithToolCall = makeState({
+      messages: [{ role: "assistant", tool_calls: [{ id: "tc-2" }] }],
+    });
+    expect(node.route(stateWithToolCall)).toBe("debate_tool");
+  });
+
+  it("Debater_B routes to Consensus_Evaluator_B when no tool call", () => {
+    const graph = compileWorkflow(debateWorkflow);
+    const node = graph.nodes.get("Debater_B")!;
+    const stateNoTool = makeState({
+      messages: [{ role: "assistant", content: "I counter that..." }],
+    });
+    expect(node.route(stateNoTool)).toBe("Consensus_Evaluator_B");
+  });
+
+  it("debate_tool routes back to Debater_A when lastAgentId is Debater_A", () => {
+    const graph = compileWorkflow(debateWorkflow);
+    const node = graph.nodes.get("debate_tool")!;
+    expect(node.route(makeState({ lastAgentId: "Debater_A" }))).toBe("Debater_A");
+  });
+
+  it("debate_tool routes back to Debater_B when lastAgentId is Debater_B", () => {
+    const graph = compileWorkflow(debateWorkflow);
+    const node = graph.nodes.get("debate_tool")!;
+    expect(node.route(makeState({ lastAgentId: "Debater_B" }))).toBe("Debater_B");
+  });
+
+  it("Consensus_Evaluator_A routes to Debater_B on no consensus", () => {
+    const graph = compileWorkflow(debateWorkflow);
+    const node = graph.nodes.get("Consensus_Evaluator_A")!;
+    expect(node.route(makeState({ currentRound: 1 }))).toBe("Debater_B");
+  });
+
+  it("Consensus_Evaluator_A routes to summarizer on consensus", () => {
+    const graph = compileWorkflow(debateWorkflow);
+    const node = graph.nodes.get("Consensus_Evaluator_A")!;
+    expect(node.route(makeState({ consensusReached: true }))).toBe("summarizer");
+  });
+
+  it("Consensus_Evaluator_A routes to summarizer when maxLoopLimit reached", () => {
+    const graph = compileWorkflow(debateWorkflow);
+    const node = graph.nodes.get("Consensus_Evaluator_A")!;
+    expect(node.route(makeState({ currentRound: 5 }))).toBe("summarizer");
+  });
+
+  it("Consensus_Evaluator_B routes to Debater_A on no consensus", () => {
+    const graph = compileWorkflow(debateWorkflow);
+    const node = graph.nodes.get("Consensus_Evaluator_B")!;
+    expect(node.route(makeState({ currentRound: 1 }))).toBe("Debater_A");
+  });
+
+  it("Consensus_Evaluator_B routes to summarizer on consensus", () => {
+    const graph = compileWorkflow(debateWorkflow);
+    const node = graph.nodes.get("Consensus_Evaluator_B")!;
+    expect(node.route(makeState({ consensusReached: true }))).toBe("summarizer");
+  });
+
+  it("Consensus_Evaluator_B routes to summarizer when forceSummarize is true", () => {
+    const graph = compileWorkflow(debateWorkflow);
+    const node = graph.nodes.get("Consensus_Evaluator_B")!;
+    expect(node.route(makeState({ forceSummarize: true }))).toBe("summarizer");
+  });
+
+  it("summarizer routes to null (terminal node)", () => {
+    const graph = compileWorkflow(debateWorkflow);
+    const node = graph.nodes.get("summarizer")!;
+    expect(node.route(makeState())).toBeNull();
+  });
+});

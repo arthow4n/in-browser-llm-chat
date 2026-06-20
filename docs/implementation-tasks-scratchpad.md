@@ -132,12 +132,12 @@
 
 ## 5. Phase 5: Advanced Orchestration & Loops
 
-- [ ] **Step 5.1: Implement Debate Workflow Logic.** Implement the built-in multi-agent Debate Workflow setup (Initiator, Debaters, Evaluators, Summarizer).
-  - [ ] Implement the logic/feature.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Dispatch a subagent to perform code review.
-  - [ ] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
-  - [ ] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
+- [x] **Step 5.1: Implement Debate Workflow Logic.** Implement the built-in multi-agent Debate Workflow setup (Initiator, Debaters, Evaluators, Summarizer).
+  - [x] Implement the logic/feature.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Dispatch a subagent to perform code review.
+  - [x] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
+  - [x] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
 
 - [ ] **Step 5.2: Conditional Routing and Consensus Evaluation.** Implement the compiler's conditional routing mechanism (`on_tool_call`, `on_tool_result`, `on_consensus`, `on_no_consensus`). Handle pure-rule vs. LLM-based `consensus_check` nodes.
   - [ ] Implement the logic/feature.

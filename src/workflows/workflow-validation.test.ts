@@ -124,4 +124,77 @@ describe("Workflow Structural Validation", () => {
     const errors = validateWorkflowStructure(wf);
     expect(errors.join(" ")).toContain("Loop detected without any loop exit capabilities");
   });
+
+  it("should validate the built-in Debate Workflow with zero errors", () => {
+    const debateWorkflow: Workflow = {
+      id: "debate",
+      name: "Debate",
+      description:
+        "A multi-agent debate workflow. Seed the debate with a topic, then let two agents debate in a loop until consensus is reached or the round limit is hit.",
+      isBuiltIn: true,
+      nodes: [
+        { id: "input", type: "input", name: "Topic Input" },
+        {
+          id: "initiator",
+          type: "agent",
+          name: "Initiator",
+          systemPrompt: "Moderate the debate on {{topic}}.",
+        },
+        {
+          id: "Debater_A",
+          type: "agent",
+          name: "Debater A",
+          systemPrompt: "Argue for {{topic}}.",
+          loopHeader: true,
+          tools: ["declare_consensus"],
+          excludeToolsBeforeRound: { declare_consensus: 3 },
+        },
+        {
+          id: "Debater_B",
+          type: "agent",
+          name: "Debater B",
+          systemPrompt: "Argue against {{topic}}.",
+          tools: ["declare_consensus"],
+          excludeToolsBeforeRound: { declare_consensus: 3 },
+        },
+        { id: "debate_tool", type: "tool", name: "Debate Tool Executor" },
+        {
+          id: "Consensus_Evaluator_A",
+          type: "consensus_check",
+          name: "Consensus Evaluator A",
+          systemPrompt: '{"consensusReached": false}',
+          maxLoopLimit: 5,
+        },
+        {
+          id: "Consensus_Evaluator_B",
+          type: "consensus_check",
+          name: "Consensus Evaluator B",
+          systemPrompt: '{"consensusReached": false}',
+          maxLoopLimit: 5,
+        },
+        {
+          id: "summarizer",
+          type: "summary",
+          name: "Summarizer",
+          systemPrompt: "Summarize the debate.",
+        },
+      ],
+      edges: [
+        { source: "input", target: "initiator" },
+        { source: "initiator", target: "Debater_A" },
+        { source: "Debater_A", target: "debate_tool", condition: "on_tool_call" },
+        { source: "Debater_A", target: "Consensus_Evaluator_A" },
+        { source: "Debater_B", target: "debate_tool", condition: "on_tool_call" },
+        { source: "Debater_B", target: "Consensus_Evaluator_B" },
+        { source: "debate_tool", target: "Debater_A", condition: "on_tool_result" },
+        { source: "debate_tool", target: "Debater_B", condition: "on_tool_result" },
+        { source: "Consensus_Evaluator_A", target: "Debater_B", condition: "on_no_consensus" },
+        { source: "Consensus_Evaluator_A", target: "summarizer", condition: "on_consensus" },
+        { source: "Consensus_Evaluator_B", target: "Debater_A", condition: "on_no_consensus" },
+        { source: "Consensus_Evaluator_B", target: "summarizer", condition: "on_consensus" },
+      ],
+    };
+    const errors = validateWorkflowStructure(debateWorkflow);
+    expect(errors).toEqual([]);
+  });
 });

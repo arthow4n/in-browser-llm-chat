@@ -121,4 +121,39 @@ describe("Workflows CRUD Service", () => {
 
     await expect(deleteWorkflow(customId)).resolves.not.toThrow();
   });
+
+  it("should return the built-in debate workflow and protect it from deletion/modification", async () => {
+    const debateWf = await getWorkflow("debate");
+    expect(debateWf).toBeDefined();
+    expect(debateWf?.isBuiltIn).toBe(true);
+    expect(debateWf?.id).toBe("debate");
+
+    // Should have an input node
+    expect(debateWf?.nodes.some((n) => n.id === "input" && n.type === "input")).toBe(true);
+
+    // Should have both debaters with declare_consensus tool
+    const debaterA = debateWf?.nodes.find((n) => n.id === "Debater_A");
+    expect(debaterA?.tools).toContain("declare_consensus");
+
+    const debaterB = debateWf?.nodes.find((n) => n.id === "Debater_B");
+    expect(debaterB?.tools).toContain("declare_consensus");
+
+    // Should have a tool node for declare_consensus
+    expect(debateWf?.nodes.some((n) => n.id === "debate_tool" && n.type === "tool")).toBe(true);
+
+    // Should have two consensus_check evaluators
+    const evaluators = debateWf?.nodes.filter((n) => n.type === "consensus_check") ?? [];
+    expect(evaluators).toHaveLength(2);
+
+    // Should have a summarizer
+    expect(debateWf?.nodes.some((n) => n.id === "summarizer" && n.type === "summary")).toBe(true);
+
+    // Deletion must be rejected
+    await expect(deleteWorkflow("debate")).rejects.toThrow("Cannot delete built-in workflows.");
+
+    // Modification must be rejected
+    await expect(
+      saveWorkflow({ ...(debateWf as Workflow), name: "Hacked Debate" }),
+    ).rejects.toThrow("Cannot modify built-in workflows.");
+  });
 });
