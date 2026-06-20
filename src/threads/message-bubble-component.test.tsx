@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, it, expect } from "vitest";
+import { render, screen, act } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
 import { MessageBubbleComponent } from "./message-bubble-component";
 import type { Message } from "../db/db-schema";
 
@@ -83,5 +83,35 @@ describe("MessageBubbleComponent", () => {
 
     expect(screen.getByTestId("message-bubble-mock-message-id")).toHaveClass("reasoning-bubble");
     expect(screen.getByText("Thinking Process")).toBeInTheDocument();
+  });
+
+  it("should debounce rendering text while streaming", async () => {
+    vi.useFakeTimers();
+    const message = createMockMessage({
+      role: "assistant",
+      content: "Hello",
+    });
+    const { rerender } = render(<MessageBubbleComponent message={message} isStreaming={true} />);
+
+    // Initially, it starts streaming, rawText is "", debouncedText is ""
+    expect(screen.getByTestId("message-content-mock-message-id")).toHaveTextContent("");
+
+    // Simulate token chunks arriving by updating message content prop
+    const message2 = { ...message, content: "Hello World" };
+    rerender(<MessageBubbleComponent message={message2} isStreaming={true} />);
+
+    // Should still be debouncing
+    expect(screen.getByTestId("message-content-mock-message-id")).toHaveTextContent("");
+
+    // Fast-forward time to trigger debounce render
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    expect(screen.getByTestId("message-content-mock-message-id")).toHaveTextContent("Hello World");
+
+    // End streaming
+    rerender(<MessageBubbleComponent message={message2} isStreaming={false} />);
+    expect(screen.getByTestId("message-content-mock-message-id")).toHaveTextContent("Hello World");
+    vi.useRealTimers();
   });
 });

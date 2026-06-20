@@ -1,16 +1,49 @@
+import { useEffect } from "react";
+import { useMachine } from "@xstate/react";
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import type { Message } from "../db/db-schema";
+import { streamingMessageBubbleMachine } from "./streaming-message-bubble-machine";
 import "katex/dist/katex.min.css";
 
 export interface MessageBubbleComponentProps {
   message: Message;
+  isStreaming?: boolean;
 }
 
-export function MessageBubbleComponent({ message }: MessageBubbleComponentProps) {
+export function MessageBubbleComponent({
+  message,
+  isStreaming = false,
+}: MessageBubbleComponentProps) {
   const { role, content, name, type } = message;
+
+  const [state, send] = useMachine(streamingMessageBubbleMachine);
+
+  // Synchronize incoming streaming content with the state machine
+  useEffect(() => {
+    if (isStreaming) {
+      send({ type: "STREAM_START" });
+    }
+  }, [isStreaming, send]);
+
+  useEffect(() => {
+    if (isStreaming) {
+      // Find the new token chunk to send
+      const currentRaw = state.context.rawText;
+      if (content.startsWith(currentRaw) && content.length > currentRaw.length) {
+        const delta = content.slice(currentRaw.length);
+        send({ type: "TOKEN_RECEIVED", token: delta });
+      }
+    }
+  }, [content, isStreaming, state.context.rawText, send]);
+
+  useEffect(() => {
+    if (!isStreaming && state.value === "streaming") {
+      send({ type: "STREAM_END" });
+    }
+  }, [isStreaming, state.value, send]);
 
   const isUser = role === "user";
   const isAssistant = role === "assistant";
@@ -32,6 +65,9 @@ export function MessageBubbleComponent({ message }: MessageBubbleComponentProps)
 
   // Define class names based on role and type
   const bubbleClass = `message-bubble ${role} ${type === "reasoning" ? "reasoning-bubble" : ""}`;
+
+  // Decide what text to display (debounced or raw content depending on streaming status)
+  const textToDisplay = isStreaming ? state.context.debouncedText : content;
 
   return (
     <div className={`message-row-wrapper ${role}-row`} data-testid={`message-row-${message.id}`}>
@@ -84,7 +120,7 @@ export function MessageBubbleComponent({ message }: MessageBubbleComponentProps)
               },
             }}
           >
-            {content}
+            {textToDisplay}
           </ReactMarkdown>
         </div>
       </div>
