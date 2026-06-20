@@ -20,12 +20,12 @@
   - [x] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
   - [x] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
 
-- [ ] **Step 1.2: Build Global Settings CRUD.** Implement the form for global settings (API keys, themes, default presets, injected system messages) and back it with the `settings` store in IndexedDB.
-  - [ ] Implement the logic/feature.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Dispatch a subagent to perform code review.
-  - [ ] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
-  - [ ] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
+- [x] **Step 1.2: Build Global Settings CRUD.** Implement the form for global settings (API keys, themes, default presets, injected system messages) and back it with the `settings` store in IndexedDB.
+  - [x] Implement the logic/feature.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Dispatch a subagent to perform code review.
+  - [x] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
+  - [x] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
 
 - [ ] **Step 1.3: Build LLM Preset CRUD.** Implement preset creation, reading, updating, and deletion. Connect it with the `presets` DB store. Include the preset connection testing logic.
   - [ ] Implement the logic/feature.
