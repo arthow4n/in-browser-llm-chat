@@ -114,4 +114,46 @@ describe("MessageBubbleComponent", () => {
     expect(screen.getByTestId("message-content-mock-message-id")).toHaveTextContent("Hello World");
     vi.useRealTimers();
   });
+
+  it("renders avatar initials and header bar", () => {
+    const message = createMockMessage({
+      role: "assistant",
+      name: "Debater A",
+      content: "Hello",
+    });
+    render(<MessageBubbleComponent message={message} />);
+
+    expect(screen.getByTestId("message-header-mock-message-id")).toBeInTheDocument();
+    expect(screen.getByTestId("message-avatar-mock-message-id")).toHaveTextContent("DE");
+  });
+
+  it("renders nested tool calls", () => {
+    const message = createMockMessage({
+      role: "assistant",
+      name: "Debater A",
+      content: "Hello",
+    });
+    const nestedTools: Message[] = [
+      {
+        id: "tool-msg-1",
+        threadId: "mock-thread-id",
+        sequence: 2,
+        role: "tool" as const,
+        content: "Tool result content",
+        type: "tool_result" as const,
+        toolCallId: "call-1",
+        name: "test_tool",
+        createdAt: Date.now(),
+        checkpointId: null,
+        checkpointNs: null,
+      },
+    ];
+
+    render(<MessageBubbleComponent message={message} nestedTools={nestedTools} />);
+
+    expect(screen.getByTestId("nested-tools-mock-message-id")).toBeInTheDocument();
+    expect(screen.getByTestId("nested-tool-tool-msg-1")).toBeInTheDocument();
+    expect(screen.getByText("test_tool")).toBeInTheDocument();
+    expect(screen.getByText("Tool result content")).toBeInTheDocument();
+  });
 });
