@@ -63,12 +63,12 @@
   - [x] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
   - [x] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
 
-- [ ] **Step 2.4: Basic Message Bubble Rendering.** Implement the core message bubble component capable of displaying markdown and LaTeX. Handle distinctions between `user` and `assistant` role styling.
-  - [ ] Implement the logic/feature.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Dispatch a subagent to perform code review.
-  - [ ] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
-  - [ ] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
+- [x] **Step 2.4: Basic Message Bubble Rendering.** Implement the core message bubble component capable of displaying markdown and LaTeX. Handle distinctions between `user` and `assistant` role styling.
+  - [x] Implement the logic/feature.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Dispatch a subagent to perform code review.
+  - [x] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
+  - [x] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
 
 ## 3. Phase 3: Core Custom Orchestration Execution
 
