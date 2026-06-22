@@ -590,11 +590,9 @@ export async function branchThread(
   const messagesToCopy = parentMessages.filter((m) => m.sequence <= parentMessage.sequence);
 
   for (const m of messagesToCopy) {
-    const clonedMsg: Message = {
-      ...m,
-      id: crypto.randomUUID(),
-      threadId: newThreadId,
-    };
+    const clonedMsg: Message = structuredClone(m);
+    clonedMsg.id = crypto.randomUUID();
+    clonedMsg.threadId = newThreadId;
     await messagesStore.put(clonedMsg);
   }
 
@@ -613,10 +611,8 @@ export async function branchThread(
   for (const pair of checkpointPairs) {
     const cp = await checkpointsStore.get([parentThreadId, pair.ns, pair.id]);
     if (cp) {
-      const clonedCp: Checkpoint = {
-        ...cp,
-        threadId: newThreadId,
-      };
+      const clonedCp: Checkpoint = structuredClone(cp);
+      clonedCp.threadId = newThreadId;
       await checkpointsStore.put(clonedCp);
     }
 
@@ -625,10 +621,8 @@ export async function branchThread(
     while (writesCursor) {
       const w = writesCursor.value;
       if (w.checkpointNs === pair.ns && w.checkpointId === pair.id) {
-        const clonedWrite: CheckpointWrites = {
-          ...w,
-          threadId: newThreadId,
-        };
+        const clonedWrite: CheckpointWrites = structuredClone(w);
+        clonedWrite.threadId = newThreadId;
         await writesStore.put(clonedWrite);
       }
       writesCursor = await writesCursor.continue();
@@ -659,7 +653,9 @@ export async function branchThread(
     id: newThreadId,
     title: newThreadTitle,
     workflowId: parentThread.workflowId,
-    workflowSnapshot: parentThread.workflowSnapshot,
+    workflowSnapshot: parentThread.workflowSnapshot
+      ? structuredClone(parentThread.workflowSnapshot)
+      : parentThread.workflowSnapshot,
     activePresetId: parentThread.activePresetId,
     createdAt: now,
     updatedAt: now,
