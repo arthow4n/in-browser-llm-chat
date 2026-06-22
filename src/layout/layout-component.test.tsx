@@ -187,4 +187,44 @@ describe("Layout and Routing Integration Tests", () => {
 
     confirmSpy.mockRestore();
   });
+
+  it("should render the version information with repository and commit links when commit hash is available", async () => {
+    vi.stubEnv("VITE_COMMIT_HASH", "abcdef1234567890");
+    await setSetting("api_keys", { openRouter: "mock-key", gemini: "" });
+    render(<AppComponent />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("sidebar-version-info")).toBeInTheDocument();
+    });
+
+    const repoLink = screen.getByTestId("version-repo-link");
+    expect(repoLink).toBeInTheDocument();
+    expect(repoLink).toHaveAttribute("href", "https://github.com/arthow4n/in-browser-llm-chat/");
+    expect(repoLink).toHaveTextContent("in-browser-llm-chat");
+
+    const commitLink = screen.getByTestId("version-commit-link");
+    expect(commitLink).toHaveAttribute(
+      "href",
+      "https://github.com/arthow4n/in-browser-llm-chat/commit/abcdef1234567890",
+    );
+    expect(commitLink).toHaveTextContent("abcdef1");
+  });
+
+  it("should render the version information with unknown span when commit hash is not available", async () => {
+    vi.stubEnv("VITE_COMMIT_HASH", "unknown");
+    await setSetting("api_keys", { openRouter: "mock-key", gemini: "" });
+    render(<AppComponent />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("sidebar-version-info")).toBeInTheDocument();
+    });
+
+    const repoLink = screen.getByTestId("version-repo-link");
+    expect(repoLink).toBeInTheDocument();
+    expect(repoLink).toHaveAttribute("href", "https://github.com/arthow4n/in-browser-llm-chat/");
+    expect(repoLink).toHaveTextContent("in-browser-llm-chat");
+
+    const unknownSpan = screen.getByTestId("version-commit-unknown");
+    expect(unknownSpan).toHaveTextContent("unknown");
+  });
 });

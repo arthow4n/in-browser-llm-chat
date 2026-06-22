@@ -919,6 +919,33 @@ body {
   font-size: 1.1rem;
 }
 
+.sidebar-version-info {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem 0;
+  border-top: 1px dashed var(--surface-border);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  opacity: 0.8;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.version-repo-link,
+.version-commit-link {
+  color: var(--text-primary);
+  text-decoration: none;
+  font-weight: 500;
+  transition: var(--transition);
+}
+
+.version-repo-link:hover,
+.version-commit-link:hover {
+  color: var(--accent-color);
+  text-decoration: underline;
+}
+
 /* Header styling */
 .app-header {
   height: 64px;

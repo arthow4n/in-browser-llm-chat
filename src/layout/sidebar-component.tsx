@@ -113,6 +113,33 @@ export function SidebarComponent({
           <span className="footer-icon">👤</span>
           <span>Global Settings</span>
         </NavLink>
+        <div className="sidebar-version-info" data-testid="sidebar-version-info">
+          <a
+            href="https://github.com/arthow4n/in-browser-llm-chat/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="version-repo-link"
+            data-testid="version-repo-link"
+          >
+            in-browser-llm-chat
+          </a>
+          <span>@</span>
+          {import.meta.env.VITE_COMMIT_HASH && import.meta.env.VITE_COMMIT_HASH !== "unknown" ? (
+            <a
+              href={`https://github.com/arthow4n/in-browser-llm-chat/commit/${import.meta.env.VITE_COMMIT_HASH}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="version-commit-link"
+              data-testid="version-commit-link"
+            >
+              {import.meta.env.VITE_COMMIT_HASH.slice(0, 7)}
+            </a>
+          ) : (
+            <span className="version-commit-unknown" data-testid="version-commit-unknown">
+              unknown
+            </span>
+          )}
+        </div>
       </div>
     </aside>
   );
