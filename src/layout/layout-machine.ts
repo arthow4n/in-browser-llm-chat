@@ -2,10 +2,7 @@ import { createMachine, assign, fromPromise } from "xstate";
 import {
   listThreads,
   saveThread,
-  deleteThread,
-  deleteThreadMessages,
-  deleteThreadCheckpoints,
-  deleteThreadCheckpointWrites,
+  deleteThreadCascadingBatched,
   getSetting,
   listPresets,
 } from "../db/db-operations";
@@ -166,8 +163,10 @@ export const layoutMachine = createMachine(
     actors: {
       loadThreadsActor: fromPromise(async () => {
         const list = await listThreads();
-        // Sort threads by updatedAt descending to show latest first
-        return list.sort((a, b) => b.updatedAt - a.updatedAt);
+        // Sort threads by updatedAt descending to show latest first and filter out deleting status
+        return list
+          .filter((t) => t.status !== "deleting")
+          .sort((a, b) => b.updatedAt - a.updatedAt);
       }),
       createThreadActor: fromPromise(async () => {
         // We need to resolve starting workflow and activePresetId
@@ -223,11 +222,8 @@ export const layoutMachine = createMachine(
         return newThread;
       }),
       deleteThreadActor: fromPromise(async ({ input }: { input: { id: string } }) => {
-        // Cascading deletion
-        await deleteThreadCheckpointWrites(input.id);
-        await deleteThreadCheckpoints(input.id);
-        await deleteThreadMessages(input.id);
-        await deleteThread(input.id);
+        // Cascading deletion via the batched async pipeline
+        await deleteThreadCascadingBatched(input.id);
       }),
     },
   },

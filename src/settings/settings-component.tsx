@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useMachine } from "@xstate/react";
 import { settingsFormMachine } from "./settings-machine";
+import { StorageManagementModal } from "./storage-management-modal";
 
 export interface SettingsComponentProps {
   onThemeChange?: (theme: "light" | "dark" | "system") => void;
@@ -205,6 +206,24 @@ export function SettingsComponent({ onThemeChange, onSettingsSave }: SettingsCom
           </div>
         </section>
 
+        {/* Section: Storage & Data Management */}
+        <section className="settings-section">
+          <h3>Storage & Data Management</h3>
+          <p className="section-description">
+            Inspect IndexedDB storage usage, export database backups, import backups, or perform a
+            factory reset.
+          </p>
+          <button
+            type="button"
+            className="secondary-btn"
+            onClick={() => send({ type: "OPEN_STORAGE_MANAGEMENT" })}
+            data-testid="manage-storage-btn"
+            style={{ width: "auto" }}
+          >
+            Manage Storage
+          </button>
+        </section>
+
         {/* Section: Injected System Messages */}
         <section className="settings-section">
           <div className="section-header">
@@ -330,6 +349,11 @@ export function SettingsComponent({ onThemeChange, onSettingsSave }: SettingsCom
           </button>
         </footer>
       </form>
+
+      <StorageManagementModal
+        isOpen={context.isStorageOpen}
+        onClose={() => send({ type: "CLOSE_STORAGE_MANAGEMENT" })}
+      />
     </div>
   );
 }

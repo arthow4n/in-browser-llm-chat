@@ -1,5 +1,5 @@
 import { createMachine, assign, fromPromise } from "xstate";
-import { getSetting } from "../db/db-operations";
+import { getSetting, sweepDeletingThreads } from "../db/db-operations";
 
 export interface AppContext {
   theme: "light" | "dark" | "system";
@@ -151,6 +151,7 @@ export const appMachine = createMachine(
     },
     actors: {
       loadInitialSettings: fromPromise(async () => {
+        void sweepDeletingThreads().catch(console.error);
         const apiKeys = await getSetting("api_keys");
         const uiConfig = await getSetting("ui_config");
         const hasApiKeys = !!(apiKeys?.openRouter || apiKeys?.gemini);

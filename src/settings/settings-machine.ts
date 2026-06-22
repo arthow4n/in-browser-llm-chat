@@ -20,6 +20,7 @@ export interface SettingsContext {
   errorMessage: string | null;
   successMessage: string | null;
   lastTestProvider: "openrouter" | "gemini" | null;
+  isStorageOpen: boolean;
 }
 
 export type SettingsEvent =
@@ -57,7 +58,9 @@ export type SettingsEvent =
   | { type: "SAVE_SUCCESS" }
   | { type: "SAVE_FAILURE"; error: string }
   | { type: "RESET_FIELDS" }
-  | { type: "DISMISS_ERROR" };
+  | { type: "DISMISS_ERROR" }
+  | { type: "OPEN_STORAGE_MANAGEMENT" }
+  | { type: "CLOSE_STORAGE_MANAGEMENT" };
 
 const checkIsDirty = (
   current: {
@@ -134,6 +137,7 @@ export const settingsFormMachine = createMachine(
       errorMessage: null,
       successMessage: null,
       lastTestProvider: null,
+      isStorageOpen: false,
     },
     states: {
       loading: {
@@ -187,6 +191,12 @@ export const settingsFormMachine = createMachine(
           },
         },
         on: {
+          OPEN_STORAGE_MANAGEMENT: {
+            actions: assign({ isStorageOpen: () => true }),
+          },
+          CLOSE_STORAGE_MANAGEMENT: {
+            actions: assign({ isStorageOpen: () => false }),
+          },
           EDIT_FIELD: {
             actions: [
               assign(({ context, event }) => {

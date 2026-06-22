@@ -678,3 +678,251 @@ export async function branchThread(
 
   return newThreadId;
 }
+
+// --- Data Management & Batched Cascading Deletions ---
+import { deleteDB } from "idb";
+import { DB_NAME, resetDBConnection } from "./db-connection";
+
+const scheduleCallback = (cb: () => void) => {
+  if (
+    typeof window !== "undefined" &&
+    (window as unknown as { requestIdleCallback?: unknown }).requestIdleCallback
+  ) {
+    (
+      window as unknown as {
+        requestIdleCallback: (callback: () => void, options?: { timeout?: number }) => void;
+      }
+    ).requestIdleCallback(cb, { timeout: 1000 });
+  } else {
+    setTimeout(cb, 0);
+  }
+};
+
+export async function deleteThreadCascadingBatched(threadId: string): Promise<void> {
+  const db = await getDB();
+
+  // Phase 1: UI Optimistic Invalidation (Immediate)
+  const tx = db.transaction("threads", "readwrite");
+  const thread = await tx.store.get(threadId);
+  if (thread) {
+    thread.status = "deleting";
+    await tx.store.put(thread);
+  }
+  await tx.done;
+
+  // Phase 2: Asynchronous Chunking Pipeline
+  return new Promise<void>((resolve, reject) => {
+    const runBatch = async (phase: 3 | 4 | 5 | 6) => {
+      try {
+        const db = await getDB();
+        if (phase === 3) {
+          // Phase 3: Delete Messages (Batch Size: 500)
+          const tx = db.transaction("messages", "readwrite");
+          const index = tx.store.index("threadId");
+          let cursor = await index.openCursor(IDBKeyRange.only(threadId));
+          let count = 0;
+          while (cursor && count < 500) {
+            await cursor.delete();
+            cursor = await cursor.continue();
+            count++;
+          }
+          await tx.done;
+          if (cursor) {
+            scheduleCallback(() => runBatch(3));
+          } else {
+            scheduleCallback(() => runBatch(4));
+          }
+        } else if (phase === 4) {
+          // Phase 4: Delete Checkpoint Writes (Batch Size: 500)
+          const tx = db.transaction("checkpoint_writes", "readwrite");
+          const index = tx.store.index("threadId");
+          let cursor = await index.openCursor(IDBKeyRange.only(threadId));
+          let count = 0;
+          while (cursor && count < 500) {
+            await cursor.delete();
+            cursor = await cursor.continue();
+            count++;
+          }
+          await tx.done;
+          if (cursor) {
+            scheduleCallback(() => runBatch(4));
+          } else {
+            scheduleCallback(() => runBatch(5));
+          }
+        } else if (phase === 5) {
+          // Phase 5: Delete Checkpoints (Batch Size: 500)
+          const tx = db.transaction("checkpoints", "readwrite");
+          const index = tx.store.index("threadId");
+          let cursor = await index.openCursor(IDBKeyRange.only(threadId));
+          let count = 0;
+          while (cursor && count < 500) {
+            await cursor.delete();
+            cursor = await cursor.continue();
+            count++;
+          }
+          await tx.done;
+          if (cursor) {
+            scheduleCallback(() => runBatch(5));
+          } else {
+            scheduleCallback(() => runBatch(6));
+          }
+        } else if (phase === 6) {
+          // Phase 6: Finalize Thread Purge
+          const tx = db.transaction("threads", "readwrite");
+          await tx.store.delete(threadId);
+          await tx.done;
+          resolve();
+        }
+      } catch (err) {
+        reject(err);
+      }
+    };
+
+    scheduleCallback(() => runBatch(3));
+  });
+}
+
+export async function sweepDeletingThreads(): Promise<void> {
+  const db = await getDB();
+  const threads = await db.getAll("threads");
+  const deletingThreads = threads.filter((t) => t.status === "deleting");
+  const promises = deletingThreads.map(async (t) => {
+    return new Promise<void>((resolve, reject) => {
+      const runBatch = async (phase: 3 | 4 | 5 | 6) => {
+        try {
+          const db = await getDB();
+          if (phase === 3) {
+            const tx = db.transaction("messages", "readwrite");
+            const index = tx.store.index("threadId");
+            let cursor = await index.openCursor(IDBKeyRange.only(t.id));
+            let count = 0;
+            while (cursor && count < 500) {
+              await cursor.delete();
+              cursor = await cursor.continue();
+              count++;
+            }
+            await tx.done;
+            if (cursor) {
+              scheduleCallback(() => runBatch(3));
+            } else {
+              scheduleCallback(() => runBatch(4));
+            }
+          } else if (phase === 4) {
+            const tx = db.transaction("checkpoint_writes", "readwrite");
+            const index = tx.store.index("threadId");
+            let cursor = await index.openCursor(IDBKeyRange.only(t.id));
+            let count = 0;
+            while (cursor && count < 500) {
+              await cursor.delete();
+              cursor = await cursor.continue();
+              count++;
+            }
+            await tx.done;
+            if (cursor) {
+              scheduleCallback(() => runBatch(4));
+            } else {
+              scheduleCallback(() => runBatch(5));
+            }
+          } else if (phase === 5) {
+            const tx = db.transaction("checkpoints", "readwrite");
+            const index = tx.store.index("threadId");
+            let cursor = await index.openCursor(IDBKeyRange.only(t.id));
+            let count = 0;
+            while (cursor && count < 500) {
+              await cursor.delete();
+              cursor = await cursor.continue();
+              count++;
+            }
+            await tx.done;
+            if (cursor) {
+              scheduleCallback(() => runBatch(5));
+            } else {
+              scheduleCallback(() => runBatch(6));
+            }
+          } else if (phase === 6) {
+            const tx = db.transaction("threads", "readwrite");
+            await tx.store.delete(t.id);
+            await tx.done;
+            resolve();
+          }
+        } catch (err) {
+          reject(err);
+        }
+      };
+      scheduleCallback(() => runBatch(3));
+    });
+  });
+  await Promise.all(promises);
+}
+
+export async function exportDatabase(): Promise<string> {
+  const db = await getDB();
+  const exportData: Record<string, unknown> = {};
+
+  const stores = [
+    "settings",
+    "presets",
+    "workflows",
+    "threads",
+    "messages",
+    "checkpoints",
+    "checkpoint_writes",
+  ] as const;
+  for (const storeName of stores) {
+    exportData[storeName] = await db.getAll(storeName);
+  }
+
+  const jsonString = JSON.stringify(exportData, null, 2);
+  const blob = new Blob([jsonString], { type: "application/json" });
+  return URL.createObjectURL(blob);
+}
+
+export async function importDatabase(jsonData: string): Promise<void> {
+  const data = JSON.parse(jsonData);
+  if (!data || typeof data !== "object") {
+    throw new Error("Invalid backup format");
+  }
+  const db = await getDB();
+
+  const stores = [
+    "settings",
+    "presets",
+    "workflows",
+    "threads",
+    "messages",
+    "checkpoints",
+    "checkpoint_writes",
+  ] as const;
+
+  for (const storeName of stores) {
+    const tx = db.transaction(storeName, "readwrite");
+    await tx.store.clear();
+    await tx.done;
+  }
+
+  for (const storeName of stores) {
+    const records = data[storeName];
+    if (Array.isArray(records)) {
+      const tx = db.transaction(storeName, "readwrite");
+      for (const record of records) {
+        await tx.store.put(record);
+      }
+      await tx.done;
+    }
+  }
+}
+
+export async function factoryResetDatabase(): Promise<void> {
+  const db = await getDB();
+  db.close();
+  resetDBConnection();
+  await deleteDB(DB_NAME);
+}
+
+export async function getStorageUsage(): Promise<number> {
+  if (typeof navigator !== "undefined" && navigator.storage && navigator.storage.estimate) {
+    const estimate = await navigator.storage.estimate();
+    return estimate.usage || 0;
+  }
+  return 0;
+}
