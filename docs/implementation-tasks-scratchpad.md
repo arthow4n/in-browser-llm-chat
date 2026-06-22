@@ -243,12 +243,12 @@
   - [x] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
   - [x] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
 
-- [ ] **Step 8.4: Storage & Data Management UI (Backup/Restore).** Build the `Storage & Data Management State Machine` and modal for inspecting storage, performing JSON DB export, importing DB payloads, and wiping data via Factory Reset. Add batched asynchronous cascading deletions.
-  - [ ] Implement the logic/feature.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Dispatch a subagent to perform code review.
-  - [ ] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
-  - [ ] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
+- [x] **Step 8.4: Storage & Data Management UI (Backup/Restore).** Build the `Storage & Data Management State Machine` and modal for inspecting storage, performing JSON DB export, importing DB payloads, and wiping data via Factory Reset. Add batched asynchronous cascading deletions.
+  - [x] Implement the logic/feature.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Dispatch a subagent to perform code review.
+  - [x] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
+  - [x] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
 
 ## 9. Phase 9: Storage Maintenance
 

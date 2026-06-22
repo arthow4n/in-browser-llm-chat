@@ -95,7 +95,9 @@ export function StorageManagementModal({ isOpen, onClose }: StorageManagementMod
                   type="text"
                   className="settings-input"
                   value={context.resetConfirmationText}
-                  onChange={(e) => send({ type: "UPDATE_RESET_CONFIRMATION_TEXT", text: e.target.value })}
+                  onChange={(e) =>
+                    send({ type: "UPDATE_RESET_CONFIRMATION_TEXT", text: e.target.value })
+                  }
                   placeholder="Type 'RESET' to confirm"
                   data-testid="confirm-reset-input"
                   style={{ textTransform: "uppercase" }}
