@@ -14,6 +14,7 @@ import type { Thread } from "../db/db-schema";
 export interface LayoutContext {
   threads: Thread[];
   isMobileOpen: boolean;
+  isSettingsOpen: boolean;
   error: string | null;
   deletingThreadId: string | null;
   newCreatedThreadId: string | null;
@@ -26,7 +27,9 @@ export type LayoutEvent =
   | { type: "REFRESH_THREADS" }
   | { type: "CREATE_THREAD" }
   | { type: "DELETE_THREAD"; id: string }
-  | { type: "CLEAR_NEW_THREAD_ID" };
+  | { type: "CLEAR_NEW_THREAD_ID" }
+  | { type: "OPEN_THREAD_SETTINGS" }
+  | { type: "CLOSE_THREAD_SETTINGS" };
 
 export const layoutMachine = createMachine(
   {
@@ -39,6 +42,7 @@ export const layoutMachine = createMachine(
     context: {
       threads: [],
       isMobileOpen: false,
+      isSettingsOpen: false,
       error: null,
       deletingThreadId: null,
       newCreatedThreadId: null,
@@ -79,6 +83,16 @@ export const layoutMachine = createMachine(
           CLOSE_MOBILE_SIDEBAR: {
             actions: assign({
               isMobileOpen: () => false,
+            }),
+          },
+          OPEN_THREAD_SETTINGS: {
+            actions: assign({
+              isSettingsOpen: () => true,
+            }),
+          },
+          CLOSE_THREAD_SETTINGS: {
+            actions: assign({
+              isSettingsOpen: () => false,
             }),
           },
           CREATE_THREAD: {

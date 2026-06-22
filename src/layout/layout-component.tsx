@@ -4,6 +4,7 @@ import { Outlet, useParams, useLocation, useNavigate } from "react-router";
 import { layoutMachine } from "./layout-machine";
 import { SidebarComponent } from "./sidebar-component";
 import { HeaderComponent } from "./header-component";
+import { ThreadSettingsComponent } from "../threads/thread-settings-component";
 
 export function LayoutComponent() {
   const [state, send] = useMachine(layoutMachine);
@@ -69,11 +70,36 @@ export function LayoutComponent() {
         <HeaderComponent
           title={title}
           onToggleMobileSidebar={() => send({ type: "TOGGLE_MOBILE_SIDEBAR" })}
+          actions={
+            threadId ? (
+              <button
+                type="button"
+                className="btn btn-secondary btn-icon"
+                onClick={() => send({ type: "OPEN_THREAD_SETTINGS" })}
+                data-testid="thread-settings-btn"
+                aria-label="Thread settings"
+              >
+                ⚙️ Settings
+              </button>
+            ) : undefined
+          }
         />
         <main className="layout-content-region" data-testid="layout-content-region">
           <Outlet />
         </main>
       </div>
+
+      {threadId && (
+        <ThreadSettingsComponent
+          threadId={threadId}
+          isOpen={state.context.isSettingsOpen}
+          onClose={() => send({ type: "CLOSE_THREAD_SETTINGS" })}
+          onSaveSuccess={() => send({ type: "REFRESH_THREADS" })}
+          onHardSyncSuccess={() => {
+            send({ type: "REFRESH_THREADS" });
+          }}
+        />
+      )}
     </div>
   );
 }
