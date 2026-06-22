@@ -199,12 +199,12 @@
   - [x] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
   - [x] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
 
-- [ ] **Step 7.2: Rollback and Checkpoint Traversal.** Implement the logic to traverse lineage backwards to find the correct preceding checkpoint when history is truncated. Purge subsequent checkpoints and update the thread's `latestCheckpointId`.
-  - [ ] Implement the logic/feature.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Dispatch a subagent to perform code review.
-  - [ ] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
-  - [ ] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
+- [x] **Step 7.2: Rollback and Checkpoint Traversal.** Implement the logic to traverse lineage backwards to find the correct preceding checkpoint when history is truncated. Purge subsequent checkpoints and update the thread's `latestCheckpointId`.
+  - [x] Implement the logic/feature.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Dispatch a subagent to perform code review.
+  - [x] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
+  - [x] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
 
 - [ ] **Step 7.3: Thread Branching Logic.** When branching, deep clone the messages array, corresponding checkpoints, and checkpoint writes to a new thread record. Copy the parent's `workflowSnapshot` to ensure consistent execution.
   - [ ] Implement the logic/feature.
