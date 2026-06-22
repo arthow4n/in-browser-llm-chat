@@ -371,7 +371,22 @@ export const graphRunnerMachine = createMachine(
           requesting: {
             on: {
               RECEIVE_TOKEN: "streaming",
-              STEP_COMPLETE: "#graphRunner.evaluatingStep",
+              STEP_COMPLETE: {
+                target: "#graphRunner.evaluatingStep",
+                actions: assign({
+                  stepsInCurrentRun: ({ context }) => context.stepsInCurrentRun + 1,
+                  tokensInCurrentRun: ({ context, event }) => {
+                    if (event.type === "STEP_COMPLETE" && event.usage) {
+                      return (
+                        context.tokensInCurrentRun +
+                        event.usage.promptTokens +
+                        event.usage.completionTokens
+                      );
+                    }
+                    return context.tokensInCurrentRun;
+                  },
+                }),
+              },
               INTERRUPT: "#graphRunner.interrupted",
               ERROR: "#graphRunner.failed",
             },
@@ -384,7 +399,22 @@ export const graphRunnerMachine = createMachine(
                     context.currentStreamingText + event.delta,
                 }),
               },
-              STEP_COMPLETE: "#graphRunner.evaluatingStep",
+              STEP_COMPLETE: {
+                target: "#graphRunner.evaluatingStep",
+                actions: assign({
+                  stepsInCurrentRun: ({ context }) => context.stepsInCurrentRun + 1,
+                  tokensInCurrentRun: ({ context, event }) => {
+                    if (event.type === "STEP_COMPLETE" && event.usage) {
+                      return (
+                        context.tokensInCurrentRun +
+                        event.usage.promptTokens +
+                        event.usage.completionTokens
+                      );
+                    }
+                    return context.tokensInCurrentRun;
+                  },
+                }),
+              },
               INTERRUPT: "#graphRunner.interrupted",
               ERROR: "#graphRunner.failed",
             },
@@ -443,6 +473,8 @@ export const graphRunnerMachine = createMachine(
               RESUME_WITH_BUDGET_OVERRIDE: {
                 target: "#graphRunner.running.requesting",
                 actions: assign({
+                  stepsInCurrentRun: () => 0,
+                  tokensInCurrentRun: () => 0,
                   budgetOverride: ({ event }) => ({
                     maxStepsWithoutUser: event.stepOverride,
                     maxTokensPerRun: event.tokenOverride,

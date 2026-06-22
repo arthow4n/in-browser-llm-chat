@@ -116,3 +116,108 @@ describe("compileMessages", () => {
     expect(compiledMessages[0].role).not.toBe("system");
   });
 });
+
+import { createActor } from "xstate";
+import { graphRunnerMachine } from "./graph-runner-actor";
+import type { Preset } from "../db/db-schema";
+
+describe("graphRunnerMachine budget enforcement", () => {
+  const mockPreset: Preset = {
+    id: "preset-1",
+    name: "Mock Preset",
+    provider: "gemini",
+    model: "gemini-1.5-flash",
+    temperature: 0.7,
+    budgetPolicy: {
+      maxStepsWithoutUser: 3,
+      maxTokensPerRun: 100,
+    },
+  };
+
+  it("should detect budget limit exceeded and transition to budgetExceeded state", () => {
+    const actor = createActor(graphRunnerMachine, {
+      input: {},
+    });
+    actor.start();
+
+    // Move to running
+    actor.send({ type: "START" });
+    expect(actor.getSnapshot().value).toEqual({ running: "requesting" });
+
+    // Step 1: Complete step under budget
+    actor.send({
+      type: "STEP_COMPLETE",
+      message: {},
+      checkpointId: "cp-1",
+      usage: { promptTokens: 10, completionTokens: 20 },
+    });
+    // Should transition back to requesting since steps (1 < 3) and tokens (30 < 100) are under budget
+    expect(actor.getSnapshot().value).toEqual({ running: "requesting" });
+    expect(actor.getSnapshot().context.stepsInCurrentRun).toBe(1);
+    expect(actor.getSnapshot().context.tokensInCurrentRun).toBe(30);
+
+    // Step 2: Complete step that pushes steps to 2 and tokens to 80
+    actor.send({
+      type: "STEP_COMPLETE",
+      message: {},
+      checkpointId: "cp-2",
+      usage: { promptTokens: 20, completionTokens: 30 },
+    });
+    expect(actor.getSnapshot().value).toEqual({ running: "requesting" });
+    expect(actor.getSnapshot().context.stepsInCurrentRun).toBe(2);
+    expect(actor.getSnapshot().context.tokensInCurrentRun).toBe(80);
+
+    // Provide presetConfig to enable isBudgetExceeded guard checks
+    actor.getSnapshot().context.presetConfig = mockPreset;
+
+    // Step 3: Complete step that pushes steps to 3 (which hits maxStepsWithoutUser = 3)
+    actor.send({
+      type: "STEP_COMPLETE",
+      message: {},
+      checkpointId: "cp-3",
+      usage: { promptTokens: 5, completionTokens: 5 },
+    });
+
+    // Should transition to interrupted.budgetExceeded
+    expect(actor.getSnapshot().value).toEqual({ interrupted: "budgetExceeded" });
+    expect(actor.getSnapshot().context.stepsInCurrentRun).toBe(3);
+    expect(actor.getSnapshot().context.tokensInCurrentRun).toBe(90);
+  });
+
+  it("should support RESUME_WITH_BUDGET_OVERRIDE, resetting run metrics", () => {
+    const actor = createActor(graphRunnerMachine, {
+      input: {},
+    });
+    actor.start();
+    actor.getSnapshot().context.presetConfig = mockPreset;
+
+    actor.send({ type: "START" });
+
+    // Send STEP_COMPLETE with big tokens that exceeds maxTokensPerRun (100)
+    actor.send({
+      type: "STEP_COMPLETE",
+      message: {},
+      checkpointId: "cp-1",
+      usage: { promptTokens: 50, completionTokens: 60 },
+    });
+
+    expect(actor.getSnapshot().value).toEqual({ interrupted: "budgetExceeded" });
+    expect(actor.getSnapshot().context.tokensInCurrentRun).toBe(110);
+
+    // Resume with override
+    actor.send({
+      type: "RESUME_WITH_BUDGET_OVERRIDE",
+      stepOverride: 5,
+      tokenOverride: 200,
+    });
+
+    // Verify counters reset and transition back to running.requesting
+    expect(actor.getSnapshot().value).toEqual({ running: "requesting" });
+    expect(actor.getSnapshot().context.stepsInCurrentRun).toBe(0);
+    expect(actor.getSnapshot().context.tokensInCurrentRun).toBe(0);
+    expect(actor.getSnapshot().context.budgetOverride).toEqual({
+      maxStepsWithoutUser: 5,
+      maxTokensPerRun: 200,
+    });
+  });
+});
