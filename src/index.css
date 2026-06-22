@@ -2189,3 +2189,57 @@ body {
     padding-right: 3.5rem; /* Make room for delete button touch target */
   }
 }
+
+/* Message Accordion Styles */
+.message-accordion {
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  margin: 0.5rem 0;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.message-accordion-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  min-height: 44px; /* Touch target */
+  transition: background 0.2s ease;
+}
+
+.message-accordion-header:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.message-accordion-icon-text {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.message-accordion-title {
+  flex: 1;
+}
+
+.message-accordion-arrow {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  transition: transform 0.2s ease;
+}
+
+.message-accordion-content {
+  border-top: 1px solid var(--surface-border);
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.15);
+  font-size: 0.9rem;
+}

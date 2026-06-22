@@ -15,6 +15,7 @@ import {
   branchThread,
 } from "../db/db-operations";
 import { messageActionsMachine } from "./message-actions-machine";
+import { MessageAccordionComponent } from "./message-accordion-component";
 import "katex/dist/katex.min.css";
 
 export interface MessageBubbleComponentProps {
@@ -297,12 +298,7 @@ export function MessageBubbleComponent({
       </div>
 
       <div className={bubbleClass} data-testid={`message-bubble-${message.id}`}>
-        {type === "reasoning" && (
-          <div className="reasoning-indicator">
-            <span className="reasoning-icon">💭</span>
-            <span className="reasoning-label">Thinking Process</span>
-          </div>
-        )}
+        {/* Reasoning is handled inside the MessageAccordionComponent wrapper in message-text-content */}
 
         {/* Overflow Actions Menu Button */}
         {!isStreaming && (
@@ -413,6 +409,43 @@ export function MessageBubbleComponent({
                 </button>
               </div>
             </div>
+          ) : type === "reasoning" ? (
+            <MessageAccordionComponent
+              title="Thinking Process"
+              icon="💭"
+              testId={`reasoning-accordion-${message.id}`}
+            >
+              <ReactMarkdown
+                remarkPlugins={[remarkMath, remarkGfm]}
+                rehypePlugins={[rehypeKatex]}
+                components={{
+                  // Ensure clean link presentation and styling
+                  a: ({ href, children }) => (
+                    <a href={href} target="_blank" rel="noopener noreferrer">
+                      {children}
+                    </a>
+                  ),
+                  // Use modern syntax highlighting or basic pre formatting for code block components
+                  code: ({ className, children, ...props }) => {
+                    const match = /language-(\w+)/.exec(className || "");
+                    const isInline = !match;
+                    return isInline ? (
+                      <code className="inline-code" {...props}>
+                        {children}
+                      </code>
+                    ) : (
+                      <pre className="code-block-pre">
+                        <code className={className} {...props}>
+                          {children}
+                        </code>
+                      </pre>
+                    );
+                  },
+                }}
+              >
+                {textToDisplay}
+              </ReactMarkdown>
+            </MessageAccordionComponent>
           ) : (
             <ReactMarkdown
               remarkPlugins={[remarkMath, remarkGfm]}
@@ -593,15 +626,17 @@ export function MessageBubbleComponent({
                   className={`nested-tool-bubble ${resultMsg ? "tool" : "assistant"}`}
                   data-testid={`nested-tool-${toolMsg.id}`}
                 >
-                  <div className="nested-tool-header">
-                    <span className="nested-tool-icon">🛠️</span>
-                    <span className="nested-tool-name">{toolDisplayName}</span>
-                  </div>
-                  <div className="nested-tool-content">
-                    <pre>
-                      <code>{displayContent}</code>
-                    </pre>
-                  </div>
+                  <MessageAccordionComponent
+                    title={toolDisplayName}
+                    icon="🛠️"
+                    testId={`tool-accordion-${toolMsg.id}`}
+                  >
+                    <div className="nested-tool-content">
+                      <pre>
+                        <code>{displayContent}</code>
+                      </pre>
+                    </div>
+                  </MessageAccordionComponent>
                 </div>
               );
             })}

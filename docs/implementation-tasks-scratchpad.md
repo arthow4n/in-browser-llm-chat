@@ -229,12 +229,12 @@
   - [x] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
   - [x] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
 
-- [ ] **Step 8.2: Implement Chat Feed Auto-Scroll and Accordions.** Build the `Chat Feed Auto-Scroll State Machine` to gracefully handle user interrupts. Implement the `Message Accordion State Machine` for expanding/collapsing reasoning tokens and tool calls.
-  - [ ] Implement the logic/feature.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Dispatch a subagent to perform code review.
-  - [ ] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
-  - [ ] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
+- [x] **Step 8.2: Implement Chat Feed Auto-Scroll and Accordions.** Build the `Chat Feed Auto-Scroll State Machine` to gracefully handle user interrupts. Implement the `Message Accordion State Machine` for expanding/collapsing reasoning tokens and tool calls.
+  - [x] Implement the logic/feature.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Dispatch a subagent to perform code review.
+  - [x] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
+  - [x] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
 
 - [ ] **Step 8.3: Token Stats and Soft/Hard Syncing.** Build the "Sync to Latest Workflow" UI in Thread Settings to perform either a Soft Sync (prompts/presets only) or Hard Sync (destructive snapshot update). Ensure cumulative token statistics recalculate correctly after truncations/edits.
   - [ ] Implement the logic/feature.
