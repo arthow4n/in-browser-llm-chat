@@ -192,12 +192,12 @@
 
 ## 7. Phase 7: History Management & Refinement
 
-- [ ] **Step 7.1: Implement Message Editor, Delete, and Branching UI.** Add contextual actions to individual messages allowing inline editing, deletion, and creating a new branched thread from that point.
-  - [ ] Implement the logic/feature.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Dispatch a subagent to perform code review.
-  - [ ] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
-  - [ ] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
+- [x] **Step 7.1: Implement Message Editor, Delete, and Branching UI.** Add contextual actions to individual messages allowing inline editing, deletion, and creating a new branched thread from that point.
+  - [x] Implement the logic/feature.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Dispatch a subagent to perform code review.
+  - [x] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
+  - [x] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
 
 - [ ] **Step 7.2: Rollback and Checkpoint Traversal.** Implement the logic to traverse lineage backwards to find the correct preceding checkpoint when history is truncated. Purge subsequent checkpoints and update the thread's `latestCheckpointId`.
   - [ ] Implement the logic/feature.
