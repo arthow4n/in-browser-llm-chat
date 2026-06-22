@@ -76,6 +76,7 @@ describe("threadSettingsMachine", () => {
       threadTitle: "Old Title",
       selectedPresetId: "a2f463ce-f834-c939-f467-b83887ff66e2",
       presets: mockPresets,
+      threadStatus: "inactive",
     });
 
     expect(actor.getSnapshot().value).toStrictEqual({ opened: "idle" });

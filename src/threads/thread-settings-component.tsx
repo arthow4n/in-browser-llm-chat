@@ -3,6 +3,7 @@ import { useMachine } from "@xstate/react";
 import { threadSettingsMachine } from "./thread-settings-machine";
 import { workflowSyncingMachine } from "./workflow-syncing-machine";
 import { listPresets, getThread } from "../db/db-operations";
+import { CheckpointCompactionDialog } from "./checkpoint-compaction-dialog";
 
 export interface ThreadSettingsComponentProps {
   threadId: string;
@@ -38,6 +39,7 @@ export function ThreadSettingsComponent({
             threadTitle: thread.title,
             selectedPresetId: thread.activePresetId,
             presets: loadedPresets,
+            threadStatus: thread.status,
           });
         }
       })();
@@ -276,6 +278,8 @@ export function ThreadSettingsComponent({
               </div>
             )}
           </div>
+
+          <CheckpointCompactionDialog threadId={threadId} threadStatus={context.threadStatus} />
         </div>
 
         <footer className="modal-footer">

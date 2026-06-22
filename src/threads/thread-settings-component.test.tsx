@@ -93,7 +93,9 @@ describe("ThreadSettingsComponent UI", () => {
       expect(screen.getByTestId("thread-settings-modal")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("Old Title")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("Old Title")).toBeInTheDocument();
+    });
 
     // Trigger Title Edit Mode
     const editBtn = screen.getByLabelText("Edit title");
@@ -145,6 +147,42 @@ describe("ThreadSettingsComponent UI", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("sync-success-alert")).toBeInTheDocument();
+    });
+  });
+
+  it("can perform checkpoint compaction successfully", async () => {
+    const mockThreadWithCheckpoints: Thread = {
+      ...mockThread,
+      latestCheckpointId: "cp-latest",
+      latestCheckpointNs: "ns-1",
+    };
+    await savePreset(mockPresets[0]);
+    await saveWorkflow(mockWorkflow);
+    await saveThread(mockThreadWithCheckpoints);
+
+    render(
+      <ThreadSettingsComponent threadId="thread-123" isOpen={true} onClose={vi.fn<() => void>()} />,
+    );
+
+    // Compact button should be in document
+    await waitFor(() => {
+      expect(screen.getByTestId("compact-checkpoints-btn")).toBeInTheDocument();
+    });
+
+    const compactBtn = screen.getByTestId("compact-checkpoints-btn");
+    fireEvent.click(compactBtn);
+
+    // Modal should appear
+    await waitFor(() => {
+      expect(screen.getByTestId("compaction-confirm-modal")).toBeInTheDocument();
+    });
+
+    const confirmBtn = screen.getByTestId("confirm-compact-btn");
+    fireEvent.click(confirmBtn);
+
+    // Success alert should be displayed after database deletion completes
+    await waitFor(() => {
+      expect(screen.getByTestId("compaction-success-alert")).toBeInTheDocument();
     });
   });
 });

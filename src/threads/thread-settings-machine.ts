@@ -9,6 +9,7 @@ export interface ThreadSettingsContext {
   isEditingTitle: boolean;
   presets: Preset[];
   errorMessage: string | null;
+  threadStatus: string;
 }
 
 export type ThreadSettingsEvent =
@@ -18,6 +19,7 @@ export type ThreadSettingsEvent =
       threadTitle: string;
       selectedPresetId: string;
       presets: Preset[];
+      threadStatus: string;
     }
   | { type: "CLOSE" }
   | { type: "EDIT_TITLE" }
@@ -42,6 +44,7 @@ export const threadSettingsMachine = createMachine(
       isEditingTitle: false,
       presets: [],
       errorMessage: null,
+      threadStatus: "inactive",
     },
     states: {
       closed: {
@@ -53,6 +56,7 @@ export const threadSettingsMachine = createMachine(
               threadTitle: ({ event }) => event.threadTitle,
               selectedPresetId: ({ event }) => event.selectedPresetId,
               presets: ({ event }) => event.presets,
+              threadStatus: ({ event }) => event.threadStatus,
               isEditingTitle: () => false,
               errorMessage: () => null,
             }),

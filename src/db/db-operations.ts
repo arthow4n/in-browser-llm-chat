@@ -223,6 +223,54 @@ export async function deleteThreadCheckpoints(threadId: string): Promise<void> {
   await tx.done;
 }
 
+export async function compactThreadCheckpoints(
+  threadId: string,
+  keepCheckpointId: string | null,
+): Promise<void> {
+  const db = await getDB();
+  const tx = db.transaction(["checkpoints", "checkpoint_writes", "messages"], "readwrite");
+
+  // 1. Delete all checkpoints except keepCheckpointId
+  const checkpointsStore = tx.objectStore("checkpoints");
+  const checkpointsIndex = checkpointsStore.index("threadId");
+  let checkpointCursor = await checkpointsIndex.openCursor(IDBKeyRange.only(threadId));
+  while (checkpointCursor) {
+    const val = checkpointCursor.value;
+    if (!keepCheckpointId || val.checkpointId !== keepCheckpointId) {
+      await checkpointCursor.delete();
+    }
+    checkpointCursor = await checkpointCursor.continue();
+  }
+
+  // 2. Delete all checkpoint writes except keepCheckpointId
+  const writesStore = tx.objectStore("checkpoint_writes");
+  const writesIndex = writesStore.index("threadId");
+  let writeCursor = await writesIndex.openCursor(IDBKeyRange.only(threadId));
+  while (writeCursor) {
+    const val = writeCursor.value;
+    if (!keepCheckpointId || val.checkpointId !== keepCheckpointId) {
+      await writeCursor.delete();
+    }
+    writeCursor = await writeCursor.continue();
+  }
+
+  // 3. Nullify messages checkpoint references if they were deleted
+  const messagesStore = tx.objectStore("messages");
+  const messagesIndex = messagesStore.index("threadId");
+  let messageCursor = await messagesIndex.openCursor(IDBKeyRange.only(threadId));
+  while (messageCursor) {
+    const val = messageCursor.value;
+    if (val.checkpointId && val.checkpointId !== keepCheckpointId) {
+      val.checkpointId = null;
+      val.checkpointNs = null;
+      await messageCursor.update(val);
+    }
+    messageCursor = await messageCursor.continue();
+  }
+
+  await tx.done;
+}
+
 // --- Checkpoint Writes Operations ---
 export async function getCheckpointWrite(
   threadId: string,
