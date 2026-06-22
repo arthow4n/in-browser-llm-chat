@@ -1,7 +1,25 @@
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { MessageBubbleComponent } from "./message-bubble-component";
 import type { Message } from "../db/db-schema";
+
+vi.mock("react-router", async () => {
+  const actual = await vi.importActual<Record<string, unknown>>("react-router");
+  return {
+    ...actual,
+    useNavigate: () => vi.fn<(path: string) => void>(),
+  };
+});
+
+vi.mock("../db/db-operations", async () => {
+  const actual = await vi.importActual<Record<string, unknown>>("../db/db-operations");
+  return {
+    ...actual,
+    editMessageAndRollback: vi.fn<() => Promise<void>>(),
+    deleteMessageAndRollback: vi.fn<() => Promise<void>>(),
+    branchThread: vi.fn<() => Promise<string>>(),
+  };
+});
 
 describe("MessageBubbleComponent", () => {
   const createMockMessage = (overrides: Partial<Message> = {}): Message => {
@@ -259,5 +277,213 @@ describe("MessageBubbleComponent", () => {
     expect(screen.getByText("Proposal: declare_consensus")).toBeInTheDocument();
     expect(screen.getByText("Approved")).toBeInTheDocument();
     expect(screen.getByText(/"consensus reached"/)).toBeInTheDocument();
+  });
+
+  describe("Message Action & Editor UI Actions", () => {
+    it("renders options menu when clicking action trigger button", async () => {
+      const message = createMockMessage({
+        id: "msg-test-1",
+        role: "user",
+        content: "Editable content",
+      });
+
+      render(
+        <MessageBubbleComponent
+          message={message}
+          threadStatus="inactive"
+          allMessages={[message]}
+        />,
+      );
+
+      const trigger = screen.getByTestId("message-actions-btn-msg-test-1");
+      expect(trigger).toBeInTheDocument();
+
+      // Open menu
+      await act(async () => {
+        trigger.click();
+      });
+
+      expect(screen.getByTestId("message-actions-menu-msg-test-1")).toBeInTheDocument();
+      expect(screen.getByTestId("message-action-edit-msg-test-1")).toBeInTheDocument();
+      expect(screen.getByTestId("message-action-delete-msg-test-1")).toBeInTheDocument();
+      expect(screen.getByTestId("message-action-branch-msg-test-1")).toBeInTheDocument();
+    });
+
+    it("disables edit/delete/branch and shows tooltip when message is compacted", async () => {
+      // Setup message with null checkpoint, but thread has checkpoints elsewhere
+      const message = createMockMessage({
+        id: "msg-test-2",
+        role: "user",
+        sequence: 1, // sequence > 0
+        checkpointId: null,
+        checkpointNs: null,
+      });
+
+      const messageWithCp = createMockMessage({
+        id: "msg-with-cp",
+        role: "assistant",
+        sequence: 2,
+        checkpointId: "cp-1",
+        checkpointNs: "ns-1",
+      });
+
+      render(
+        <MessageBubbleComponent
+          message={message}
+          threadStatus="inactive"
+          allMessages={[message, messageWithCp]}
+        />,
+      );
+
+      const trigger = screen.getByTestId("message-actions-btn-msg-test-2");
+      await act(async () => {
+        trigger.click();
+      });
+
+      const editBtn = screen.getByTestId("message-action-edit-msg-test-2");
+      const deleteBtn = screen.getByTestId("message-action-delete-msg-test-2");
+      const branchBtn = screen.getByTestId("message-action-branch-msg-test-2");
+
+      expect(editBtn).toBeDisabled();
+      expect(deleteBtn).toBeDisabled();
+      expect(branchBtn).toBeDisabled();
+
+      expect(
+        screen.getAllByText("Historical checkpoints for this message have been compacted")[0],
+      ).toBeInTheDocument();
+    });
+
+    it("activates editing mode when edit is clicked", async () => {
+      const message = createMockMessage({
+        id: "msg-test-3",
+        role: "user",
+        content: "Hello original",
+      });
+
+      render(
+        <MessageBubbleComponent
+          message={message}
+          threadStatus="inactive"
+          allMessages={[message]}
+        />,
+      );
+
+      const trigger = screen.getByTestId("message-actions-btn-msg-test-3");
+      await act(async () => {
+        trigger.click();
+      });
+
+      const editBtn = screen.getByTestId("message-action-edit-msg-test-3");
+      await act(async () => {
+        editBtn.click();
+      });
+
+      // Menu should close, and editor textarea should appear
+      expect(screen.queryByTestId("message-actions-menu-msg-test-3")).not.toBeInTheDocument();
+      expect(screen.getByTestId("message-editor-textarea-msg-test-3")).toBeInTheDocument();
+      expect(screen.getByTestId("message-editor-textarea-msg-test-3")).toHaveValue(
+        "Hello original",
+      );
+    });
+
+    it("shows discard modal on cancel when message content is edited", async () => {
+      const message = createMockMessage({
+        id: "msg-test-4",
+        role: "user",
+        content: "Hello original",
+      });
+
+      render(
+        <MessageBubbleComponent
+          message={message}
+          threadStatus="inactive"
+          allMessages={[message]}
+        />,
+      );
+
+      const trigger = screen.getByTestId("message-actions-btn-msg-test-4");
+      await act(async () => {
+        trigger.click();
+      });
+
+      const editBtn = screen.getByTestId("message-action-edit-msg-test-4");
+      await act(async () => {
+        editBtn.click();
+      });
+
+      const textarea = screen.getByTestId("message-editor-textarea-msg-test-4");
+      const cancelBtn = screen.getByTestId("message-editor-cancel-msg-test-4");
+
+      // Edit content
+      await act(async () => {
+        fireEvent.change(textarea, { target: { value: "Hello modified" } });
+      });
+
+      await act(async () => {
+        cancelBtn.click();
+      });
+
+      expect(screen.getByTestId("modal-discard-msg-test-4")).toBeInTheDocument();
+    });
+
+    it("renders branch modal when branch is clicked", async () => {
+      const message = createMockMessage({
+        id: "msg-test-5",
+        role: "user",
+        content: "Brancheable message",
+      });
+
+      render(
+        <MessageBubbleComponent
+          message={message}
+          threadStatus="inactive"
+          threadTitle="Super Chat"
+          allMessages={[message]}
+        />,
+      );
+
+      const trigger = screen.getByTestId("message-actions-btn-msg-test-5");
+      await act(async () => {
+        trigger.click();
+      });
+
+      const branchBtn = screen.getByTestId("message-action-branch-msg-test-5");
+      await act(async () => {
+        branchBtn.click();
+      });
+
+      expect(screen.getByTestId("modal-branch-msg-test-5")).toBeInTheDocument();
+      expect(screen.getByTestId("modal-branch-input-msg-test-5")).toHaveValue(
+        "Branch of Super Chat",
+      );
+    });
+
+    it("renders delete modal when delete is clicked", async () => {
+      const message = createMockMessage({
+        id: "msg-test-6",
+        role: "user",
+        content: "Deletable message",
+      });
+
+      render(
+        <MessageBubbleComponent
+          message={message}
+          threadStatus="inactive"
+          allMessages={[message]}
+        />,
+      );
+
+      const trigger = screen.getByTestId("message-actions-btn-msg-test-6");
+      await act(async () => {
+        trigger.click();
+      });
+
+      const deleteBtn = screen.getByTestId("message-action-delete-msg-test-6");
+      await act(async () => {
+        deleteBtn.click();
+      });
+
+      expect(screen.getByTestId("modal-delete-msg-test-6")).toBeInTheDocument();
+    });
   });
 });

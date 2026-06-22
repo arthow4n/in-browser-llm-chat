@@ -1586,3 +1586,257 @@ body {
   font-style: italic;
   color: var(--text-secondary);
 }
+
+/* Message actions button trigger */
+.message-row-wrapper {
+  position: relative;
+}
+
+.message-actions-container {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.message-row-wrapper:hover .message-actions-container,
+.message-actions-container.menu-open {
+  opacity: 1;
+}
+
+/* On mobile viewports, make message action button persistently visible */
+@media (max-width: 768px) {
+  .message-actions-container {
+    opacity: 1;
+  }
+}
+
+.message-actions-trigger {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-bg);
+  backdrop-filter: blur(8px);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition);
+}
+
+.message-actions-trigger:hover {
+  background: var(--accent-color);
+  color: #ffffff;
+  border-color: var(--accent-color);
+}
+
+/* Dropdown Options Menu */
+.message-actions-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 0.25rem;
+  background: var(--surface-bg);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 0.5rem;
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  z-index: 20;
+}
+
+.message-actions-menu-item {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: var(--transition);
+}
+
+.message-actions-menu-item:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.message-actions-menu-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Inline Edit Textarea styling */
+.message-editor-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.message-editor-textarea {
+  width: 100%;
+  min-height: 100px;
+  background: var(--input-bg);
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  color: var(--text-primary);
+  padding: 0.75rem;
+  font-family: inherit;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.message-editor-textarea:focus {
+  border-color: var(--input-focus-border);
+}
+
+.message-editor-controls {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+/* Modal styles for branch/delete/discard confirmation */
+.message-action-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.message-action-modal {
+  background: var(--surface-bg);
+  border: 1px solid var(--surface-border);
+  border-radius: 20px;
+  width: 90%;
+  max-width: 460px;
+  padding: 1.75rem;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  animation: scaleUp 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.message-action-modal h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.message-action-modal p {
+  color: var(--text-secondary);
+  font-size: 0.925rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.message-action-modal-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: var(--input-bg);
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+  color: var(--text-primary);
+  outline: none;
+  font-family: inherit;
+}
+
+.message-action-modal-input:focus {
+  border-color: var(--input-focus-border);
+}
+
+.message-action-modal-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+/* Spinner indicator */
+.inline-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  display: inline-block;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Tooltip for compacted action items */
+.action-tooltip-container {
+  position: relative;
+}
+
+.action-tooltip {
+  visibility: hidden;
+  position: absolute;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #1e293b;
+  color: #f8fafc;
+  text-align: center;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  width: 200px;
+  z-index: 100;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.action-tooltip-container:hover .action-tooltip {
+  visibility: visible;
+  opacity: 1;
+}
+
+@keyframes scaleUp {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}

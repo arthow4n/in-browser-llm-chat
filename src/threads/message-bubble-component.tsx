@@ -1,19 +1,67 @@
 import { useEffect } from "react";
 import { useMachine } from "@xstate/react";
+import { useNavigate } from "react-router";
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
-import type { Message, AskQuestionsQuestion } from "../db/db-schema";
+import type { Message, AskQuestionsQuestion, ThreadStatus } from "../db/db-schema";
 import { streamingMessageBubbleMachine } from "./streaming-message-bubble-machine";
 import { AskQuestionsComponent } from "./ask-questions-component";
 import { ProposalComponent } from "./proposal-component";
+import {
+  editMessageAndRollback,
+  deleteMessageAndRollback,
+  branchThread,
+} from "../db/db-operations";
+import { messageActionsMachine } from "./message-actions-machine";
 import "katex/dist/katex.min.css";
 
 export interface MessageBubbleComponentProps {
   message: Message;
   isStreaming?: boolean;
   nestedTools?: Message[]; // Support rendering nested tool calls/results
+  threadStatus?: ThreadStatus;
+  threadTitle?: string;
+  allMessages?: Message[];
+  onRefreshThread?: () => void;
+}
+
+function isActionEnabled(
+  message: Message,
+  threadStatus: ThreadStatus | undefined,
+  allMessages: Message[],
+): { enabled: boolean; reason?: string } {
+  const isExecutionActive = threadStatus && threadStatus !== "inactive" && threadStatus !== "error";
+  if (isExecutionActive) {
+    return { enabled: false, reason: "Cannot modify history while thread is executing" };
+  }
+
+  if (message.checkpointId !== null && message.checkpointNs !== null) {
+    return { enabled: true };
+  }
+
+  if (message.sequence === 0) {
+    return { enabled: true };
+  }
+
+  const sortedMsgs = [...allMessages].sort((a, b) => a.sequence - b.sequence);
+  const targetIndex = sortedMsgs.findIndex((m) => m.id === message.id);
+  if (targetIndex !== -1) {
+    let hasCheckpointsBefore = false;
+    for (let i = targetIndex - 1; i >= 0; i--) {
+      if (sortedMsgs[i].checkpointId !== null) {
+        hasCheckpointsBefore = true;
+        break;
+      }
+    }
+    const threadHasAnyCheckpoints = sortedMsgs.some((m) => m.checkpointId !== null);
+    if (!hasCheckpointsBefore && !threadHasAnyCheckpoints) {
+      return { enabled: true };
+    }
+  }
+
+  return { enabled: false, reason: "Historical checkpoints for this message have been compacted" };
 }
 
 // Helper to generate a deterministic background color based on name
@@ -40,10 +88,119 @@ export function MessageBubbleComponent({
   message,
   isStreaming = false,
   nestedTools = [],
+  threadStatus,
+  threadTitle,
+  allMessages = [],
+  onRefreshThread,
 }: MessageBubbleComponentProps) {
   const { role, content, name, type } = message;
 
+  const navigate = useNavigate();
   const [state, send] = useMachine(streamingMessageBubbleMachine);
+  const [actionsState, sendActions] = useMachine(messageActionsMachine, {
+    input: {
+      messageId: message.id,
+      originalContent: message.content,
+      role: message.role,
+    },
+  });
+
+  // Effect to synchronize original content if it changes externally
+  useEffect(() => {
+    // If the original content changes externally, make sure to reset originalContent if not editing
+    if (content !== actionsState.context.originalContent && actionsState.matches("viewing")) {
+      sendActions({ type: "UPDATE_CONTENT", content });
+      sendActions({ type: "VALIDATION_RESULT", isValid: true });
+    }
+  }, [content, actionsState.context.originalContent, actionsState, sendActions]);
+
+  // Handle DB saving operation when entering "saving" state
+  useEffect(() => {
+    let active = true;
+    if (actionsState.matches("saving")) {
+      editMessageAndRollback(message.threadId, message.id, actionsState.context.editContent)
+        .then(() => {
+          if (active) {
+            sendActions({ type: "SAVE_SUCCESS" });
+            if (onRefreshThread) {
+              onRefreshThread();
+            }
+          }
+        })
+        .catch((err) => {
+          if (active) {
+            sendActions({ type: "SAVE_FAILURE", error: err });
+          }
+        });
+    }
+    return () => {
+      active = false;
+    };
+  }, [
+    actionsState,
+    message.threadId,
+    message.id,
+    actionsState.context.editContent,
+    sendActions,
+    onRefreshThread,
+  ]);
+
+  // Handle DB delete operation when entering "deleting" state
+  useEffect(() => {
+    let active = true;
+    if (actionsState.matches("deleting")) {
+      deleteMessageAndRollback(message.threadId, message.id)
+        .then(() => {
+          if (active) {
+            sendActions({ type: "DELETE_SUCCESS" });
+            if (onRefreshThread) {
+              onRefreshThread();
+            }
+          }
+        })
+        .catch((err) => {
+          if (active) {
+            sendActions({ type: "DELETE_FAILURE", error: err });
+          }
+        });
+    }
+    return () => {
+      active = false;
+    };
+  }, [actionsState, message.threadId, message.id, sendActions, onRefreshThread]);
+
+  // Handle DB branching operation when entering "branching" state
+  useEffect(() => {
+    let active = true;
+    if (actionsState.matches("branching")) {
+      branchThread(message.threadId, message.id, actionsState.context.branchNameInput)
+        .then((newThreadId) => {
+          if (active) {
+            sendActions({ type: "BRANCH_SUCCESS", newThreadId });
+            if (onRefreshThread) {
+              onRefreshThread();
+            }
+            void navigate(`/threads/${newThreadId}`);
+          }
+        })
+        .catch((err) => {
+          if (active) {
+            sendActions({ type: "BRANCH_FAILURE", error: err });
+          }
+        });
+    }
+    return () => {
+      active = false;
+    };
+  }, [
+    actionsState,
+    message.threadId,
+    message.id,
+    actionsState.context.branchNameInput,
+    sendActions,
+    onRefreshThread,
+    navigate,
+  ]);
 
   // Synchronize incoming streaming content with the state machine
   useEffect(() => {
@@ -101,6 +258,23 @@ export function MessageBubbleComponent({
       ? "#64748b"
       : getAvatarColor(displayName);
 
+  const isPromptingDiscard = actionsState.matches("promptingDiscard");
+  const isSaving = actionsState.matches("saving");
+  const isPromptingDelete = actionsState.matches("promptingDelete");
+  const isDeleting = actionsState.matches("deleting");
+  const isPromptingBranch = actionsState.matches("promptingBranch");
+  const isBranching = actionsState.matches("branching");
+  const isMenuOpen = actionsState.matches({ viewing: "menuOpen" });
+
+  const showEditor =
+    actionsState.matches("editing") ||
+    actionsState.matches("saving") ||
+    (actionsState.matches("error") &&
+      actionsState.context.editContent !== actionsState.context.originalContent) ||
+    isPromptingDiscard;
+
+  const actionEnabling = isActionEnabled(message, threadStatus, allMessages);
+
   return (
     <div className={`message-row-wrapper ${role}-row`} data-testid={`message-row-${message.id}`}>
       <div className="message-header-bar" data-testid={`message-header-${message.id}`}>
@@ -130,37 +304,147 @@ export function MessageBubbleComponent({
           </div>
         )}
 
+        {/* Overflow Actions Menu Button */}
+        {!isStreaming && (
+          <div
+            className={`message-actions-container ${isMenuOpen ? "menu-open" : ""}`}
+            data-testid={`message-actions-${message.id}`}
+          >
+            <button
+              className="message-actions-trigger"
+              onClick={() => sendActions({ type: isMenuOpen ? "CLOSE_MENU" : "OPEN_MENU" })}
+              data-testid={`message-actions-btn-${message.id}`}
+              title="Message actions"
+            >
+              •••
+            </button>
+
+            {isMenuOpen && (
+              <div
+                className="message-actions-menu"
+                data-testid={`message-actions-menu-${message.id}`}
+              >
+                <div className={!actionEnabling.enabled ? "action-tooltip-container" : ""}>
+                  <button
+                    className="message-actions-menu-item"
+                    onClick={() => sendActions({ type: "EDIT" })}
+                    disabled={!actionEnabling.enabled}
+                    data-testid={`message-action-edit-${message.id}`}
+                  >
+                    ✏️ Edit
+                  </button>
+                  {!actionEnabling.enabled && (
+                    <div className="action-tooltip">{actionEnabling.reason}</div>
+                  )}
+                </div>
+
+                <div className={!actionEnabling.enabled ? "action-tooltip-container" : ""}>
+                  <button
+                    className="message-actions-menu-item text-danger"
+                    onClick={() => sendActions({ type: "TRIGGER_DELETE" })}
+                    disabled={!actionEnabling.enabled}
+                    data-testid={`message-action-delete-${message.id}`}
+                  >
+                    🗑️ Delete
+                  </button>
+                  {!actionEnabling.enabled && (
+                    <div className="action-tooltip">{actionEnabling.reason}</div>
+                  )}
+                </div>
+
+                <div className={!actionEnabling.enabled ? "action-tooltip-container" : ""}>
+                  <button
+                    className="message-actions-menu-item"
+                    onClick={() =>
+                      sendActions({
+                        type: "TRIGGER_BRANCH",
+                        defaultBranchName: `Branch of ${threadTitle || "Untitled Chat"}`,
+                      })
+                    }
+                    disabled={!actionEnabling.enabled}
+                    data-testid={`message-action-branch-${message.id}`}
+                  >
+                    🌿 Branch
+                  </button>
+                  {!actionEnabling.enabled && (
+                    <div className="action-tooltip">{actionEnabling.reason}</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="message-text-content" data-testid={`message-content-${message.id}`}>
-          <ReactMarkdown
-            remarkPlugins={[remarkMath, remarkGfm]}
-            rehypePlugins={[rehypeKatex]}
-            components={{
-              // Ensure clean link presentation and styling
-              a: ({ href, children }) => (
-                <a href={href} target="_blank" rel="noopener noreferrer">
-                  {children}
-                </a>
-              ),
-              // Use modern syntax highlighting or basic pre formatting for code block components
-              code: ({ className, children, ...props }) => {
-                const match = /language-(\w+)/.exec(className || "");
-                const isInline = !match;
-                return isInline ? (
-                  <code className="inline-code" {...props}>
+          {showEditor ? (
+            <div className="message-editor-container" data-testid={`message-editor-${message.id}`}>
+              <textarea
+                className="message-editor-textarea"
+                value={actionsState.context.editContent}
+                onChange={(e) => sendActions({ type: "UPDATE_CONTENT", content: e.target.value })}
+                disabled={isSaving}
+                data-testid={`message-editor-textarea-${message.id}`}
+                placeholder="Type your message..."
+              />
+              {actionsState.context.errorMessage && (
+                <div
+                  className="error-text"
+                  style={{ fontSize: "0.85rem", color: "var(--error-text)" }}
+                >
+                  {actionsState.context.errorMessage}
+                </div>
+              )}
+              <div className="message-editor-controls">
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => sendActions({ type: "CANCEL_EDIT" })}
+                  disabled={isSaving}
+                  data-testid={`message-editor-cancel-${message.id}`}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => sendActions({ type: "SAVE" })}
+                  disabled={!actionsState.context.isValidContent || isSaving}
+                  data-testid={`message-editor-save-${message.id}`}
+                >
+                  {isSaving ? <span className="inline-spinner"></span> : "Save"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <ReactMarkdown
+              remarkPlugins={[remarkMath, remarkGfm]}
+              rehypePlugins={[rehypeKatex]}
+              components={{
+                // Ensure clean link presentation and styling
+                a: ({ href, children }) => (
+                  <a href={href} target="_blank" rel="noopener noreferrer">
                     {children}
-                  </code>
-                ) : (
-                  <pre className="code-block-pre">
-                    <code className={className} {...props}>
+                  </a>
+                ),
+                // Use modern syntax highlighting or basic pre formatting for code block components
+                code: ({ className, children, ...props }) => {
+                  const match = /language-(\w+)/.exec(className || "");
+                  const isInline = !match;
+                  return isInline ? (
+                    <code className="inline-code" {...props}>
                       {children}
                     </code>
-                  </pre>
-                );
-              },
-            }}
-          >
-            {textToDisplay}
-          </ReactMarkdown>
+                  ) : (
+                    <pre className="code-block-pre">
+                      <code className={className} {...props}>
+                        {children}
+                      </code>
+                    </pre>
+                  );
+                },
+              }}
+            >
+              {textToDisplay}
+            </ReactMarkdown>
+          )}
         </div>
 
         {/* Nested Tool Calls/Results rendering inside the bubble */}
@@ -324,6 +608,109 @@ export function MessageBubbleComponent({
           </div>
         )}
       </div>
+
+      {/* Discard changes dialog */}
+      {isPromptingDiscard && (
+        <div className="message-action-modal-overlay" data-testid={`modal-discard-${message.id}`}>
+          <div className="message-action-modal">
+            <h3>Discard Changes</h3>
+            <p>You have unsaved changes. Are you sure you want to discard them?</p>
+            <div className="message-action-modal-buttons">
+              <button
+                className="btn btn-secondary"
+                onClick={() => sendActions({ type: "ABORT_DISCARD" })}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-danger"
+                onClick={() => sendActions({ type: "CONFIRM_DISCARD" })}
+                data-testid={`modal-discard-confirm-${message.id}`}
+              >
+                Discard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation dialog */}
+      {(isPromptingDelete || isDeleting) && (
+        <div className="message-action-modal-overlay" data-testid={`modal-delete-${message.id}`}>
+          <div className="message-action-modal">
+            <h3>Delete Message</h3>
+            <p>
+              Are you sure you want to delete this message? Deleting this message will roll back
+              execution checkpoints and delete all subsequent messages in this thread.
+            </p>
+            {actionsState.context.errorMessage && (
+              <div className="error-text" style={{ color: "var(--error-text)" }}>
+                {actionsState.context.errorMessage}
+              </div>
+            )}
+            <div className="message-action-modal-buttons">
+              <button
+                className="btn btn-secondary"
+                onClick={() => sendActions({ type: "CANCEL_DELETE" })}
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-danger"
+                onClick={() => sendActions({ type: "CONFIRM_DELETE" })}
+                disabled={isDeleting}
+                data-testid={`modal-delete-confirm-${message.id}`}
+              >
+                {isDeleting ? <span className="inline-spinner"></span> : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Branch thread dialog */}
+      {(isPromptingBranch || isBranching) && (
+        <div className="message-action-modal-overlay" data-testid={`modal-branch-${message.id}`}>
+          <div className="message-action-modal">
+            <h3>Branch Thread</h3>
+            <p>
+              Create a new thread starting from this message. Enter a name for the branched thread:
+            </p>
+            <input
+              type="text"
+              className="message-action-modal-input"
+              value={actionsState.context.branchNameInput}
+              onChange={(e) => sendActions({ type: "UPDATE_BRANCH_NAME", name: e.target.value })}
+              disabled={isBranching}
+              placeholder="New thread name"
+              data-testid={`modal-branch-input-${message.id}`}
+            />
+            {actionsState.context.errorMessage && (
+              <div className="error-text" style={{ color: "var(--error-text)" }}>
+                {actionsState.context.errorMessage}
+              </div>
+            )}
+            <div className="message-action-modal-buttons">
+              <button
+                className="btn btn-secondary"
+                onClick={() => sendActions({ type: "CANCEL_BRANCH" })}
+                disabled={isBranching}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => sendActions({ type: "CONFIRM_BRANCH" })}
+                disabled={!actionsState.context.branchNameInput.trim() || isBranching}
+                data-testid={`modal-branch-confirm-${message.id}`}
+              >
+                {isBranching ? <span className="inline-spinner"></span> : "Create Branch"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

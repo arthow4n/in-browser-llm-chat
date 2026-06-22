@@ -29,6 +29,9 @@ import {
   saveCheckpointWrite,
   getCheckpointWrites,
   deleteThreadCheckpointWrites,
+  editMessageAndRollback,
+  deleteMessageAndRollback,
+  branchThread,
 } from "./db-operations";
 import type { Preset, Workflow, Thread, Message, Checkpoint, CheckpointWrites } from "./db-schema";
 
@@ -304,6 +307,214 @@ describe("IndexedDB Database Schema and Operations", () => {
       await deleteThreadCheckpointWrites(threadId);
       const writesAfterDelete = await getCheckpointWrites(threadId, ns, checkpointId);
       expect(writesAfterDelete).toHaveLength(0);
+    });
+  });
+
+  describe("History Management and Refinement Operations", () => {
+    const threadId = "22222222-2222-2222-2222-222222222222";
+    const presetId = "11111111-1111-1111-1111-111111111111";
+
+    beforeEach(async () => {
+      const thread: Thread = {
+        id: threadId,
+        title: "Test Parent Thread",
+        workflowId: "workflow-1",
+        workflowSnapshot: { someKey: "someVal" },
+        activePresetId: presetId,
+        createdAt: 1000,
+        updatedAt: 2000,
+        parentThreadId: null,
+        parentMessageId: null,
+        status: "inactive",
+        activeInterrupt: null,
+        errorMessage: null,
+        latestCheckpointId: "cp-2",
+        latestCheckpointNs: "ns-1",
+        tokenStats: { promptTokens: 50, completionTokens: 50, totalTokens: 100 },
+      };
+      await saveThread(thread);
+
+      // Create messages
+      const m0: Message = {
+        id: "msg-0",
+        threadId,
+        sequence: 0,
+        role: "user",
+        content: "First User Msg",
+        type: "text",
+        createdAt: 100,
+        checkpointId: null,
+        checkpointNs: null,
+        metadata: { usage: { promptTokens: 10, completionTokens: 5 } },
+      };
+      const m1: Message = {
+        id: "msg-1",
+        threadId,
+        sequence: 1,
+        role: "assistant",
+        content: "Assistant Response 1",
+        type: "text",
+        createdAt: 200,
+        checkpointId: "cp-1",
+        checkpointNs: "ns-1",
+        metadata: { usage: { promptTokens: 20, completionTokens: 15 } },
+      };
+      const m2: Message = {
+        id: "msg-2",
+        threadId,
+        sequence: 2,
+        role: "user",
+        content: "Second User Msg",
+        type: "text",
+        createdAt: 300,
+        checkpointId: "cp-2",
+        checkpointNs: "ns-1",
+        metadata: { usage: { promptTokens: 20, completionTokens: 30 } },
+      };
+      await saveMessage(m0);
+      await saveMessage(m1);
+      await saveMessage(m2);
+
+      // Save checkpoints
+      const cp1: Checkpoint = {
+        threadId,
+        checkpointNs: "ns-1",
+        checkpointId: "cp-1",
+        checkpoint: { current: "node-1" },
+        metadata: { step: 1 },
+        parentCheckpointId: null,
+        createdAt: 1000,
+      };
+      const cp2: Checkpoint = {
+        threadId,
+        checkpointNs: "ns-1",
+        checkpointId: "cp-2",
+        checkpoint: { current: "node-2" },
+        metadata: { step: 2 },
+        parentCheckpointId: "cp-1",
+        createdAt: 2000,
+      };
+      await saveCheckpoint(cp1);
+      await saveCheckpoint(cp2);
+
+      // Save checkpoint writes
+      const write1: CheckpointWrites = {
+        threadId,
+        checkpointNs: "ns-1",
+        checkpointId: "cp-1",
+        taskId: "task-1",
+        idx: 0,
+        channel: "chan-1",
+        value: "val-1",
+        createdAt: 1000,
+      };
+      const write2: CheckpointWrites = {
+        threadId,
+        checkpointNs: "ns-1",
+        checkpointId: "cp-2",
+        taskId: "task-2",
+        idx: 0,
+        channel: "chan-2",
+        value: "val-2",
+        createdAt: 2000,
+      };
+      await saveCheckpointWrite(write1);
+      await saveCheckpointWrite(write2);
+    });
+
+    it("should edit a message, roll back checkpoints, delete future messages, and update token stats", async () => {
+      // Edit message 1
+      await editMessageAndRollback(threadId, "msg-1", "Edited Response");
+
+      // Verify message 1 is updated and message 2 is deleted
+      const msg1 = await getMessage("msg-1");
+      expect(msg1?.content).toBe("Edited Response");
+      expect(msg1?.checkpointId).toBeNull();
+      expect(msg1?.checkpointNs).toBeNull();
+
+      const msg2 = await getMessage("msg-2");
+      expect(msg2).toBeUndefined();
+
+      // Verify checkpoint 2 and checkpoint 1 are both deleted since rollback point is before cp-1
+      const cp1 = await getCheckpoint(threadId, "ns-1", "cp-1");
+      expect(cp1).toBeUndefined();
+
+      const cp2 = await getCheckpoint(threadId, "ns-1", "cp-2");
+      expect(cp2).toBeUndefined();
+
+      const write1 = await getCheckpointWrite(threadId, "ns-1", "cp-1", "task-1", 0);
+      expect(write1).toBeUndefined();
+
+      const write2 = await getCheckpointWrite(threadId, "ns-1", "cp-2", "task-2", 0);
+      expect(write2).toBeUndefined();
+
+      // Verify thread checkpoint pointers and tokenStats are updated (sum of msg-0 + edited msg-1)
+      const thread = await getThread(threadId);
+      expect(thread?.latestCheckpointId).toBeNull(); // msg-0 had null checkpoint
+      expect(thread?.tokenStats?.totalTokens).toBe(50); // msg-0 (15) + msg-1 (35)
+    });
+
+    it("should delete a message and roll back checkpoints and future messages", async () => {
+      // Delete message 1
+      await deleteMessageAndRollback(threadId, "msg-1");
+
+      // Verify messages are deleted
+      const msg1 = await getMessage("msg-1");
+      expect(msg1).toBeUndefined();
+      const msg2 = await getMessage("msg-2");
+      expect(msg2).toBeUndefined();
+
+      // Checkpoints 1 and 2 should be deleted
+      const cp1 = await getCheckpoint(threadId, "ns-1", "cp-1");
+      expect(cp1).toBeUndefined();
+      const cp2 = await getCheckpoint(threadId, "ns-1", "cp-2");
+      expect(cp2).toBeUndefined();
+
+      // TokenStats should only include msg-0
+      const thread = await getThread(threadId);
+      expect(thread?.tokenStats?.totalTokens).toBe(15);
+    });
+
+    it("should branch a thread, cloning messages and checkpoints up to parentMessage", async () => {
+      const newThreadId = await branchThread(threadId, "msg-1", "New Branched Thread");
+      expect(newThreadId).toBeDefined();
+      expect(newThreadId).not.toBe(threadId);
+
+      // Verify new thread metadata
+      const newThread = await getThread(newThreadId);
+      expect(newThread).toBeDefined();
+      expect(newThread?.title).toBe("New Branched Thread");
+      expect(newThread?.parentThreadId).toBe(threadId);
+      expect(newThread?.parentMessageId).toBe("msg-1");
+      expect(newThread?.latestCheckpointId).toBe("cp-1"); // highest sequence message copied with cp is msg-1 (cp-1)
+      expect(newThread?.latestCheckpointNs).toBe("ns-1");
+      expect(newThread?.tokenStats?.totalTokens).toBe(50); // msg-0 (15) + msg-1 (35)
+
+      // Verify messages were copied under newThreadId
+      const newMessages = await getThreadMessages(newThreadId);
+      expect(newMessages).toHaveLength(2); // msg-0 and msg-1
+      expect(newMessages[0].sequence).toBe(0);
+      expect(newMessages[1].sequence).toBe(1);
+      expect(newMessages[0].threadId).toBe(newThreadId);
+      expect(newMessages[1].threadId).toBe(newThreadId);
+      expect(newMessages[0].id).not.toBe("msg-0"); // new IDs
+      expect(newMessages[1].id).not.toBe("msg-1");
+
+      // Verify checkpoints were cloned under newThreadId
+      const newCp1 = await getCheckpoint(newThreadId, "ns-1", "cp-1");
+      expect(newCp1).toBeDefined();
+      expect(newCp1?.threadId).toBe(newThreadId);
+
+      const newCp2 = await getCheckpoint(newThreadId, "ns-1", "cp-2");
+      expect(newCp2).toBeUndefined(); // cp-2 not cloned since it was for msg-2
+
+      // Verify checkpoint writes were cloned under newThreadId
+      const newWrite1 = await getCheckpointWrite(newThreadId, "ns-1", "cp-1", "task-1", 0);
+      expect(newWrite1).toBeDefined();
+      expect(newWrite1?.threadId).toBe(newThreadId);
+
+      const newWrite2 = await getCheckpointWrite(newThreadId, "ns-1", "cp-2", "task-2", 0);
+      expect(newWrite2).toBeUndefined();
     });
   });
 });
