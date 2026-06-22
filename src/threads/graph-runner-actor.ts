@@ -169,7 +169,7 @@ export function compileMessages(
 
   // Deduplicate: If two system messages have identical content:
   // - Workflow-specific system message takes precedence over global.
-  // - If both are same type, keep the one configured earlier (smaller order).
+  // - If both are same type, keep the one configured with the shallower insertion depth (yielding the smaller target index).
   const uniqueResolved: ResolvedSystemMessage[] = [];
   for (const item of resolved) {
     const duplicateIdx = uniqueResolved.findIndex((r) => r.content === item.content);
@@ -181,7 +181,7 @@ export function compileMessages(
       if (item.isWorkflow && !existing.isWorkflow) {
         replace = true;
       } else if (item.isWorkflow === existing.isWorkflow) {
-        if (item.order < existing.order) {
+        if (item.targetIndex < existing.targetIndex) {
           replace = true;
         }
       }
