@@ -7,6 +7,7 @@ import remarkGfm from "remark-gfm";
 import type { Message, AskQuestionsQuestion } from "../db/db-schema";
 import { streamingMessageBubbleMachine } from "./streaming-message-bubble-machine";
 import { AskQuestionsComponent } from "./ask-questions-component";
+import { ProposalComponent } from "./proposal-component";
 import "katex/dist/katex.min.css";
 
 export interface MessageBubbleComponentProps {
@@ -166,12 +167,20 @@ export function MessageBubbleComponent({
         {nestedTools.length > 0 && (
           <div className="nested-tools-container" data-testid={`nested-tools-${message.id}`}>
             {nestedTools.map((toolMsg) => {
-              if (toolMsg.name === "ask_questions") {
-                // If it is a tool result, we skip rendering it directly because it's handled inline under the tool call
-                if (toolMsg.role === "tool") {
+              // Only render from the perspective of the tool call (or mock standalone tool result if tool call is missing)
+              const isToolResult = toolMsg.role === "tool";
+              if (isToolResult) {
+                // If there's a corresponding tool call in the nestedTools list, skip rendering this result directly
+                // because it will be rendered inside the tool call's rendering.
+                const hasCall = nestedTools.some(
+                  (m) => m.role === "assistant" && m.toolCallId === toolMsg.toolCallId,
+                );
+                if (hasCall) {
                   return null;
                 }
+              }
 
+              if (toolMsg.name === "ask_questions") {
                 let questions: AskQuestionsQuestion[] = [];
                 try {
                   const parsed = JSON.parse(toolMsg.content);
@@ -238,11 +247,66 @@ export function MessageBubbleComponent({
                 );
               }
 
+              // Generic Proposal Action Cards for tools modifying databases
+              if (
+                toolMsg.name === "declare_consensus" ||
+                toolMsg.name?.startsWith("custom_workflow_")
+              ) {
+                let proposalData = {};
+                try {
+                  proposalData = JSON.parse(toolMsg.content);
+                } catch {
+                  // ignore
+                }
+
+                const resultMsg = nestedTools.find(
+                  (m) => m.role === "tool" && m.toolCallId === toolMsg.toolCallId,
+                );
+
+                let isApproved = false;
+                let isRejected = false;
+                let rejectionReason = "";
+
+                if (resultMsg) {
+                  try {
+                    const resultObj = JSON.parse(resultMsg.content);
+                    isApproved = resultObj.approved === true;
+                    isRejected = resultObj.approved === false;
+                    rejectionReason = resultObj.reason || "";
+                  } catch {
+                    // ignore
+                  }
+                }
+
+                return (
+                  <div
+                    key={toolMsg.id}
+                    className="nested-tool-proposal"
+                    data-testid={`nested-tool-proposal-${toolMsg.id}`}
+                  >
+                    <ProposalComponent
+                      threadId={message.threadId}
+                      toolCallId={toolMsg.toolCallId || ""}
+                      toolName={toolMsg.name}
+                      proposalData={proposalData}
+                      isApproved={isApproved}
+                      isRejected={isRejected}
+                      rejectionReason={rejectionReason}
+                    />
+                  </div>
+                );
+              }
+
+              const resultMsg = nestedTools.find(
+                (m) => m.role === "tool" && m.toolCallId === toolMsg.toolCallId,
+              );
               const toolDisplayName = toolMsg.name || `Tool (${toolMsg.toolCallId || "Unknown"})`;
+              const displayContent = resultMsg ? resultMsg.content : toolMsg.content;
+
               return (
                 <div
                   key={toolMsg.id}
-                  className={`nested-tool-bubble ${toolMsg.role}`}
+                  className={`nested-tool-bubble ${resultMsg ? "tool" : "assistant"}`}
                   data-testid={`nested-tool-${toolMsg.id}`}
                 >
                   <div className="nested-tool-header">
@@ -251,7 +315,7 @@ export function MessageBubbleComponent({
                   </div>
                   <div className="nested-tool-content">
                     <pre>
-                      <code>{toolMsg.content}</code>
+                      <code>{displayContent}</code>
                     </pre>
                   </div>
                 </div>

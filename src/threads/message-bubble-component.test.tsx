@@ -214,4 +214,50 @@ describe("MessageBubbleComponent", () => {
     expect(screen.getByText(/Is this correct\?/)).toBeInTheDocument();
     expect(screen.getByText("Yes")).toBeInTheDocument();
   });
+
+  it("renders generic proposal action cards for declare_consensus tool call and result", () => {
+    const message = createMockMessage({
+      role: "assistant",
+      name: "Debater A",
+      content: "Hello",
+    });
+    const nestedTools: Message[] = [
+      {
+        id: "call-msg-2",
+        threadId: "mock-thread-id",
+        sequence: 2,
+        role: "assistant" as const,
+        content: JSON.stringify({
+          reason: "consensus reached",
+        }),
+        type: "tool_call" as const,
+        toolCallId: "call-2",
+        name: "declare_consensus",
+        createdAt: Date.now(),
+        checkpointId: null,
+        checkpointNs: null,
+      },
+      {
+        id: "result-msg-2",
+        threadId: "mock-thread-id",
+        sequence: 3,
+        role: "tool" as const,
+        content: JSON.stringify({
+          approved: true,
+        }),
+        type: "tool_result" as const,
+        toolCallId: "call-2",
+        name: "declare_consensus",
+        createdAt: Date.now(),
+        checkpointId: null,
+        checkpointNs: null,
+      },
+    ];
+
+    render(<MessageBubbleComponent message={message} nestedTools={nestedTools} />);
+
+    expect(screen.getByText("Proposal: declare_consensus")).toBeInTheDocument();
+    expect(screen.getByText("Approved")).toBeInTheDocument();
+    expect(screen.getByText(/"consensus reached"/)).toBeInTheDocument();
+  });
 });
