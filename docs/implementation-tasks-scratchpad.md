@@ -252,12 +252,12 @@
 
 ## 9. Phase 9: Storage Maintenance
 
-- [ ] **Step 9.1: Checkpoint Compaction.** Implement the "Compact Checkpoints" feature within Thread Settings. Hook up the `CheckpointCompactionDialog` UI to dispatch a delete operation for all thread checkpoints and writes EXCEPT the one matching `latestCheckpointId`.
-  - [ ] Implement the logic/feature.
-  - [ ] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
-  - [ ] Dispatch a subagent to perform code review.
-  - [ ] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
-  - [ ] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
+- [x] **Step 9.1: Checkpoint Compaction.** Implement the "Compact Checkpoints" feature within Thread Settings. Hook up the `CheckpointCompactionDialog` UI to dispatch a delete operation for all thread checkpoints and writes EXCEPT the one matching `latestCheckpointId`.
+  - [x] Implement the logic/feature.
+  - [x] Verify worktree state (`npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`).
+  - [x] Dispatch a subagent to perform code review.
+  - [x] Loop and fix any issues found by the code review, tests, typecheck, or linting. Do not proceed until the worktree is completely clean and all issues are resolved.
+  - [x] Commit the changes following `AGENTS.md`. Verify that `git status` is clean after committing.
 
 - [ ] **Step 9.2: Apply Compaction Effects to UI.** Update all messages whose `checkpointId` was deleted to be `null`. Ensure the UI disables the "Edit", "Delete", and "Branch" options for those messages and displays an explanatory tooltip.
   - [ ] Implement the logic/feature.
