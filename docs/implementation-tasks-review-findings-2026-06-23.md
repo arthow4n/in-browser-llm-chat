@@ -106,7 +106,7 @@ This document outlines the detailed, step-by-step checklist to implement the fix
 
 ### Phase 3: Implement Main Chat View & Runner Actor Integration
 
-#### - [ ] **Step 3.1: Create ChatComponent and register it in routes**
+#### - [x] **Step 3.1: Create ChatComponent and register it in routes**
 
 - **Description**: Create the main chat feed page component to replace the placeholder routing element.
 - **Files**:
@@ -117,12 +117,12 @@ This document outlines the detailed, step-by-step checklist to implement the fix
   - Query thread and messages history from IndexedDB via `getThread` and `listMessages`.
   - Set up a scrollable message list feed area.
 - **Verification Checklist**:
-  - [ ] Verify route compiles and rendering runs.
-  - [ ] Run checks: `npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`.
-  - [ ] Perform code review.
-  - [ ] Commit changes: `(Antigravity/Gemini 3.5 Flash (Medium)) Step 3.1: Create ChatComponent and register it in routes`.
+  - [x] Verify route compiles and rendering runs.
+  - [x] Run checks: `npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`.
+  - [x] Perform code review.
+  - [x] Commit changes: `(Antigravity/Gemini 3.5 Flash (Medium)) Step 3.1: Create ChatComponent and register it in routes`.
 
-#### - [ ] **Step 3.2: Spawn graph-runner-actor.ts and coordinate execution**
+#### - [x] **Step 3.2: Spawn graph-runner-actor.ts and coordinate execution**
 
 - **Description**: Integrate the background executor graph runner into the thread chat interface, hooking up execution states (executing, paused, errors).
 - **Files**:
@@ -131,12 +131,12 @@ This document outlines the detailed, step-by-step checklist to implement the fix
   - Instatiate or spawn the execution actor (`graphRunnerActor` from [graph-runner-actor.ts](file:///home/hevar/git/in-browser-llm-chat/src/threads/graph-runner-actor.ts)) for the active thread.
   - Coordinate message append events, status writes, and error handling.
 - **Verification Checklist**:
-  - [ ] Verify execution runner operates correctly when starting/resuming.
-  - [ ] Run checks: `npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`.
-  - [ ] Perform code review.
-  - [ ] Commit changes: `(Antigravity/Gemini 3.5 Flash (Medium)) Step 3.2: Spawn graph-runner-actor.ts and coordinate execution`.
+  - [x] Verify execution runner operates correctly when starting/resuming.
+  - [x] Run checks: `npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`.
+  - [x] Perform code review.
+  - [x] Commit changes: `(Antigravity/Gemini 3.5 Flash (Medium)) Step 3.2: Spawn graph-runner-actor.ts and coordinate execution`.
 
-#### - [ ] **Step 3.3: Mount LoopControlPanel and bind controls**
+#### - [x] **Step 3.3: Mount LoopControlPanel and bind controls**
 
 - **Description**: Hook up the loop control panel component at the top of the chat area, managing execution stats and loop overrides.
 - **Files**:
@@ -145,12 +145,12 @@ This document outlines the detailed, step-by-step checklist to implement the fix
   - Render `<LoopControlPanel>` passing stats (`currentRound`, `turnCount`, `tokenStats`).
   - Bind Pause, Resume, Abort, Force Consensus, and Summarize early actions.
 - **Verification Checklist**:
-  - [ ] Verify loop panel button actions interact cleanly with thread execution.
-  - [ ] Run checks: `npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`.
-  - [ ] Perform code review.
-  - [ ] Commit changes: `(Antigravity/Gemini 3.5 Flash (Medium)) Step 3.3: Mount LoopControlPanel and bind controls`.
+  - [x] Verify loop panel button actions interact cleanly with thread execution.
+  - [x] Run checks: `npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`.
+  - [x] Perform code review.
+  - [x] Commit changes: `(Antigravity/Gemini 3.5 Flash (Medium)) Step 3.3: Mount LoopControlPanel and bind controls`.
 
-#### - [ ] **Step 3.4: Integrate message feed list and option options**
+#### - [x] **Step 3.4: Integrate message feed list and option options**
 
 - **Description**: Display agent and user conversation messages using the bubble component and enable manual editing and rewinding.
 - **Files**:
@@ -159,12 +159,12 @@ This document outlines the detailed, step-by-step checklist to implement the fix
   - Map and render messages via [message-bubble-component.tsx](file:///home/hevar/git/in-browser-llm-chat/src/threads/message-bubble-component.tsx).
   - Wire options menus (Edit, Delete, Branch) to trigger database truncation, checkpoint rollbacks, and feed updates.
 - **Verification Checklist**:
-  - [ ] Verify deleting or editing a message rewinds history correctly.
-  - [ ] Run checks: `npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`.
-  - [ ] Perform code review.
-  - [ ] Commit changes: `(Antigravity/Gemini 3.5 Flash (Medium)) Step 3.4: Integrate message feed list and option options`.
+  - [x] Verify deleting or editing a message rewinds history correctly.
+  - [x] Run checks: `npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`.
+  - [x] Perform code review.
+  - [x] Commit changes: `(Antigravity/Gemini 3.5 Flash (Medium)) Step 3.4: Integrate message feed list and option options`.
 
-#### - [ ] **Step 3.5: Support inline interrupt form cards**
+#### - [x] **Step 3.5: Support inline interrupt form cards**
 
 - **Description**: Render interactive tool prompt widgets (such as questions or approvals) directly inside the chat feed when execution halts.
 - **Files**:
@@ -174,12 +174,12 @@ This document outlines the detailed, step-by-step checklist to implement the fix
   - Render `<ProposalComponent>` when interrupt is `"approval"`.
   - Render `<BudgetExceededCard>` when token limits are hit.
 - **Verification Checklist**:
-  - [ ] Verify interactive card selections resolve the blocked runner state.
-  - [ ] Run checks: `npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`.
-  - [ ] Perform code review.
-  - [ ] Commit changes: `(Antigravity/Gemini 3.5 Flash (Medium)) Step 3.5: Support inline interrupt form cards`.
+  - [x] Verify interactive card selections resolve the blocked runner state.
+  - [x] Run checks: `npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`.
+  - [x] Perform code review.
+  - [x] Commit changes: `(Antigravity/Gemini 3.5 Flash (Medium)) Step 3.5: Support inline interrupt form cards`.
 
-#### - [ ] **Step 3.6: Mount ChatInputComponent and bind submits**
+#### - [x] **Step 3.6: Mount ChatInputComponent and bind submits**
 
 - **Description**: Add the bottom chat input form to the chat view, supporting role selection and dynamic resizing.
 - **Files**:
@@ -188,10 +188,10 @@ This document outlines the detailed, step-by-step checklist to implement the fix
   - Mount `<ChatInputComponent>` at the bottom of the viewport.
   - Wire submissions to write new message records and trigger graph execution runs.
 - **Verification Checklist**:
-  - [ ] Verify submitting a message starts agent processing.
-  - [ ] Run checks: `npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`.
-  - [ ] Perform code review.
-  - [ ] Commit changes: `(Antigravity/Gemini 3.5 Flash (Medium)) Step 3.6: Mount ChatInputComponent and bind submits`.
+  - [x] Verify submitting a message starts agent processing.
+  - [x] Run checks: `npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`.
+  - [x] Perform code review.
+  - [x] Commit changes: `(Antigravity/Gemini 3.5 Flash (Medium)) Step 3.6: Mount ChatInputComponent and bind submits`.
 
 ---
 
