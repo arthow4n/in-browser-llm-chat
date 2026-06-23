@@ -60,7 +60,7 @@ This document outlines the detailed, step-by-step checklist to implement the fix
   - [x] Perform code review.
   - [x] Commit changes: `(Antigravity/Gemini 3.5 Flash (Medium)) Step 2.1: Add mode prop to SettingsComponent and hide advanced views in Onboarding`.
 
-#### - [ ] **Step 2.2: Pass mode prop in app-component.tsx**
+#### - [x] **Step 2.2: Pass mode prop in app-component.tsx**
 
 - **Description**: Mount the Settings component in the correct mode depending on whether the user is in onboarding state or visiting the settings route.
 - **Files**:
@@ -69,12 +69,12 @@ This document outlines the detailed, step-by-step checklist to implement the fix
   - In `appState.matches("onboarding")`, render `<SettingsComponent mode="onboarding" ... />`.
   - In the route `/settings`, render `<SettingsComponent mode="global" ... />`.
 - **Verification Checklist**:
-  - [ ] Verify onboarding card operates without errors.
-  - [ ] Run checks: `npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`.
-  - [ ] Perform code review.
-  - [ ] Commit changes: `(Antigravity/Gemini 3.5 Flash (Medium)) Step 2.2: Pass mode prop in app-component.tsx`.
+  - [x] Verify onboarding card operates without errors.
+  - [x] Run checks: `npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`.
+  - [x] Perform code review.
+  - [x] Commit changes: `(Antigravity/Gemini 3.5 Flash (Medium)) Step 2.2: Pass mode prop in app-component.tsx`.
 
-#### - [ ] **Step 2.3: Remove redundant card-level headers in Global Settings view**
+#### - [x] **Step 2.3: Remove redundant card-level headers in Global Settings view**
 
 - **Description**: Hide the card title header from SettingsComponent when running in `"global"` mode, preventing double headers on the settings page.
 - **Files**:
@@ -82,10 +82,10 @@ This document outlines the detailed, step-by-step checklist to implement the fix
 - **Specifications**:
   - If `mode === "global"`, conditionally hide the settings card `<header className="settings-header">` container since the Layout component's navbar already displays the "Global Settings" title.
 - **Verification Checklist**:
-  - [ ] Verify the double-header is gone and margins align properly.
-  - [ ] Run checks: `npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`.
-  - [ ] Perform code review.
-  - [ ] Commit changes: `(Antigravity/Gemini 3.5 Flash (Medium)) Step 2.3: Remove redundant card-level headers in Global Settings view`.
+  - [x] Verify the double-header is gone and margins align properly.
+  - [x] Run checks: `npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`.
+  - [x] Perform code review.
+  - [x] Commit changes: `(Antigravity/Gemini 3.5 Flash (Medium)) Step 2.3: Remove redundant card-level headers in Global Settings view`.
 
 #### - [ ] **Step 2.4: Polish settings panel visuals, inputs and layouts**
 
