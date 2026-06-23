@@ -159,4 +159,23 @@ describe("SettingsComponent UI Tests", () => {
     await screen.findByTestId("success-banner");
     expect(screen.getByText("Connection test successful!")).toBeInTheDocument();
   });
+
+  it("hides advanced configurations in onboarding mode", async () => {
+    render(<SettingsComponent mode="onboarding" />);
+
+    // Wait for form controls to display
+    await waitFor(
+      () => {
+        expect(screen.getByLabelText("Gemini API Key")).toBeInTheDocument();
+      },
+      { timeout: 3000 },
+    );
+
+    // Verify advanced controls are NOT present
+    expect(screen.queryByLabelText("Theme Override")).not.toBeInTheDocument();
+    expect(screen.queryByText("Storage & Data Management")).not.toBeInTheDocument();
+    expect(screen.queryByText("Injected System Messages")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("reset-settings-btn")).not.toBeInTheDocument();
+    expect(screen.queryByText("Global Settings")).not.toBeInTheDocument();
+  });
 });

@@ -6,9 +6,10 @@ import { StorageManagementModal } from "./storage-management-modal";
 export interface SettingsComponentProps {
   onThemeChange?: (theme: "light" | "dark" | "system") => void;
   onSettingsSave?: (settings: { theme: "light" | "dark" | "system"; hasApiKeys: boolean }) => void;
+  mode?: "onboarding" | "global";
 }
 
-export function SettingsComponent({ onThemeChange, onSettingsSave }: SettingsComponentProps) {
+export function SettingsComponent({ onThemeChange, onSettingsSave, mode }: SettingsComponentProps) {
   const [state, send] = useMachine(settingsFormMachine);
   const context = state.context;
 
@@ -62,12 +63,14 @@ export function SettingsComponent({ onThemeChange, onSettingsSave }: SettingsCom
 
   return (
     <div className="settings-panel-container">
-      <header className="settings-header">
-        <h2>Global Settings</h2>
-        <p className="settings-subtitle">
-          Configure API keys, UI theme preferences, and injected system message pipelines.
-        </p>
-      </header>
+      {mode !== "onboarding" && mode !== "global" && (
+        <header className="settings-header">
+          <h2>Global Settings</h2>
+          <p className="settings-subtitle">
+            Configure API keys, UI theme preferences, and injected system message pipelines.
+          </p>
+        </header>
+      )}
 
       {/* Success & Error Banners */}
       {context.successMessage && (
@@ -187,151 +190,159 @@ export function SettingsComponent({ onThemeChange, onSettingsSave }: SettingsCom
         </section>
 
         {/* Section: UI Customization */}
-        <section className="settings-section">
-          <h3>Appearance</h3>
-          <div className="settings-field">
-            <label htmlFor="theme-select">Theme Override</label>
-            <select
-              id="theme-select"
-              value={context.theme}
-              onChange={(e) => handleFieldChange("theme", e.target.value)}
-              disabled={isDisabled}
-              className="settings-select"
-              data-testid="theme-select"
-            >
-              <option value="system">Follow System Settings</option>
-              <option value="light">Light Mode</option>
-              <option value="dark">Dark Mode</option>
-            </select>
-          </div>
-        </section>
+        {mode !== "onboarding" && (
+          <section className="settings-section">
+            <h3>Appearance</h3>
+            <div className="settings-field">
+              <label htmlFor="theme-select">Theme Override</label>
+              <select
+                id="theme-select"
+                value={context.theme}
+                onChange={(e) => handleFieldChange("theme", e.target.value)}
+                disabled={isDisabled}
+                className="settings-select"
+                data-testid="theme-select"
+              >
+                <option value="system">Follow System Settings</option>
+                <option value="light">Light Mode</option>
+                <option value="dark">Dark Mode</option>
+              </select>
+            </div>
+          </section>
+        )}
 
         {/* Section: Storage & Data Management */}
-        <section className="settings-section">
-          <h3>Storage & Data Management</h3>
-          <p className="section-description">
-            Inspect IndexedDB storage usage, export database backups, import backups, or perform a
-            factory reset.
-          </p>
-          <button
-            type="button"
-            className="secondary-btn"
-            onClick={() => send({ type: "OPEN_STORAGE_MANAGEMENT" })}
-            data-testid="manage-storage-btn"
-            style={{ width: "auto" }}
-          >
-            Manage Storage
-          </button>
-        </section>
-
-        {/* Section: Injected System Messages */}
-        <section className="settings-section">
-          <div className="section-header">
-            <h3>Injected System Messages</h3>
+        {mode !== "onboarding" && (
+          <section className="settings-section">
+            <h3>Storage & Data Management</h3>
+            <p className="section-description">
+              Inspect IndexedDB storage usage, export database backups, import backups, or perform a
+              factory reset.
+            </p>
             <button
               type="button"
-              className="add-btn"
-              onClick={() => send({ type: "ADD_INJECTED_MESSAGE" })}
-              disabled={isDisabled}
-              data-testid="add-system-message-btn"
+              className="secondary-btn"
+              onClick={() => send({ type: "OPEN_STORAGE_MANAGEMENT" })}
+              data-testid="manage-storage-btn"
+              style={{ width: "auto" }}
             >
-              + Add Pipeline
+              Manage Storage
             </button>
-          </div>
-          <p className="section-description">
-            System messages automatically merged at target history indices (depth) before sending
-            payloads.
-          </p>
+          </section>
+        )}
 
-          <div className="system-messages-list">
-            {context.injectedSystemMessages.length === 0 ? (
-              <div className="empty-state">No injected system messages configured.</div>
-            ) : (
-              context.injectedSystemMessages.map((msg, index) => {
-                const depthError = context.validationErrors[`depth_${index}`];
-                return (
-                  <div
-                    key={index}
-                    className="system-message-row"
-                    data-testid={`system-message-row-${index}`}
-                  >
-                    <div className="message-content-field">
-                      <label htmlFor={`msg-content-${index}`} className="sr-only">
-                        System Message Content
-                      </label>
-                      <textarea
-                        id={`msg-content-${index}`}
-                        value={msg.content}
-                        onChange={(e) =>
-                          send({
-                            type: "UPDATE_INJECTED_MESSAGE",
-                            index,
-                            field: "content",
-                            value: e.target.value,
-                          })
-                        }
-                        placeholder="System instructions..."
-                        disabled={isDisabled}
-                        className="settings-textarea"
-                        data-testid={`system-message-content-${index}`}
-                      />
-                    </div>
-                    <div className="message-depth-field">
-                      <label htmlFor={`msg-depth-${index}`}>Depth</label>
-                      <input
-                        id={`msg-depth-${index}`}
-                        type="number"
-                        value={msg.depth}
-                        onChange={(e) =>
-                          send({
-                            type: "UPDATE_INJECTED_MESSAGE",
-                            index,
-                            field: "depth",
-                            value: e.target.value,
-                          })
-                        }
-                        disabled={isDisabled}
-                        className={`settings-input depth-input ${depthError ? "input-error" : ""}`}
-                        data-testid={`system-message-depth-${index}`}
-                      />
-                      {depthError && (
-                        <span
-                          className="error-text"
-                          role="alert"
-                          data-testid={`depth-error-${index}`}
-                        >
-                          {depthError}
-                        </span>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      className="delete-btn"
-                      onClick={() => send({ type: "REMOVE_INJECTED_MESSAGE", index })}
-                      disabled={isDisabled}
-                      aria-label="Remove system message"
-                      data-testid={`remove-system-message-${index}`}
+        {/* Section: Injected System Messages */}
+        {mode !== "onboarding" && (
+          <section className="settings-section">
+            <div className="section-header">
+              <h3>Injected System Messages</h3>
+              <button
+                type="button"
+                className="add-btn"
+                onClick={() => send({ type: "ADD_INJECTED_MESSAGE" })}
+                disabled={isDisabled}
+                data-testid="add-system-message-btn"
+              >
+                + Add Pipeline
+              </button>
+            </div>
+            <p className="section-description">
+              System messages automatically merged at target history indices (depth) before sending
+              payloads.
+            </p>
+
+            <div className="system-messages-list">
+              {context.injectedSystemMessages.length === 0 ? (
+                <div className="empty-state">No injected system messages configured.</div>
+              ) : (
+                context.injectedSystemMessages.map((msg, index) => {
+                  const depthError = context.validationErrors[`depth_${index}`];
+                  return (
+                    <div
+                      key={index}
+                      className="system-message-row"
+                      data-testid={`system-message-row-${index}`}
                     >
-                      🗑
-                    </button>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </section>
+                      <div className="message-content-field">
+                        <label htmlFor={`msg-content-${index}`} className="sr-only">
+                          System Message Content
+                        </label>
+                        <textarea
+                          id={`msg-content-${index}`}
+                          value={msg.content}
+                          onChange={(e) =>
+                            send({
+                              type: "UPDATE_INJECTED_MESSAGE",
+                              index,
+                              field: "content",
+                              value: e.target.value,
+                            })
+                          }
+                          placeholder="System instructions..."
+                          disabled={isDisabled}
+                          className="settings-textarea"
+                          data-testid={`system-message-content-${index}`}
+                        />
+                      </div>
+                      <div className="message-depth-field">
+                        <label htmlFor={`msg-depth-${index}`}>Depth</label>
+                        <input
+                          id={`msg-depth-${index}`}
+                          type="number"
+                          value={msg.depth}
+                          onChange={(e) =>
+                            send({
+                              type: "UPDATE_INJECTED_MESSAGE",
+                              index,
+                              field: "depth",
+                              value: e.target.value,
+                            })
+                          }
+                          disabled={isDisabled}
+                          className={`settings-input depth-input ${depthError ? "input-error" : ""}`}
+                          data-testid={`system-message-depth-${index}`}
+                        />
+                        {depthError && (
+                          <span
+                            className="error-text"
+                            role="alert"
+                            data-testid={`depth-error-${index}`}
+                          >
+                            {depthError}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        className="delete-btn"
+                        onClick={() => send({ type: "REMOVE_INJECTED_MESSAGE", index })}
+                        disabled={isDisabled}
+                        aria-label="Remove system message"
+                        data-testid={`remove-system-message-${index}`}
+                      >
+                        🗑
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </section>
+        )}
 
         {/* Form Controls / Footer */}
         <footer className="settings-footer">
-          <button
-            type="button"
-            className="secondary-btn"
-            onClick={() => send({ type: "RESET_FIELDS" })}
-            disabled={isDisabled || !context.isDirty}
-            data-testid="reset-settings-btn"
-          >
-            Reset Fields
-          </button>
+          {mode !== "onboarding" && (
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={() => send({ type: "RESET_FIELDS" })}
+              disabled={isDisabled || !context.isDirty}
+              data-testid="reset-settings-btn"
+            >
+              Reset Fields
+            </button>
+          )}
           <button
             type="submit"
             className="primary-btn"
