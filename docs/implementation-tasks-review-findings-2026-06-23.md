@@ -45,7 +45,7 @@ This document outlines the detailed, step-by-step checklist to implement the fix
 
 ### Phase 2: Refactor Settings and Onboarding View
 
-#### - [ ] **Step 2.1: Add mode prop to SettingsComponent and hide advanced views in Onboarding**
+#### - [x] **Step 2.1: Add mode prop to SettingsComponent and hide advanced views in Onboarding**
 
 - **Description**: Allow SettingsComponent to render in onboarding mode by hiding advanced configuration blocks (Appearance, Storage, system messages) when it is mounted inside the onboarding screen overlay.
 - **Files**:
@@ -55,10 +55,10 @@ This document outlines the detailed, step-by-step checklist to implement the fix
   - If `mode === "onboarding"`, conditionally omit sections for theme, storage settings, system message list, and the "Reset Fields" footer button.
   - Also hide the `<h2>Global Settings</h2>` header title block and subtitle entirely under onboarding mode.
 - **Verification Checklist**:
-  - [ ] Verify settings fields render correctly under both global settings view and onboarding overlay.
-  - [ ] Run checks: `npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`.
-  - [ ] Perform code review.
-  - [ ] Commit changes: `(Antigravity/Gemini 3.5 Flash (Medium)) Step 2.1: Add mode prop to SettingsComponent and hide advanced views in Onboarding`.
+  - [x] Verify settings fields render correctly under both global settings view and onboarding overlay.
+  - [x] Run checks: `npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`.
+  - [x] Perform code review.
+  - [x] Commit changes: `(Antigravity/Gemini 3.5 Flash (Medium)) Step 2.1: Add mode prop to SettingsComponent and hide advanced views in Onboarding`.
 
 #### - [ ] **Step 2.2: Pass mode prop in app-component.tsx**
 
