@@ -197,7 +197,7 @@ This document outlines the detailed, step-by-step checklist to implement the fix
 
 ### Phase 4: Implement "New Chat" Selection UI
 
-#### - [ ] **Step 4.1: Create NewChatComponent and hook up index routing**
+#### - [x] **Step 4.1: Create NewChatComponent and hook up index routing**
 
 - **Description**: Build the initial "New Chat" setup screen where users select workflows, choose presets, and write the initial chat prompt to initialize a conversation thread.
 - **Files**:
