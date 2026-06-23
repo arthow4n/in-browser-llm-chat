@@ -87,7 +87,7 @@ This document outlines the detailed, step-by-step checklist to implement the fix
   - [x] Perform code review.
   - [x] Commit changes: `(Antigravity/Gemini 3.5 Flash (Medium)) Step 2.3: Remove redundant card-level headers in Global Settings view`.
 
-#### - [ ] **Step 2.4: Polish settings panel visuals, inputs and layouts**
+#### - [x] **Step 2.4: Polish settings panel visuals, inputs and layouts**
 
 - **Description**: Upgrade unstyled eye/monkey toggles and delete buttons inside settings rows to use modern CSS layouts or SVGs, aligning with high-quality design principles.
 - **Files**:
@@ -97,10 +97,10 @@ This document outlines the detailed, step-by-step checklist to implement the fix
   - Refactor emoji buttons (`👁`/`🙈` and `🗑`) to styled HTML buttons with SVG icons or high-quality CSS layouts.
   - Ensure a minimum `44x44px` touch target size is applied.
 - **Verification Checklist**:
-  - [ ] Verify visual alignment of the API fields and action buttons.
-  - [ ] Run checks: `npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`.
-  - [ ] Perform code review.
-  - [ ] Commit changes: `(Antigravity/Gemini 3.5 Flash (Medium)) Step 2.4: Polish settings panel visuals, inputs and layouts`.
+  - [x] Verify visual alignment of the API fields and action buttons.
+  - [x] Run checks: `npm run format`, `npm run typecheck`, `npm run lint:fix`, `npm run test`, `npm run build`.
+  - [x] Perform code review.
+  - [x] Commit changes: `(Antigravity/Gemini 3.5 Flash (Medium)) Step 2.4: Polish settings panel visuals, inputs and layouts`.
 
 ---
 
