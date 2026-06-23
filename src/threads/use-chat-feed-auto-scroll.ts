@@ -9,10 +9,14 @@ export function useChatFeedAutoScroll(messagesCount: number, isStreaming: boolea
     actions: {
       scrollToBottom: () => {
         if (containerRef.current) {
-          containerRef.current.scrollTo({
-            top: containerRef.current.scrollHeight,
-            behavior: "smooth",
-          });
+          if (typeof containerRef.current.scrollTo === "function") {
+            containerRef.current.scrollTo({
+              top: containerRef.current.scrollHeight,
+              behavior: "smooth",
+            });
+          } else {
+            containerRef.current.scrollTop = containerRef.current.scrollHeight;
+          }
         }
       },
     },

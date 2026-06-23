@@ -25,6 +25,7 @@ export function ChatComponent() {
 
   // Runner actor ref
   const runnerActorRef = useRef<any>(null);
+  const runExecutionRef = useRef<((threadOverride?: Thread) => Promise<void>) | null>(null);
   const [runnerState, setRunnerState] = useState<string>("inactive");
   const [streamingMessage, setStreamingMessage] = useState<Message | null>(null);
 
@@ -71,6 +72,11 @@ export function ChatComponent() {
 
       // Read status
       setRunnerState(t.status);
+
+      // Auto-trigger graph execution if status is executing and runner actor is not initialized yet
+      if (t.status === "executing" && !runnerActorRef.current) {
+        void runExecutionRef.current?.(t);
+      }
     } catch (err) {
       console.error("Failed to load thread data", err);
     } finally {
@@ -93,8 +99,11 @@ export function ChatComponent() {
   }, [threadId, loadThreadData]);
 
   // Spawn and coordinate graph runner actor
-  const runExecution = async () => {
-    if (!threadId || !thread) return;
+  const runExecution = async (threadOverride?: Thread) => {
+    const activeThread = threadOverride || thread;
+    if (!threadId || !activeThread) return;
+
+    // Clean up existing actor if any
 
     // Clean up existing actor if any
     if (runnerActorRef.current) {
@@ -105,10 +114,10 @@ export function ChatComponent() {
 
     try {
       // 1. Compile workflow
-      const compiledWorkflow = compileWorkflow(thread.workflowSnapshot);
+      const compiledWorkflow = compileWorkflow(activeThread.workflowSnapshot);
 
       // 2. Fetch preset
-      const presetId = thread.activePresetId;
+      const presetId = activeThread.activePresetId;
       let preset = await getPreset(presetId);
       if (!preset) {
         const presets = await listPresets();
@@ -122,14 +131,14 @@ export function ChatComponent() {
       const actor = createActor(graphRunnerMachine, {
         input: {
           threadId,
-          workflowSnapshot: thread.workflowSnapshot,
+          workflowSnapshot: activeThread.workflowSnapshot,
           presetConfig: preset,
         },
       });
 
       // Override context directly as per graph runner pattern
       actor.getSnapshot().context.threadId = threadId;
-      actor.getSnapshot().context.workflowSnapshot = thread.workflowSnapshot;
+      actor.getSnapshot().context.workflowSnapshot = activeThread.workflowSnapshot;
       actor.getSnapshot().context.presetConfig = preset;
 
       runnerActorRef.current = actor;
@@ -175,7 +184,7 @@ export function ChatComponent() {
       console.error(err);
       // Save error details to thread
       const updatedThread = {
-        ...thread,
+        ...activeThread,
         status: "error" as const,
         errorMessage: err?.message || String(err),
       };
@@ -446,6 +455,8 @@ export function ChatComponent() {
       void loadThreadData();
     }
   };
+
+  runExecutionRef.current = runExecution;
 
   const handlePause = () => {
     if (runnerActorRef.current) {

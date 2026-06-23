@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from "vitest";
 import { getDB, resetDBConnection } from "../db/db-connection";
-import { setSetting } from "../db/db-operations";
+import { setSetting, savePreset } from "../db/db-operations";
 import type { IDBPDatabase } from "idb";
 import type { InBrowserLlmChatDB } from "../db/db-connection";
 import { AppComponent } from "../app/app-component";
@@ -57,9 +57,9 @@ describe("Layout and Routing Integration Tests", () => {
     expect(screen.getByTestId("app-sidebar")).toBeInTheDocument();
     expect(screen.getByTestId("app-header")).toBeInTheDocument();
 
-    // Default route redirects to Settings, verify header reflects this
+    // Default route renders New Chat page, verify header reflects this
     await waitFor(() => {
-      expect(screen.getByTestId("header-title")).toHaveTextContent("Global Settings");
+      expect(screen.getByTestId("header-title")).toHaveTextContent("In-Browser LLM Chat");
     });
 
     // Click on presets link
@@ -113,6 +113,15 @@ describe("Layout and Routing Integration Tests", () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockImplementation(() => true);
 
     await setSetting("api_keys", { openRouter: "mock-key", gemini: "" });
+    await savePreset({
+      id: "mock-preset",
+      name: "Mock Preset",
+      provider: "openrouter",
+      model: "google/gemini-flash",
+      apiKey: "mock-key",
+      temperature: 0.7,
+      budgetPolicy: { maxStepsWithoutUser: 10, maxTokensPerRun: null },
+    });
 
     render(<AppComponent />);
 
@@ -123,6 +132,19 @@ describe("Layout and Routing Integration Tests", () => {
     // 1. Thread Creation
     const newChatBtn = screen.getByTestId("new-chat-btn");
     fireEvent.click(newChatBtn);
+
+    // Wait for the new chat setup screen
+    await waitFor(() => {
+      expect(screen.getByTestId("new-chat-view")).toBeInTheDocument();
+    });
+
+    // Fill in the prompt text
+    const textarea = screen.getByPlaceholderText("How can I help you today?");
+    fireEvent.change(textarea, { target: { value: "New Chat" } });
+
+    // Submit the form
+    const submitBtn = screen.getByText("Launch Chat Thread 🚀");
+    fireEvent.click(submitBtn);
 
     // Sidebar should display the newly created thread link
     // The link should render with text "New Chat" or similar, and we should transition routes (so header title updates)

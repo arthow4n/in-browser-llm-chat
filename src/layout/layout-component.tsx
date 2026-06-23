@@ -40,7 +40,7 @@ export function LayoutComponent() {
   }
 
   const handleNewChat = () => {
-    send({ type: "CREATE_THREAD" });
+    void navigate("/");
   };
 
   const handleDeleteThread = (id: string) => {

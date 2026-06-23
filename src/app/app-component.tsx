@@ -7,6 +7,7 @@ import { PresetsComponent } from "../presets/presets-component";
 import { LayoutComponent } from "../layout/layout-component";
 import { WorkflowEditorComponent } from "../workflows/workflow-editor-component";
 import { ChatComponent } from "../threads/chat-component";
+import { NewChatComponent } from "../threads/new-chat-component";
 
 export function AppComponent() {
   const [appState, sendApp] = useMachine(appMachine);
@@ -90,7 +91,7 @@ export function AppComponent() {
     <HashRouter>
       <Routes>
         <Route path="/" element={<LayoutComponent />}>
-          <Route index element={<Navigate to="/settings" replace />} />
+          <Route index element={<NewChatComponent />} />
           <Route
             path="settings"
             element={
@@ -104,14 +105,6 @@ export function AppComponent() {
           <Route path="presets" element={<PresetsComponent />} />
           <Route path="workflows" element={<WorkflowEditorComponent />} />
           <Route path="threads/:threadId" element={<ChatComponent />} />
-          <Route
-            path="threads/new-placeholder"
-            element={
-              <div className="chat-feed-placeholder" data-testid="chat-feed-placeholder">
-                <p>New Conversation Setup Region</p>
-              </div>
-            }
-          />
           {/* Fallback to settings */}
           <Route path="*" element={<Navigate to="/settings" replace />} />
         </Route>
