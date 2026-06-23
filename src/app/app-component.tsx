@@ -74,6 +74,7 @@ export function AppComponent() {
           </div>
           <div className="onboarding-form-wrapper">
             <SettingsComponent
+              mode="onboarding"
               onThemeChange={handleThemeChange}
               onSettingsSave={handleSettingsSave}
             />
@@ -93,6 +94,7 @@ export function AppComponent() {
             path="settings"
             element={
               <SettingsComponent
+                mode="global"
                 onThemeChange={handleThemeChange}
                 onSettingsSave={handleSettingsSave}
               />
