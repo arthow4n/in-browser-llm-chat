@@ -201,7 +201,12 @@ export const layoutMachine = createMachine(
             description: "A standard single-agent chat conversation.",
             isBuiltIn: true,
             nodes: [
-              { id: "agent", type: "llm", config: { prompt: "You are a helpful assistant." } },
+              {
+                id: "agent",
+                type: "agent",
+                name: "Agent",
+                systemPrompt: "You are a helpful assistant.",
+              },
             ],
             edges: [],
           },
